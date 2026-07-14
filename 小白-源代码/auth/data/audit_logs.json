@@ -1,0 +1,30 @@
+[
+  {
+    "user_id": "67c8e897-d729-40c3-b359-5533ddb2cfac",
+    "action": "login",
+    "details": "用户 demo 登录成功",
+    "ip": "",
+    "timestamp": "2026-06-07T12:10:09.656240"
+  },
+  {
+    "user_id": "67c8e897-d729-40c3-b359-5533ddb2cfac",
+    "action": "logout",
+    "details": "用户 demo 登出",
+    "ip": "",
+    "timestamp": "2026-06-07T12:10:09.659362"
+  },
+  {
+    "user_id": "9e44e348-5f2f-4648-b7c4-610e17011190",
+    "action": "login",
+    "details": "用户 admin 登录成功",
+    "ip": "",
+    "timestamp": "2026-06-07T12:10:09.694952"
+  },
+  {
+    "user_id": "9e44e348-5f2f-4648-b7c4-610e17011190",
+    "action": "logout",
+    "details": "用户 admin 登出",
+    "ip": "",
+    "timestamp": "2026-06-07T12:10:09.694952"
+  }
+]

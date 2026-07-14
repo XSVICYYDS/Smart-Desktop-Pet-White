@@ -1,0 +1,139 @@
+图标配置说明
+=================
+
+## 已更新的配置文件
+
+### 1. [小白.spec](file:///c:/Users/XS/Desktop/尚志中学809班徐慎智能桌面宠物小白/小白-源代码/小白.spec)
+- **位置**: L73
+- **内容**: `icon=r'C:\Users\XS\Desktop\小白.ico'`
+
+### 2. [installer.iss](file:///c:/Users/XS/Desktop/尚志中学809班徐慎智能桌面宠物小白/小白-源代码/installer.iss)
+- **位置**: L28
+- **内容**: `SetupIconFile=C:\Users\XS\Desktop\小白.ico`
+
+---
+
+## 图标文件信息
+
+**图标路径**: `C:\Users\XS\Desktop\小白.ico`
+
+这个图标会用于：
+- ✅ 打包后的可执行文件（`智能桌面宠物-小白.exe`）
+- ✅ 安装程序界面
+- ✅ 桌面快捷方式
+- ✅ 开始菜单快捷方式
+
+---
+
+## 注意事项
+
+### 1. 图标文件要求
+- 格式：`.ico` 格式
+- 建议尺寸：256x256 像素
+- 如果不是 ICO 格式，请先转换：
+  - 在线工具：https://www.icoconverter.com/
+  - 或使用 Python 代码转换：
+    ```python
+    from PIL import Image
+    img = Image.open('小白.png')
+    img.save('小白.ico', format='ICO')
+    ```
+
+### 2. 图标文件位置
+图标文件应放置在以下位置之一：
+- **绝对路径（推荐）**: `C:\Users\XS\Desktop\小白.ico`
+- **项目目录**: 复制到 `小白-源代码/Image/` 目录下
+
+### 3. 复制图标到项目目录（可选）
+
+如果你想将图标复制到项目目录以便分发：
+
+```bash
+copy "C:\Users\XS\Desktop\小白.ico" "小白-源代码\Image\"
+```
+
+然后更新配置文件中的路径：
+```python
+# 小白.spec
+icon='Image/小白.ico'
+
+# installer.iss
+SetupIconFile=Image\小白.ico
+```
+
+---
+
+## 验证图标文件
+
+在打包前，请确认：
+
+1. ✅ 图标文件存在
+   ```bash
+   dir "C:\Users\XS\Desktop\小白.ico"
+   ```
+
+2. ✅ 图标文件可读
+   ```bash
+   # Windows资源管理器中能正常显示
+   ```
+
+3. ✅ 图标格式正确
+   - 如果是 PNG/JPG，需要转换为 ICO
+   - ICO 文件可以直接使用
+
+---
+
+## 打包命令
+
+### 方式一：使用自动化脚本
+
+```bash
+cd "小白-源代码"
+python 打包脚本.py
+```
+
+### 方式二：手动打包
+
+```bash
+# PyInstaller打包
+cd "小白-源代码"
+pyinstaller 小白.spec
+
+# Inno Setup创建安装程序
+"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+```
+
+---
+
+## 常见问题
+
+### Q1: 图标文件不存在？
+**错误**: `Icon not found`
+**解决**: 确认图标文件路径是否正确
+
+### Q2: 图标格式错误？
+**错误**: `Cannot load icon`
+**解决**: 将图片转换为 ICO 格式
+
+### Q3: 图标不显示？
+**原因**: Windows缓存问题
+**解决**: 重启电脑或清理图标缓存
+
+---
+
+## 图标来源
+
+如果还没有图标，可以：
+1. 使用在线图标生成器
+2. 使用设计软件创建
+3. 从网上下载免费图标
+4. 使用小白现有的 JPG 图片转换
+
+推荐图标生成工具：
+- https://www.icoconverter.com/ (在线转换)
+- https://convertio.co/jpg-ico/ (在线转换)
+
+---
+
+**更新日期**: 2026-05-17
+**图标路径**: `C:\Users\XS\Desktop\小白.ico`

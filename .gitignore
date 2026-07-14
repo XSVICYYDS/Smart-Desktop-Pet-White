@@ -1,0 +1,62 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Dependencies
+node_modules
+dist-ssr
+*.local
+
+# Build output (GitHub Actions will build)
+dist/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+
+# Build artifacts (Python)
+小白-源代码/build/
+小白-源代码/dist/
+小白-源代码/__pycache__/
+小白-源代码/*/__pycache__/
+小白-源代码/*/*/__pycache__/
+
+# Binary / installer artifacts
+*.exe
+*.msi
+*.cab
+*.aip
+*.iss
+
+# Installer cache directories
+小白-安装包/
+小白-源代码/智能桌面宠物-小白-cache/
+小白-源代码/智能桌面宠物-小白.back(23.5.1)-cache/
+小白-源代码/智能桌面宠物-小白-SetupFiles/
+
+# Trae internal
+.trae/
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS files
+Thumbs.db
+desktop.ini

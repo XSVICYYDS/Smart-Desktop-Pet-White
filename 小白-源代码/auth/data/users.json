@@ -1,0 +1,26 @@
+{
+  "67c8e897-d729-40c3-b359-5533ddb2cfac": {
+    "user_id": "67c8e897-d729-40c3-b359-5533ddb2cfac",
+    "username": "demo",
+    "email": "demo@example.com",
+    "password_hash": "dc5ae6b0ae148512408cfffdfb5596fd$3ac3cb626ba2981de1526a572299cdb2b00eeb84f23380afe5e6e665c591c81e",
+    "created_at": "2026-06-07T12:10:09.549623",
+    "status": "active"
+  },
+  "4baf17cb-ed5a-4cd7-ad24-61a9c040be31": {
+    "user_id": "4baf17cb-ed5a-4cd7-ad24-61a9c040be31",
+    "username": "vip",
+    "email": "vip@example.com",
+    "password_hash": "eff5e5b438fa752cdd6dcb5cda05c42c$bbbbc7ccbe1ff78ec873de0fb9a09ed50090c279b718a2d4a99b8ae96fe77a0f",
+    "created_at": "2026-06-07T12:10:09.585441",
+    "status": "active"
+  },
+  "9e44e348-5f2f-4648-b7c4-610e17011190": {
+    "user_id": "9e44e348-5f2f-4648-b7c4-610e17011190",
+    "username": "admin",
+    "email": "admin@example.com",
+    "password_hash": "97875ebd7222b3440f8f438a274be30c$6e532c37905c8a43aa1a58de841b76699c5438722bc91f35e625bcc5ea6c7e24",
+    "created_at": "2026-06-07T12:10:09.620986",
+    "status": "active"
+  }
+}
