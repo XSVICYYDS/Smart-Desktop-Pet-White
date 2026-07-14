@@ -4,7 +4,7 @@ export const siteConfig = {
   name: "智能桌面宠物小白",
   shortName: "小白",
   version: "v0.4.28",
-  developer: "xushen",
+  developer: "XSVICYYDS",
   email: "XSVICYYDS@outlook.com",
   github: "https://github.com/XSVICYYDS/Smart-Desktop-Pet-White",
   githubReleases: "https://github.com/XSVICYYDS/Smart-Desktop-Pet-White/releases",

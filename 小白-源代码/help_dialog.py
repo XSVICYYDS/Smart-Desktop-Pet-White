@@ -105,7 +105,7 @@ class HelpDialog(QDialog):
                               "- 使用了来自 Bing 图片搜索的动图\n" +
                               "- 链接：https://cn.bing.com/images/search?q=%e7%ba%bf%e6%9d%a1%e5%b0%8f%e7%8b%97%e5%8a%a8%e5%9b%be&form=HDRSC2&first=1\n\n" +
                               "■ 开发者\n" +
-                              "- 开发者:xushen\n" +
+                              "- 开发者:XSVICYYDS\n" +
                               "- 联系方式：XSVICYYDS@outlook.com\n")
         tab_widget.addTab(about_tab, "关于")
         

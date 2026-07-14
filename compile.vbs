@@ -8,7 +8,7 @@ Dim fileSize, sizeStr
 Set oShell = CreateObject("WScript.Shell")
 Set oFSO = CreateObject("Scripting.FileSystemObject")
 
-scriptPath = "C:\Users\XS\Desktop\shangzhi809_xushen_xiaobai\小白安装程序-简化版.iss"
+scriptPath = "C:\Users\XS\Desktop\尚志中学809班徐慎智能桌面宠物小白\小白安装程序-简化版.iss"
 
 If oFSO.FileExists(scriptPath) Then
     WScript.Echo "Found installation script"
@@ -19,7 +19,7 @@ If oFSO.FileExists(scriptPath) Then
     
     WScript.Echo "Compilation completed!"
     
-    outputDir = "C:\Users\XS\Desktop\shangzhi809_xushen_xiaobai\安装包"
+    outputDir = "C:\Users\XS\Desktop\尚志中学809班徐慎智能桌面宠物小白\安装包"
     If oFSO.FolderExists(outputDir) Then
         Set oFolder = oFSO.GetFolder(outputDir)
         Set oFiles = oFolder.Files
