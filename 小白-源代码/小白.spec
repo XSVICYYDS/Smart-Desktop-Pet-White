@@ -117,6 +117,8 @@ a = Analysis(
         'ai_toolbox.dictionary_api',
         'ai_toolbox.joke_api',
         'ai_toolbox.text_analysis',
+        # 检查更新模块
+        'update_checker',
         # 文件格式转换模块
         'file_converter',
         'file_converter_dialog',

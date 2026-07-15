@@ -77,6 +77,7 @@ from config_ui import ConfigDialog
 from system_integration import SystemIntegration
 from setup_wizard import SetupWizard
 from help_dialog import HelpDialog
+from update_checker import check_update
 from screen_pen import ScreenPen
 from screen_capture import ScreenCapture
 from input_manager import InputManager
@@ -599,7 +600,7 @@ class DesktopPet(QWidget):
     
     def openHelpDialog(self):
         """打开帮助对话框
-        
+
         显示应用的帮助信息和使用说明
         """
         try:
@@ -607,7 +608,17 @@ class DesktopPet(QWidget):
             dialog.exec_()
         except Exception as e:
             QMessageBox.warning(self, "错误", f"打开帮助对话框错误: {e}")
-    
+
+    def checkUpdate(self):
+        """检查更新
+
+        调用更新检查器检查 GitHub 上的最新版本
+        """
+        try:
+            check_update(parent=self)
+        except Exception as e:
+            QMessageBox.warning(self, "错误", f"检查更新时发生错误: {e}")
+
     # 互动行为方法（代理到 behavior 对象）
     def stick(self):
         """贴贴行为

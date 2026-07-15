@@ -761,7 +761,7 @@ class JokeTab(QWidget):
 
 
 class TextAnalysisTab(QWidget):
-    """文本分析功能标签页"""
+    """文本分析功能标签页（美化版）"""
 
     def __init__(self):
         """初始化文本分析标签页"""
@@ -772,55 +772,182 @@ class TextAnalysisTab(QWidget):
     def init_ui(self):
         """初始化界面"""
         layout = QVBoxLayout()
+        layout.setSpacing(15)
+        layout.setContentsMargins(15, 15, 15, 15)
 
         # 标题
-        title = QLabel("📊 文本分析")
-        title.setFont(QFont("Microsoft YaHei", 16, QFont.Bold))
+        title = QLabel("📊 智能文本分析")
+        title.setFont(QFont("Microsoft YaHei", 18, QFont.Bold))
         title.setAlignment(Qt.AlignCenter)
+        title.setStyleSheet("color: #FF69B4; margin-bottom: 10px;")
         layout.addWidget(title)
+
+        # 副标题
+        subtitle = QLabel("支持中英文混合文本 · 基本统计 · 情感分析 · 关键词提取 · 自动摘要")
+        subtitle.setAlignment(Qt.AlignCenter)
+        subtitle.setStyleSheet("color: #888; font-size: 12px; margin-bottom: 10px;")
+        layout.addWidget(subtitle)
 
         # 文本输入和结果分割
         splitter = QSplitter(Qt.Horizontal)
 
-        # 左侧输入
-        input_group = QGroupBox("输入文本")
+        # 左侧输入区域
+        input_group = QGroupBox("📝 输入文本")
+        input_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                border: 2px solid #FFB6C1;
+                border-radius: 12px;
+                margin-top: 10px;
+                padding-top: 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 15px;
+                padding: 0 10px;
+                color: #FF69B4;
+            }
+        """)
         input_layout = QVBoxLayout()
+        input_layout.setSpacing(10)
+
         self.input_text = QTextEdit()
-        self.input_text.setPlaceholderText("请输入要分析的英文文本...\n\n支持以下分析：\n- 基本统计（字符数、单词数、句子数等）\n- 可读性分析\n- 情感分析\n- 关键词提取\n- 自动摘要")
+        self.input_text.setPlaceholderText(
+            "请输入要分析的文本（支持中英文混合）...\n\n"
+            "💡 支持以下分析：\n"
+            "  • 基本统计（字符数、词数、句子数等）\n"
+            "  • 可读性分析（Flesch阅读指数）\n"
+            "  • 情感分析（积极/消极/中性）\n"
+            "  • 关键词提取（TOP10高频词）\n"
+            "  • 自动摘要（提取核心句子）"
+        )
+        self.input_text.setStyleSheet("""
+            QTextEdit {
+                border: 1px solid #FFD1DC;
+                border-radius: 10px;
+                padding: 12px;
+                background-color: white;
+                font-size: 13px;
+                line-height: 1.5;
+            }
+        """)
         input_layout.addWidget(self.input_text)
 
-        # 按钮
+        # 按钮区域
         btn_layout = QHBoxLayout()
-        analyze_btn = QPushButton("🔍 分析")
+        btn_layout.setSpacing(10)
+
+        analyze_btn = QPushButton("🔍 开始分析")
+        analyze_btn.setMinimumHeight(40)
+        analyze_btn.setCursor(Qt.PointingHandCursor)
+        analyze_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #FF69B4;
+                color: white;
+                border: none;
+                border-radius: 20px;
+                padding: 8px 20px;
+                font-size: 13px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #FF1493;
+            }
+            QPushButton:pressed {
+                background-color: #DB7093;
+            }
+        """)
         analyze_btn.clicked.connect(self.do_analysis)
-        analyze_btn.setMinimumHeight(35)
         btn_layout.addWidget(analyze_btn)
 
-        summary_btn = QPushButton("📝 自动摘要")
+        summary_btn = QPushButton("📋 自动摘要")
+        summary_btn.setMinimumHeight(40)
+        summary_btn.setCursor(Qt.PointingHandCursor)
+        summary_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                border: none;
+                border-radius: 20px;
+                padding: 8px 20px;
+                font-size: 13px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+            QPushButton:pressed {
+                background-color: #3d8b40;
+            }
+        """)
         summary_btn.clicked.connect(self.do_summary)
-        summary_btn.setMinimumHeight(35)
         btn_layout.addWidget(summary_btn)
 
         clear_btn = QPushButton("🗑️ 清空")
+        clear_btn.setMinimumHeight(40)
+        clear_btn.setCursor(Qt.PointingHandCursor)
+        clear_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #f0f0f0;
+                color: #666;
+                border: 1px solid #ddd;
+                border-radius: 20px;
+                padding: 8px 20px;
+                font-size: 13px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #e0e0e0;
+                background-color: #ff6b6b;
+                color: white;
+                border-color: #ff6b6b;
+            }
+        """)
         clear_btn.clicked.connect(self.clear_all)
-        clear_btn.setMinimumHeight(35)
         btn_layout.addWidget(clear_btn)
 
         input_layout.addLayout(btn_layout)
         input_group.setLayout(input_layout)
         splitter.addWidget(input_group)
 
-        # 右侧结果
-        output_group = QGroupBox("分析结果")
+        # 右侧结果区域
+        output_group = QGroupBox("📊 分析结果")
+        output_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                border: 2px solid #90EE90;
+                border-radius: 12px;
+                margin-top: 10px;
+                padding-top: 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 15px;
+                padding: 0 10px;
+                color: #4CAF50;
+            }
+        """)
         output_layout = QVBoxLayout()
+
         self.result_text = QTextEdit()
         self.result_text.setReadOnly(True)
         self.result_text.setPlaceholderText("分析结果将显示在这里...")
+        self.result_text.setStyleSheet("""
+            QTextEdit {
+                border: 1px solid #C8E6C9;
+                border-radius: 10px;
+                padding: 12px;
+                background-color: #F1F8E9;
+                font-size: 13px;
+                line-height: 1.5;
+                font-family: "Microsoft YaHei", "Consolas", monospace;
+            }
+        """)
         output_layout.addWidget(self.result_text)
         output_group.setLayout(output_layout)
         splitter.addWidget(output_group)
 
-        splitter.setSizes([400, 400])
+        splitter.setSizes([450, 450])
         layout.addWidget(splitter, 1)
 
         self.setLayout(layout)
@@ -831,6 +958,9 @@ class TextAnalysisTab(QWidget):
         if not text:
             QMessageBox.warning(self, "提示", "请输入要分析的文本！")
             return
+
+        self.result_text.setPlainText("正在分析中，请稍候...")
+        self.repaint()
 
         result = self.analyzer.analyze(text)
         report = self.analyzer.format_analysis_report(result)
@@ -843,18 +973,23 @@ class TextAnalysisTab(QWidget):
             QMessageBox.warning(self, "提示", "请输入要摘要的文本！")
             return
 
+        self.result_text.setPlainText("正在生成摘要，请稍候...")
+        self.repaint()
+
         result = self.analyzer.summarize_text(text, sentence_count=3)
 
         if result.get("success"):
             summary_text = f"""
-📝 文本自动摘要
-{'='*40}
+╔══════════════════════════════════════════════╗
+║           📝 文本自动摘要                    ║
+╠══════════════════════════════════════════════╣
 
 {result['summary']}
 
-{'='*40}
-📊 原文句子数: {result['original_sentences']}
-📊 摘要句子数: {result['summary_sentences']}
+╠══════════════════════════════════════════════╣
+║  📊 原文句子数: {result['original_sentences']:<29}║
+║  📊 摘要句子数: {result['summary_sentences']:<29}║
+╚══════════════════════════════════════════════╝
 """
             self.result_text.setPlainText(summary_text)
         else:
