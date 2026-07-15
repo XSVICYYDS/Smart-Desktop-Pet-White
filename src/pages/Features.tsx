@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Dog, Gamepad2, Wrench, Brain,
   Move, MousePointer2, BellOff,
@@ -28,6 +29,7 @@ export default function Features() {
   const { ref: ref1, isVisible: vis1 } = useScrollReveal();
   const { ref: ref2, isVisible: vis2 } = useScrollReveal();
   const { ref: ref3, isVisible: vis3 } = useScrollReveal();
+  const [selectedAnim, setSelectedAnim] = useState<string | null>(null);
   const { ref: ref4, isVisible: vis4 } = useScrollReveal();
 
   return (
@@ -115,13 +117,45 @@ export default function Features() {
           {/* Animation list */}
           <div className="mt-12">
             <h3 className="font-serif text-xl font-bold text-brand-dark mb-4 text-center">26+ 种动画效果</h3>
+            <p className="text-center text-brand-gray text-sm mb-4">点击按钮预览对应动画</p>
             <div className="flex flex-wrap justify-center gap-2">
               {petAnimations.map((anim) => (
-                <span key={anim} className="px-3 py-1.5 bg-white rounded-full text-xs text-brand-dark border border-pink-100 hover:border-brand-pink hover:text-brand-pink transition-colors">
+                <button
+                  key={anim}
+                  onClick={() => setSelectedAnim(anim)}
+                  className={`px-3 py-1.5 rounded-full text-xs border transition-all cursor-pointer ${
+                    selectedAnim === anim
+                      ? "bg-brand-pink text-white border-brand-pink shadow-md"
+                      : "bg-white text-brand-dark border-pink-100 hover:border-brand-pink hover:text-brand-pink"
+                  }`}
+                >
                   {anim}
-                </span>
+                </button>
               ))}
             </div>
+
+            {/* GIF preview area */}
+            {selectedAnim && (
+              <div className="mt-8 flex flex-col items-center animate-fade-in-up">
+                <div className="relative bg-white rounded-2xl p-6 shadow-lg border border-pink-100">
+                  <button
+                    onClick={() => setSelectedAnim(null)}
+                    className="absolute -top-2 -right-2 w-8 h-8 bg-brand-pink text-white rounded-full flex items-center justify-center hover:bg-brand-pink/90 transition-colors shadow-md cursor-pointer"
+                    title="关闭预览"
+                  >
+                    ✕
+                  </button>
+                  <img
+                    src={`/Smart-Desktop-Pet-White/gif/${selectedAnim}.gif`}
+                    alt={`${selectedAnim} animation`}
+                    className="w-64 h-64 object-contain rounded-xl"
+                  />
+                  <p className="text-center text-brand-dark font-medium mt-3">
+                    {selectedAnim}
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </section>
