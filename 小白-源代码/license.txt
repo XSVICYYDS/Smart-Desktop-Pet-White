@@ -1,0 +1,29 @@
+Smart Desktop Pet - White Software License Agreement
+
+Copyright (C) 2024-2026 XSVICYYDS
+
+Thank you for using Smart Desktop Pet - White (hereinafter referred to as "this software").
+
+I. License Grant
+This software is protected by copyright law. You are entitled to use a copy of this software subject to the terms of this agreement.
+
+II. License Restrictions
+1. Decompilation, disassembly, or reverse engineering of this software is prohibited.
+2. Modification, translation, or creation of derivative works of this software is prohibited.
+3. Renting, leasing, or lending this software is prohibited.
+4. Use of this software for any illegal purpose is prohibited.
+
+III. Disclaimer
+This software is provided "as is" without any express or implied warranties, including but not limited to:
+- Warranty of merchantability and fitness for a particular purpose
+- Warranty of non-infringement of third-party rights
+
+In no event shall the author be liable for any direct, indirect, incidental, special, or consequential damages arising from the use of this software.
+
+IV. Termination
+This license will automatically terminate if you breach any term of this agreement.
+
+V. Governing Law
+This agreement is governed by the laws of the People's Republic of China. Any dispute arising from this agreement shall be resolved through friendly negotiation between the parties.
+
+By installing or using this software, you agree to accept all terms of this agreement.
