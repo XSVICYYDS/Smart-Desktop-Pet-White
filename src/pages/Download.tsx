@@ -41,7 +41,7 @@ export default function DownloadPage() {
             {/* Installer */}
             <div className="glass rounded-3xl p-8 text-center hover:shadow-xl hover:shadow-pink-100/50 transition-all hover:-translate-y-1">
               <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-brand-pink to-brand-pink-dark flex items-center justify-center mx-auto mb-6">
-                <img src="/installer.ico" alt="安装包图标" className="w-12 h-12 object-contain" />
+                <img src="/installer.png" alt="安装包图标" className="w-12 h-12 object-contain" />
               </div>
               <h3 className="font-serif text-2xl font-bold text-brand-dark mb-2">安装包</h3>
               <p className="text-brand-gray text-sm mb-4">推荐大多数用户使用</p>
@@ -65,7 +65,7 @@ export default function DownloadPage() {
             {/* Portable */}
             <div className="glass rounded-3xl p-8 text-center hover:shadow-xl hover:shadow-pink-100/50 transition-all hover:-translate-y-1">
               <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-400 to-indigo-400 flex items-center justify-center mx-auto mb-6">
-                <img src="/portable.ico" alt="便携版图标" className="w-12 h-12 object-contain" />
+                <img src="/portable.png" alt="便携版图标" className="w-12 h-12 object-contain" />
               </div>
               <h3 className="font-serif text-2xl font-bold text-brand-dark mb-2">便携版</h3>
               <p className="text-brand-gray text-sm mb-4">免安装，即开即用</p>
