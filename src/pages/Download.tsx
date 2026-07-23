@@ -11,7 +11,7 @@ import installerIcon from "@/assets/installer.png";
 import portableIcon from "@/assets/portable.png";
 
 const steps = [
-  { step: "1", title: "下载安装包", description: "选择 .msi 安装包或 .exe 便携版下载" },
+  { step: "1", title: "下载安装包", description: "选择 Setup 安装包或 Portable 便携版下载" },
   { step: "2", title: "运行安装", description: "双击安装包，按照向导提示完成安装" },
   { step: "3", title: "首次启动", description: "首次运行会显示设置向导，配置小白偏好" },
   { step: "4", title: "开始使用", description: "右键小白打开菜单，探索所有功能" },
@@ -48,7 +48,8 @@ export default function DownloadPage() {
               <h3 className="font-serif text-2xl font-bold text-brand-dark mb-2">安装包</h3>
               <p className="text-brand-gray text-sm mb-4">推荐大多数用户使用</p>
               <div className="bg-pink-50 rounded-lg p-3 mb-6">
-                <code className="text-xs text-brand-dark">智能桌面宠物-小白(安装包).msi</code>
+                <code className="text-xs text-brand-dark">Smart-Desktop-Pet-White-Setup-0.4.43.exe</code>
+                <div className="text-xs text-brand-gray mt-1">大小：约 141 MB</div>
               </div>
               <ul className="text-left space-y-2 mb-6">
                 <li className="flex items-center gap-2 text-sm text-brand-gray">
@@ -61,7 +62,7 @@ export default function DownloadPage() {
                   <CheckCircle2 size={16} className="text-brand-mint" /> 支持卸载
                 </li>
               </ul>
-              <DownloadButton variant="primary" size="large" label="下载安装包" href={siteConfig.githubReleases} />
+              <DownloadButton variant="primary" size="large" label="下载安装包" href={siteConfig.installerUrl} />
             </div>
 
             {/* Portable */}
@@ -72,7 +73,8 @@ export default function DownloadPage() {
               <h3 className="font-serif text-2xl font-bold text-brand-dark mb-2">便携版</h3>
               <p className="text-brand-gray text-sm mb-4">免安装，即开即用</p>
               <div className="bg-purple-50 rounded-lg p-3 mb-6">
-                <code className="text-xs text-brand-dark">智能桌面宠物-小白.exe</code>
+                <code className="text-xs text-brand-dark">Smart-Desktop-Pet-White-Portable-0.4.43.exe</code>
+                <div className="text-xs text-brand-gray mt-1">大小：约 140 MB</div>
               </div>
               <ul className="text-left space-y-2 mb-6">
                 <li className="flex items-center gap-2 text-sm text-brand-gray">
@@ -85,7 +87,7 @@ export default function DownloadPage() {
                   <CheckCircle2 size={16} className="text-brand-mint" /> 便于携带
                 </li>
               </ul>
-              <DownloadButton variant="secondary" size="large" label="下载便携版" href={siteConfig.githubReleases} />
+              <DownloadButton variant="secondary" size="large" label="下载便携版" href={siteConfig.portableUrl} />
             </div>
           </div>
         </div>

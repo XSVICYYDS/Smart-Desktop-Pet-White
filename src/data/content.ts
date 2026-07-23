@@ -3,11 +3,14 @@
 export const siteConfig = {
   name: "智能桌面宠物小白",
   shortName: "小白",
-  version: "v0.4.28",
+  version: "v0.4.43",
   developer: "XSVICYYDS",
   email: "XSVICYYDS@outlook.com",
   github: "https://github.com/XSVICYYDS/Smart-Desktop-Pet-White",
   githubReleases: "https://github.com/XSVICYYDS/Smart-Desktop-Pet-White/releases",
+  githubReleaseLatest: "https://github.com/XSVICYYDS/Smart-Desktop-Pet-White/releases/tag/0.4.43",
+  installerUrl: "https://github.com/XSVICYYDS/Smart-Desktop-Pet-White/releases/download/0.4.43/Smart-Desktop-Pet-White-Setup-0.4.43.exe",
+  portableUrl: "https://github.com/XSVICYYDS/Smart-Desktop-Pet-White/releases/download/0.4.43/Smart-Desktop-Pet-White-Portable-0.4.43.exe",
   description: "小白是一款功能丰富的智能桌面宠物应用。它不仅拥有可爱的桌面宠物形象，还集成了羊了个羊等趣味游戏、桌面管理器、智能画板、文件转换器、计算器、画图、记事本、截图、磁盘清理、放大镜、便签、闹钟等十余款实用工具，同时支持AI智能对话，是您桌面上的全能小助手。",
 };
 
@@ -127,4 +130,5 @@ export const timeline = [
   { version: "v0.3.0", date: "2025年初", event: "集成AI工具箱和安全认证系统" },
   { version: "v0.4.0", date: "2025年中", event: "添加桌面管理器和智能画板" },
   { version: "v0.4.28", date: "2026年", event: "完善羊了个羊双模式、系统工具集成" },
+  { version: "v0.4.43", date: "2026年7月", event: "新增检查更新功能、帮助界面美化、AI文本分析升级、官方网站发布" },
 ];
