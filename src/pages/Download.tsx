@@ -5,7 +5,9 @@ import {
 } from "lucide-react";
 import SectionTitle from "@/components/SectionTitle";
 import DownloadButton from "@/components/DownloadButton";
+import DownloadCounter from "@/components/DownloadCounter";
 import { useScrollReveal } from "@/hooks/useScrollReveal";
+import { useDownloadCounter } from "@/hooks/useDownloadCounter";
 import { siteConfig } from "@/data/content";
 import installerIcon from "@/assets/installer.png";
 import portableIcon from "@/assets/portable.png";
@@ -19,6 +21,15 @@ const steps = [
 
 export default function DownloadPage() {
   const { ref, isVisible } = useScrollReveal();
+  const installerCounter = useDownloadCounter("installer");
+  const portableCounter = useDownloadCounter("portable");
+
+  // 总下载量：两个版本加起来
+  const totalDownloads =
+    (installerCounter.githubDownloads ?? 0) +
+    (portableCounter.githubDownloads ?? 0) +
+    installerCounter.localCount +
+    portableCounter.localCount;
 
   return (
     <div className="pt-24">
@@ -30,9 +41,22 @@ export default function DownloadPage() {
         <p className="text-brand-gray text-lg max-w-2xl mx-auto">
           免费、开源、持续更新。选择适合你的版本，立即开始使用。
         </p>
-        <div className="mt-4 inline-flex items-center gap-2 bg-white/80 rounded-full px-4 py-2">
-          <span className="text-sm text-brand-dark">当前版本：</span>
-          <span className="text-sm font-bold text-brand-pink">{siteConfig.version}</span>
+        <div className="mt-4 flex flex-col sm:flex-row items-center justify-center gap-3">
+          <div className="inline-flex items-center gap-2 bg-white/80 rounded-full px-4 py-2">
+            <span className="text-sm text-brand-dark">当前版本：</span>
+            <span className="text-sm font-bold text-brand-pink">{siteConfig.version}</span>
+          </div>
+          {/* 全站总下载量显示 */}
+          <div className="inline-flex items-center gap-2 bg-gradient-to-r from-brand-pink/10 to-brand-pink-dark/10 rounded-full px-4 py-2 border border-pink-200/50">
+            <Download size={16} className="text-brand-pink" />
+            <span className="text-sm text-brand-dark">累计下载：</span>
+            <span className="text-sm font-bold text-brand-pink">
+              {(installerCounter.loading || portableCounter.loading)
+                ? "统计中..."
+                : totalDownloads.toLocaleString("zh-CN")}
+              次
+            </span>
+          </div>
         </div>
       </section>
 
@@ -62,7 +86,17 @@ export default function DownloadPage() {
                   <CheckCircle2 size={16} className="text-brand-mint" /> 支持卸载
                 </li>
               </ul>
-              <DownloadButton variant="primary" size="large" label="下载安装包" href={siteConfig.installerUrl} />
+              {/* 安装包下载计数器 */}
+              <div className="mb-4 flex justify-center">
+                <DownloadCounter assetKey="installer" variant="card" />
+              </div>
+              <DownloadButton
+                variant="primary"
+                size="large"
+                label="下载安装包"
+                href={siteConfig.installerUrl}
+                onClick={() => installerCounter.increment()}
+              />
             </div>
 
             {/* Portable */}
@@ -87,7 +121,17 @@ export default function DownloadPage() {
                   <CheckCircle2 size={16} className="text-brand-mint" /> 便于携带
                 </li>
               </ul>
-              <DownloadButton variant="secondary" size="large" label="下载便携版" href={siteConfig.portableUrl} />
+              {/* 便携版下载计数器 */}
+              <div className="mb-4 flex justify-center">
+                <DownloadCounter assetKey="portable" variant="card" />
+              </div>
+              <DownloadButton
+                variant="secondary"
+                size="large"
+                label="下载便携版"
+                href={siteConfig.portableUrl}
+                onClick={() => portableCounter.increment()}
+              />
             </div>
           </div>
         </div>

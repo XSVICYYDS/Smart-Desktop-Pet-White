@@ -8,6 +8,8 @@ interface DownloadButtonProps {
   label?: string;
   href?: string;
   internalLink?: string;
+  /** 点击按钮时触发的回调（用于计数等操作） */
+  onClick?: () => void;
 }
 
 export default function DownloadButton({
@@ -16,6 +18,7 @@ export default function DownloadButton({
   label = "立即下载",
   href,
   internalLink,
+  onClick,
 }: DownloadButtonProps) {
   const baseClasses = "inline-flex items-center gap-2 rounded-full font-medium transition-all duration-300 hover:scale-105";
   const variantClasses = {
@@ -31,7 +34,11 @@ export default function DownloadButton({
 
   if (internalLink) {
     return (
-      <Link to={internalLink} className={className}>
+      <Link
+        to={internalLink}
+        className={className}
+        onClick={() => onClick && onClick()}
+      >
         {variant === "primary" && <Download size={size === "large" ? 20 : 18} />}
         {label}
       </Link>
@@ -44,6 +51,7 @@ export default function DownloadButton({
       target="_blank"
       rel="noopener noreferrer"
       className={className}
+      onClick={() => onClick && onClick()}
     >
       {variant === "primary" ? <Download size={size === "large" ? 20 : 18} /> : <ExternalLink size={size === "large" ? 20 : 18} />}
       {label}
