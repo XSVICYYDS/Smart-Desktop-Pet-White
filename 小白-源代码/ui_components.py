@@ -113,10 +113,22 @@ class UIComponents:
             self.hidestats = QAction(u'显示/隐藏状态栏', self.parent, triggered=self.parent.hideStatsBar)
             self.config_action = QAction(u'配置', self.parent, triggered=self.parent.openConfigDialog)
             self.update_action = QAction(u'检查更新', self.parent, triggered=self.parent.checkUpdate)
+            self.sync_action = QAction(u'同步数据（预览）', self.parent, triggered=self.parent.openCloudSync)
+            
+            # 登录相关菜单（动态，先初始化占位）
+            self.login_action = QAction(u'登录/注册', self.parent, triggered=self.parent.openLoginDialog)
+            self.user_welcome_action = QAction(u'', self.parent)
+            self.user_welcome_action.setEnabled(False)
+            self.logout_action = QAction(u'退出登录', self.parent, triggered=self.parent.requestLogout)
+            
             self.tray_icon_menu = QMenu(self.parent)
             self.tray_icon_menu.addAction(self.showing)
             self.tray_icon_menu.addAction(self.hideup)
             self.tray_icon_menu.addSeparator()
+            # 插入登录/用户信息菜单
+            self._populate_login_section(self.tray_icon_menu)
+            self.tray_icon_menu.addSeparator()
+            self.tray_icon_menu.addAction(self.sync_action)
             self.tray_icon_menu.addAction(self.update_action)
             self.tray_icon_menu.addAction(self.hidestats)
             self.tray_icon_menu.addAction(self.config_action)
@@ -128,6 +140,43 @@ class UIComponents:
             self.tray_icon.show()
         except Exception as e:
             QMessageBox.warning(self.parent, "错误", f"初始化托盘图标错误: {e}")
+
+    def _populate_login_section(self, menu: QMenu):
+        """向菜单填充登录相关项（根据登录状态）"""
+        try:
+            auth = getattr(self.parent, 'auth', None)
+            logged_in = auth.is_logged_in() if auth else False
+            if not logged_in:
+                menu.addAction(self.login_action)
+            else:
+                nick = auth.get_current_display_name()
+                self.user_welcome_action.setText(f"欢迎, {nick}")
+                self.user_welcome_action.setIcon(QIcon())
+                menu.addAction(self.user_welcome_action)
+                menu.addAction(self.logout_action)
+        except Exception:
+            menu.addAction(self.login_action)
+
+    def refresh_tray_menu(self):
+        """刷新托盘菜单（登录/登出后调用）"""
+        if not hasattr(self, 'tray_icon_menu'):
+            return
+        try:
+            # 清空并按顺序重建（保持与原顺序一致）
+            self.tray_icon_menu.clear()
+            self.tray_icon_menu.addAction(self.showing)
+            self.tray_icon_menu.addAction(self.hideup)
+            self.tray_icon_menu.addSeparator()
+            self._populate_login_section(self.tray_icon_menu)
+            self.tray_icon_menu.addSeparator()
+            self.tray_icon_menu.addAction(self.sync_action)
+            self.tray_icon_menu.addAction(self.update_action)
+            self.tray_icon_menu.addAction(self.hidestats)
+            self.tray_icon_menu.addAction(self.config_action)
+            self.tray_icon_menu.addSeparator()
+            self.tray_icon_menu.addAction(self.quit_action)
+        except Exception as e:
+            print(f"刷新托盘菜单失败: {e}")
     
     def initPetImage(self):
         """初始化宠物图像和状态栏
@@ -372,6 +421,21 @@ class UIComponents:
             settings_menu = QMenu("设置", menu)
             settings_menu.addAction(u"配置", self.parent.openConfigDialog)
             menu.addMenu(settings_menu)
+            
+            # 账号菜单组（登录/注册/退出登录）
+            account_menu = QMenu("账号", menu)
+            auth = getattr(self.parent, 'auth', None)
+            logged_in = auth.is_logged_in() if auth else False
+            if not logged_in:
+                account_menu.addAction(u"登录 / 注册", self.parent.openLoginDialog)
+            else:
+                nick = auth.get_current_display_name()
+                welcome = account_menu.addAction(f"当前用户：{nick}")
+                welcome.setEnabled(False)
+                account_menu.addSeparator()
+                account_menu.addAction(u"同步数据（预览）", self.parent.openCloudSync)
+                account_menu.addAction(u"退出登录", self.parent.requestLogout)
+            menu.addMenu(account_menu)
             
             # 帮助菜单组
             help_menu = QMenu("帮助", menu)

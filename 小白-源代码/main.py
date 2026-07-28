@@ -83,6 +83,12 @@ from screen_capture import ScreenCapture
 from input_manager import InputManager
 from physics_engine import PhysicsEngine
 from animation_player import AnimationPlayer
+
+try:
+    from auth import get_auth_system
+except Exception:
+    def get_auth_system():
+        return None
 # from status_tooltip import StatusTooltip
 
 class DesktopPet(QWidget):
@@ -106,6 +112,14 @@ class DesktopPet(QWidget):
         # 初始化配置和状态管理
         self.config = Config(BASE_DIR)
         self.state_manager = StateManager(BASE_DIR)
+
+        # 初始化认证系统 + 自动恢复会话
+        self.auth = get_auth_system() or _FallbackAuth()
+        try:
+            if hasattr(self.auth, 'auto_restore_login'):
+                self.auth.auto_restore_login()
+        except Exception as e:
+            logger.warning(f"会话恢复异常（忽略）: {e}")
         
         # 初始化系统集成
         self.system_integration = SystemIntegration()
@@ -618,6 +632,77 @@ class DesktopPet(QWidget):
             check_update(parent=self)
         except Exception as e:
             QMessageBox.warning(self, "错误", f"检查更新时发生错误: {e}")
+
+    # ========== 登录 / 注册 / 退出登录 / 云同步 ==========
+    def openLoginDialog(self):
+        """打开登录/注册对话框
+        
+        显示模态对话框，用户完成登录或注册后刷新托盘菜单
+        """
+        try:
+            from login_wizard.login_register_dialog import LoginRegisterDialog
+            if self.auth is None or not hasattr(self.auth, 'register'):
+                QMessageBox.information(self, "功能不可用",
+                    "当前认证模块不可用，请重启程序或重新安装。")
+                return
+            dialog = LoginRegisterDialog(self.auth, self)
+            dialog.login_success.connect(self._on_login_success)
+            if dialog.exec_() == QDialog.Accepted:
+                self._on_login_success(self.auth.get_current_user() or {})
+        except Exception as e:
+            logger.exception(f"打开登录对话框失败: {e}")
+            QMessageBox.warning(self, "登录", f"打开登录对话框失败：{e}")
+
+    def _on_login_success(self, user_info: dict):
+        """登录成功回调：刷新菜单 + 提示"""
+        try:
+            if hasattr(self.ui, 'refresh_tray_menu'):
+                self.ui.refresh_tray_menu()
+            nick = user_info.get('nickname') or user_info.get('username') or '小白用户'
+            QMessageBox.information(self, "登录成功",
+                f"🐾 欢迎回来，{nick}！\n已自动启用数据同步功能（预览版）。")
+        except Exception as e:
+            logger.warning(f"登录成功回调异常: {e}")
+
+    def requestLogout(self):
+        """请求退出登录（带二次确认）"""
+        try:
+            if not (self.auth and hasattr(self.auth, 'is_logged_in') and self.auth.is_logged_in()):
+                QMessageBox.information(self, "退出登录", "当前尚未登录。")
+                return
+            nick = self.auth.get_current_display_name() if hasattr(self.auth, 'get_current_display_name') else '您'
+            reply = QMessageBox.question(self, "退出登录",
+                f"确定要退出账号「{nick}」吗？\n\n本地会话将被清除，下次需要重新登录。",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if reply != QMessageBox.Yes:
+                return
+            self.auth.logout()
+            if hasattr(self.ui, 'refresh_tray_menu'):
+                self.ui.refresh_tray_menu()
+            QMessageBox.information(self, "退出登录", "✅ 已安全退出当前账号。")
+        except Exception as e:
+            logger.warning(f"退出登录异常: {e}")
+            QMessageBox.warning(self, "退出登录", f"退出失败：{e}")
+
+    def openCloudSync(self):
+        """云同步（预览入口）：登录后才能使用"""
+        try:
+            if not (self.auth and hasattr(self.auth, 'is_logged_in') and self.auth.is_logged_in()):
+                reply = QMessageBox.question(self, "云同步",
+                    "使用云同步功能需要先登录。\n是否立即打开登录窗口？",
+                    QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+                if reply == QMessageBox.Yes:
+                    self.openLoginDialog()
+                return
+            nick = self.auth.get_current_display_name() if hasattr(self.auth, 'get_current_display_name') else '您'
+            QMessageBox.information(self, "云同步（预览）",
+                f"☁️  已为用户「{nick}」准备好云端同步通道\n\n"
+                f"📤 当前版本：本地配置与用户设置已快照\n"
+                f"🔐 待服务端上线后即可一键同步到云端 / 从云端拉取恢复\n\n"
+                f"<i>功能即将开放，敬请期待～</i>")
+        except Exception as e:
+            logger.warning(f"云同步入口异常: {e}")
+            QMessageBox.warning(self, "云同步", f"打开失败：{e}")
 
     # 互动行为方法（代理到 behavior 对象）
     def stick(self):
@@ -1444,3 +1529,30 @@ if __name__ == '__main__':
         # 不是首次运行，直接启动应用
         pet = DesktopPet()
         sys.exit(app.exec_())
+
+
+class _FallbackAuth:
+    """
+    兜底认证对象：当 auth 模块导入失败时使用，保证程序不崩溃
+    所有方法都会返回安全默认值，并提示模块不可用
+    """
+
+    def is_logged_in(self) -> bool:
+        """判断是否已登录（永远False）"""
+        return False
+
+    def get_current_display_name(self) -> str:
+        """获取当前显示昵称"""
+        return "未登录"
+
+    def get_current_user(self):
+        """获取当前用户对象"""
+        return None
+
+    def auto_restore_login(self):
+        """恢复会话（空操作）"""
+        pass
+
+    def logout(self):
+        """退出登录（空操作）"""
+        pass

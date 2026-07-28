@@ -72,7 +72,7 @@ export default function DownloadPage() {
               <h3 className="font-serif text-2xl font-bold text-brand-dark mb-2">安装包</h3>
               <p className="text-brand-gray text-sm mb-4">推荐大多数用户使用</p>
               <div className="bg-pink-50 rounded-lg p-3 mb-6">
-                <code className="text-xs text-brand-dark">Smart-Desktop-Pet-White-Setup-0.4.43.exe</code>
+                <code className="text-xs text-brand-dark">Smart-Desktop-Pet-White-Setup-0.5.0.exe</code>
                 <div className="text-xs text-brand-gray mt-1">大小：约 141 MB</div>
               </div>
               <ul className="text-left space-y-2 mb-6">
@@ -107,7 +107,7 @@ export default function DownloadPage() {
               <h3 className="font-serif text-2xl font-bold text-brand-dark mb-2">便携版</h3>
               <p className="text-brand-gray text-sm mb-4">免安装，即开即用</p>
               <div className="bg-purple-50 rounded-lg p-3 mb-6">
-                <code className="text-xs text-brand-dark">Smart-Desktop-Pet-White-Portable-0.4.43.exe</code>
+                <code className="text-xs text-brand-dark">Smart-Desktop-Pet-White-Portable-0.5.0.exe</code>
                 <div className="text-xs text-brand-gray mt-1">大小：约 140 MB</div>
               </div>
               <ul className="text-left space-y-2 mb-6">

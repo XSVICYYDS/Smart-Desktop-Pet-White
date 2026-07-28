@@ -65,13 +65,6 @@ a = Analysis(
         'games.sheep',
         # 功能组件
         'feature_list_component',
-        # 通用组件
-        'components',
-        'components.card_widget',
-        'components.toast_notification',
-        'components.step_indicator',
-        # 'components.draggable_widget',  # 暂时禁用
-        'components.image_cropper',
         # 数据模型
         'data_models',
         'data_models.user_model',
@@ -92,6 +85,7 @@ a = Analysis(
         'login_wizard.quick_access',
         'login_wizard.interactive_guide',
         'login_wizard.login_wizard_dialog',
+        'login_wizard.login_register_dialog',
         # 认证/权限管理模块
         'auth',
         'auth.auth_system',
@@ -100,6 +94,8 @@ a = Analysis(
         'auth.core.jwt_manager',
         'auth.core.captcha_generator',
         'auth.core.rate_limiter',
+        'auth.core.email_verifier',
+        'auth.core.session_manager',
         'auth.rbac',
         'auth.rbac.models',
         'auth.rbac.permission_manager',
@@ -107,7 +103,18 @@ a = Analysis(
         'auth.rbac.decorators',
         'auth.storage',
         'auth.storage.user_storage',
+        'auth.storage.permission_storage',
+        'auth.storage.audit_log_storage',
+        'auth.storage.session_storage',
         'auth.security',
+        # 通用组件
+        'components',
+        'components.card_widget',
+        'components.toast_notification',
+        'components.step_indicator',
+        # 'components.draggable_widget',  # 暂时禁用
+        'components.image_cropper',
+        'components.slider_captcha_widget',
         # AI工具箱模块
         'ai_toolbox_dialog',
         'ai_toolbox',

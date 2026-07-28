@@ -19,7 +19,7 @@ from PyQt5.QtGui import QFont
 
 
 # 当前软件版本号
-CURRENT_VERSION = "0.4.43"
+CURRENT_VERSION = "0.5.0"
 # GitHub 仓库信息
 GITHUB_OWNER = "XSVICYYDS"
 GITHUB_REPO = "Smart-Desktop-Pet-White"

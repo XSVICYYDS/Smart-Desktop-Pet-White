@@ -13,19 +13,27 @@ class RateLimiter:
     请求频率限制器类
     实现滑动窗口限流
     """
-    
+
     # 默认配置
     LOGIN_MAX_ATTEMPTS = 5
     LOGIN_WINDOW_MINUTES = 15
     ACTIVATION_MAX_ATTEMPTS = 3
     ACTIVATION_WINDOW_HOURS = 1
-    
+
     # 存储
     _attempts = {}
-    
-    def __init__(self):
-        """初始化频率限制器"""
-        pass
+    # 通用限流记录：key -> {"last_time": datetime, "count": int}
+    _records: Dict[str, Dict] = {}
+
+    def __init__(self, default_limit=5, default_window_seconds=900):
+        """初始化频率限制器
+        
+        Args:
+            default_limit: 通用限流默认上限（check_and_record 用）
+            default_window_seconds: 通用限流默认窗口秒数（check_and_record 用）
+        """
+        self.default_limit = default_limit
+        self.default_window_seconds = default_window_seconds
     
     def _cleanup_expired(self, key: str, window_seconds: float):
         """
@@ -219,3 +227,46 @@ class RateLimiter:
             if minutes > 0:
                 return f"尝试次数过多，请在 {hours} 小时 {minutes} 分钟后重试"
             return f"尝试次数过多，请在 {hours} 小时后重试"
+
+    # ============================================================
+    # 通用固定窗口限流（EmailVerifier 用）：check_and_record / get_wait_seconds
+    # ============================================================
+    def _purge_generic(self, key: str, window_seconds: float):
+        """清理通用限流过期记录"""
+        if key not in self._records:
+            return
+        last = self._records[key].get('last_time')
+        if last and datetime.utcnow() - last > timedelta(seconds=window_seconds):
+            del self._records[key]
+
+    def check_and_record(self, key: str, limit: int = None, window_seconds: int = None) -> bool:
+        """
+        通用限流：窗口内不超过 limit 次（默认 1 次，用于 60 秒内最多 1 次发送）
+        返回 True=允许（已记录本次），False=限流
+        """
+        limit = limit if limit is not None else self.default_limit
+        window_seconds = window_seconds if window_seconds is not None else self.default_window_seconds
+        self._purge_generic(key, window_seconds)
+        rec = self._records.get(key)
+        now = datetime.utcnow()
+        if not rec:
+            self._records[key] = {"last_time": now, "count": 1}
+            return True
+        current_count = rec.get("count", 0)
+        if current_count < limit:
+            rec["count"] = current_count + 1
+            rec["last_time"] = now
+            return True
+        # 达到上限
+        return False
+
+    def get_wait_seconds(self, key: str, window_seconds: int = None) -> float:
+        """获取限流剩余等待秒数（未限流返回0）"""
+        window_seconds = window_seconds if window_seconds is not None else self.default_window_seconds
+        self._purge_generic(key, window_seconds)
+        rec = self._records.get(key)
+        if not rec:
+            return 0.0
+        last = rec.get('last_time') or datetime.utcnow()
+        remain = window_seconds - (datetime.utcnow() - last).total_seconds()
+        return max(0.0, remain)
