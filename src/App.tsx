@@ -5,6 +5,7 @@ import Home from "@/pages/Home";
 import Features from "@/pages/Features";
 import Download from "@/pages/Download";
 import About from "@/pages/About";
+import Auth from "@/pages/Auth";
 
 export default function App() {
   return (
@@ -17,6 +18,7 @@ export default function App() {
             <Route path="/features" element={<Features />} />
             <Route path="/download" element={<Download />} />
             <Route path="/about" element={<About />} />
+            <Route path="/auth" element={<Auth />} />
           </Routes>
         </main>
         <Footer />
