@@ -6,6 +6,7 @@ import Features from "@/pages/Features";
 import Download from "@/pages/Download";
 import About from "@/pages/About";
 import Auth from "@/pages/Auth";
+import Playground from "@/pages/Playground";
 
 export default function App() {
   return (
@@ -19,6 +20,7 @@ export default function App() {
             <Route path="/download" element={<Download />} />
             <Route path="/about" element={<About />} />
             <Route path="/auth" element={<Auth />} />
+            <Route path="/playground/:id" element={<Playground />} />
           </Routes>
         </main>
         <Footer />

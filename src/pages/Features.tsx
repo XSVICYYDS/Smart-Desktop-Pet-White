@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Dog, Gamepad2, Wrench, Brain,
   Move, MousePointer2, BellOff,
@@ -12,8 +13,10 @@ import {
 import { LucideIcon } from "lucide-react";
 import SectionTitle from "@/components/SectionTitle";
 import DownloadButton from "@/components/DownloadButton";
+import { FeatureCard } from "@/components/FeatureCard";
 import { useScrollReveal } from "@/hooks/useScrollReveal";
 import { petFeatures, petModes, petAnimations, games, tools, aiTools } from "@/data/content";
+import { findFeatureByName } from "@/data/playgroundData";
 
 const iconMap: Record<string, LucideIcon> = {
   Dog, Gamepad2, Wrench, Brain,
@@ -31,6 +34,31 @@ export default function Features() {
   const { ref: ref3, isVisible: vis3 } = useScrollReveal();
   const [selectedAnim, setSelectedAnim] = useState<string | null>(null);
   const { ref: ref4, isVisible: vis4 } = useScrollReveal();
+  const navigate = useNavigate();
+
+  /**
+   * 统一的带导航的功能卡片包装
+   *  - 把 useNavigate 的结果注入到 onNavigatePlayground 回调中
+   *  - 避免在循环/条件中调用 hooks（违反 React 规则）
+   */
+  const CardWrap: React.FC<{
+    meta: ReturnType<typeof findFeatureByName>;
+    Icon: LucideIcon;
+    featured?: boolean;
+  }> = ({ meta, Icon, featured }) => {
+    if (!meta) return null;
+    return (
+      <FeatureCard
+        meta={meta}
+        Icon={Icon}
+        featured={featured}
+        onNavigatePlayground={(id) => navigate(`/playground/${id}`)}
+      />
+    );
+  };
+  // 兼容下面写法中引用的本地组件名（便于复用）
+  const FeatureCardWithNav = CardWrap;
+  void FeatureCardWithNav;
 
   return (
     <div className="pt-24">
@@ -168,28 +196,14 @@ export default function Features() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {games.map((game) => {
               const Icon = iconMap[game.icon] || Gamepad2;
+              const meta = findFeatureByName(game.name);
               return (
-                <div
+                <FeatureCardWithNav
                   key={game.name}
-                  className={`rounded-2xl p-6 transition-all duration-300 hover:-translate-y-1 ${
-                    game.featured
-                      ? "bg-gradient-to-br from-brand-pink to-brand-pink-dark text-white shadow-lg shadow-pink-200/50"
-                      : "bg-white border border-pink-50 hover:shadow-md"
-                  }`}
-                >
-                  <div className={`w-14 h-14 rounded-xl flex items-center justify-center mb-4 ${game.featured ? "bg-white/20" : "bg-pink-50"}`}>
-                    <Icon size={28} className={game.featured ? "text-white" : "text-brand-pink"} />
-                  </div>
-                  <h4 className={`font-serif text-lg font-bold mb-2 ${game.featured ? "text-white" : "text-brand-dark"}`}>
-                    {game.name}
-                    {game.featured && (
-                      <span className="ml-2 text-xs bg-white/20 px-2 py-0.5 rounded-full">热门</span>
-                    )}
-                  </h4>
-                  <p className={`text-sm ${game.featured ? "text-white/80" : "text-brand-gray"}`}>
-                    {game.description}
-                  </p>
-                </div>
+                  meta={meta}
+                  Icon={Icon}
+                  featured={game.featured}
+                />
               );
             })}
           </div>
@@ -204,22 +218,14 @@ export default function Features() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {tools.map((tool) => {
               const Icon = iconMap[tool.icon] || Wrench;
+              const meta = findFeatureByName(tool.name);
               return (
-                <div
+                <FeatureCardWithNav
                   key={tool.name}
-                  className="bg-white rounded-2xl p-6 border border-pink-50 hover:shadow-lg hover:shadow-pink-100/50 transition-all hover:-translate-y-1 group"
-                >
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4 ${tool.featured ? "bg-gradient-to-br from-brand-pink to-brand-pink-dark text-white" : "bg-pink-50 text-brand-pink"} group-hover:scale-110 transition-transform`}>
-                    <Icon size={24} />
-                  </div>
-                  <h4 className="font-serif text-lg font-bold text-brand-dark mb-2">
-                    {tool.name}
-                    {tool.featured && (
-                      <span className="ml-2 text-xs bg-pink-100 text-brand-pink px-2 py-0.5 rounded-full">核心</span>
-                    )}
-                  </h4>
-                  <p className="text-sm text-brand-gray">{tool.description}</p>
-                </div>
+                  meta={meta}
+                  Icon={Icon}
+                  featured={tool.featured}
+                />
               );
             })}
           </div>
@@ -234,17 +240,14 @@ export default function Features() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {aiTools.map((tool) => {
               const Icon = iconMap[tool.icon] || Brain;
+              const meta = findFeatureByName(tool.name);
               return (
-                <div
+                <FeatureCardWithNav
                   key={tool.name}
-                  className="bg-white rounded-2xl p-6 border border-emerald-50 hover:shadow-lg hover:shadow-emerald-100/50 transition-all hover:-translate-y-1"
-                >
-                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-400 flex items-center justify-center text-white mb-4">
-                    <Icon size={24} />
-                  </div>
-                  <h4 className="font-serif text-lg font-bold text-brand-dark mb-2">{tool.name}</h4>
-                  <p className="text-sm text-brand-gray">{tool.description}</p>
-                </div>
+                  meta={meta}
+                  Icon={Icon}
+                  featured={false}
+                />
               );
             })}
           </div>
