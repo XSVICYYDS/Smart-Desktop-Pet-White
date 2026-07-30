@@ -23,7 +23,14 @@ const BG_W = 320;
 const BG_H = 160;
 const PIECE = 50;
 const PAD = 10; // 边距
-const TOLERANCE = 5; // 与桌面端 slider_captcha_widget 完全一致
+/**
+ * 拼图容差（按用户规格：10 ≤ TOLERANCE ≤ 20 像素范围内算通过）
+ * - 真实情况：人手拖动的误差通常落在 10~20px 区间
+ * - 安全下限：≥10 保证真人不用反复拖动
+ * - 安全上限：≤20 防止暴力脚本轻易对齐
+ * 因此这里取推荐值 15，中间值，兼顾安全和体验
+ */
+const TOLERANCE = 15;
 const HINT_IDLE = "请按住滑块，拖动到正确位置完成拼图验证";
 
 interface SliderCaptchaProps {
