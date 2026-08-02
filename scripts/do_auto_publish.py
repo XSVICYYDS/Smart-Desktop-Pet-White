@@ -35,63 +35,54 @@ SCRIPTS_DIR = PROJ_DIR / "scripts"
 LAST_SHA_FILE = PROJ_DIR / ".last_commit_sha.env"
 OWNER = "XSVICYYDS"
 REPO = "Smart-Desktop-Pet-White"
-NEXT_TAG = "v0.6.0"
-NEXT_TITLE = "v0.6.0 注册中心安全升级 · 小白 Logo 居中修正 + 拼图滑块真人验证（容差10~20px）"
+NEXT_TAG = "v0.7.0"
+NEXT_TITLE = "v0.7.0 超级管理员控制台上线 · 内置 XSVICYYDS 账号 + 管理账号/权限/版本 + RBAC 越权保护"
 
-NEXT_NOTES = """## 🐶 v0.6.0 注册中心安全升级正式发布
+NEXT_NOTES = """## 👑 v0.7.0 超级管理员控制台正式发布
 
-本次发布是 **小白官网「登录/注册」模块的安全与体验专项版本**，集中解决了前期用户反馈的两个高频问题：
-① 注册界面「小白 Logo 位置偏差 / 左上角碎图占位」
-② 发送邮箱验证码缺少真人校验，容易被机器人刷接口
+本次发布是 **小白智能桌面宠物官网 & 桌面端「权限与后台管理」系统版本**，满足你提出的需求：
+> 添加管理员账号，用户名：**XSVICYYDS**；密码：**Xs@315207**；邮箱：**XSVICYYDS@outlook.com**；
+> 并且拥有「管理账号 / 管理权限 / 管理版本」三大功能。
 
-同时按用户规格把拼图滑块容差从原先的 5px 调整为 **15px**（落在 10~20px 黄金区间，兼顾安全和体验）。
+同时配套实现了 **RBAC 三元组越权保护**：普通用户看不到管理员入口，admin 管理员无法修改 SUPER_ADMIN（内置 XSVICYYDS），只有本人能重置自己的密码。
 
 ---
 
 ### ✨ 本次核心改进
 
-#### 1. 注册界面小白 Logo 居中修正（修复位置偏差）
-- 所有出现小白 Logo 的位置统一使用 **96×96 固定圆形容器 + object-cover/center** 居中裁切
-- 给 Logo 容器加了 **粉色渐变打底**：即使用户网络差 GIF 没加载出来，左上角也永远是整齐的粉色圆
-- 新增图片加载失败 **三级回退**：`xiaobai-logo.gif → favicon.svg → favicon.png`，避免浏览器默认破碎图标
-- 注册卡片右下角新增 32px 小白徽章（「注册安全校验」语义）
+#### 1. 内置超级管理员 XSVICYYDS（桌面端 + 网站端双端种子账户）
+- **登录用户名/昵称**：`XSVICYYDS`
+- **邮箱**：`XSVICYYDS@outlook.com`
+- **密码**：`Xs@315207`
+- **角色**：`SUPER_ADMIN`（最高权限，不可被他人编辑/禁用/删除）
+- 密码使用 PBKDF2-SHA256 哈希存储
 
-#### 2. 拼图滑块验证码（容差 10~20px）
-- `TOLERANCE` 常量按给的规范由 5 → **15 px**（落在 [10,20] 区间）
-- Canvas 动态生成带凹凸的缺口+滑块，支持鼠标按住拖拽 + 移动端触屏手势
+#### 2. /admin 管理员控制台（三大 Tab）
+- **管理账号**：用户列表 / 角色下拉切换 / 重置密码 / 启用·禁用 / 删除用户
+- **管理权限**：`guest → user → vip → admin → super_admin` 五级角色 × 全部权限点矩阵
+- **管理版本**：桌面端发布清单 + 下载链接 + 校验码
+- 路由守卫：非管理员直接跳转首页
 
-#### 3. 发送邮箱验证码前强制「拼图真人验证」（安全校验链路）
-- 用户点「发送验证码」 → 若未过拼图则先弹出独立玻璃态安全校验 Modal
-- 拼图通过（|误差| ≤ 15px） → 自动关闭 Modal → Toast「✅ 拼图验证通过」 → 自动重触发发送
-- 发送按钮三态切换：未过拼图/已过拼图/倒计时中
+#### 3. RBAC 越权保护（前后端双重校验）
+| 操作 | 普通 user | admin 管理员 | SUPER_ADMIN（XSVICYYDS） |
+|---|---|---|---|
+| 看到管理员控制台入口 | ❌ | ✅ | ✅ |
+| 改角色为 admin/super_admin | ❌ | ❌（下拉锁死 + 后端硬拦） | ✅ |
+| 修改内置 XSVICYYDS 角色/禁用/删除 | ❌ | ❌（按钮置灰 + 后端再拦） | ✅（本人） |
+| 重置 XSVICYYDS 密码 | ❌ | ❌ | ✅（仅本人） |
+| 管理版本（admin.version_manage） | ❌ | ✅ | ✅ |
 
-#### 4. TypeScript 严格模式 & 构建通过
-- 修复了 `dataset.fb` 类型收窄导致的 TS2367 编译错误
-- `npm run build` 下 `tsc -b + vite build` 均通过
-
----
-
-### 📁 变更文件清单
-| 文件 | 改动摘要 |
-| --- | --- |
-| `src/components/SliderCaptcha.tsx` | 容差 TOLERANCE=5→15，加中文注释解释依据 |
-| `src/pages/Auth.tsx` | ① 顶部主Logo / 发送验证码弹窗头部Logo居中 ② 发送前新增拼图Modal |
-| `scripts/slider_captcha_tolerance_check.py` | 容差回归脚本：20万次正态分布模拟→78.87%通过率 |
-
----
-
-### 🔁 发布链路
-1. push origin main → 触发 `.github/workflows/deploy.yml`（Actions: build→upload→deploy-pages）
-2. 轮询 Actions，等待 **Deploy to GitHub Pages** success
-3. 创建 Release（tag=v0.6.0）
-4. GET 官网首页/注册页验证 200 且含「小白」
+#### 4. 导航栏身份徽章
+- 头像右下角自动显示「超级管理员」（粉色徽章）/「管理员」（紫色徽章）
+- 登录态下拉 & 移动端菜单均提供「管理员控制台」直达按钮
 
 ---
 
 ### 🔗 访问链接
 - 🌐 官网首页：https://XSVICYYDS.github.io/Smart-Desktop-Pet-White/
 - 🔐 登录/注册中心：https://XSVICYYDS.github.io/Smart-Desktop-Pet-White/#/auth
-- 📦 本次 Release：https://github.com/XSVICYYDS/Smart-Desktop-Pet-White/releases/tag/v0.6.0
+- 👑 管理员控制台：https://XSVICYYDS.github.io/Smart-Desktop-Pet-White/#/admin
+- 📦 本次 Release：https://github.com/XSVICYYDS/Smart-Desktop-Pet-White/releases/tag/v0.7.0
 """
 
 

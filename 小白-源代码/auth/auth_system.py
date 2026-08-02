@@ -1,6 +1,10 @@
 """
 认证系统 - 统一整合类
 小白桌面宠物的完整权限管理与登录系统
+支持：
+  - 内置超级管理员：XSVICYYDS / Xs@315207 / XSVICYYDS@outlook.com
+  - 管理员功能：管理账号 / 管理权限（角色） / 管理版本 三大能力
+  - 越权保护：普通用户无法改管理员，管理员无法改内置超级管理员的角色/状态
 """
 
 import os
@@ -8,7 +12,7 @@ import json
 import uuid
 import re
 import logging
-from typing import Optional, Dict, Any, Callable, Tuple
+from typing import Optional, Dict, Any, Callable, Tuple, List
 from datetime import datetime, timedelta
 
 from .core.password_manager import PasswordManager
@@ -22,6 +26,17 @@ from .storage.user_storage import UserStorage, PermissionStorage, AuditLogStorag
 from .security import CSRFProtection, XSSProtection, InputValidator
 
 logger = logging.getLogger(__name__)
+
+# 内置超级管理员（硬编码保证永远存在、不可被越权修改角色/状态）
+#  - 登录支持邮箱：XSVICYYDS@outlook.com
+#  - 展示昵称 / 用户名：XSVICYYDS
+#  - 登录密码：Xs@315207 （≥8 位，大小写 + 数字 + 特殊字符，满足强度规则）
+_BUILTIN_SUPER_ADMIN: Dict[str, str] = {
+    "nickname": "XSVICYYDS",
+    "username": "XSVICYYDS@outlook.com",
+    "email": "XSVICYYDS@outlook.com",
+    "password": "Xs@315207",
+}
 
 
 class AuthSystem:
@@ -71,8 +86,37 @@ class AuthSystem:
         self._init_demo_data()
     
     def _init_demo_data(self):
-        """初始化演示数据"""
-        # 检查是否已有用户
+        """初始化演示数据 + 内置超级管理员（保证每次启动都存在）"""
+        # 先确保内置超级管理员存在：XSVICYYDS / Xs@315207 / XSVICYYDS@outlook.com
+        builtin_email = _BUILTIN_SUPER_ADMIN["email"].strip().lower()
+        admin_by_email = self.user_storage.get_user_by_email(builtin_email)
+        admin_by_uname = self.user_storage.get_user_by_username(_BUILTIN_SUPER_ADMIN["username"])
+        if not admin_by_email and not admin_by_uname:
+            admin_user_id = str(uuid.uuid4())
+            pw_hash = self.password_manager.hash_password(_BUILTIN_SUPER_ADMIN["password"])
+            self.user_storage.create_user(
+                admin_user_id,
+                _BUILTIN_SUPER_ADMIN["username"],
+                builtin_email,
+                pw_hash,
+                nickname=_BUILTIN_SUPER_ADMIN["nickname"],
+            )
+            self.permission_manager.assign_role(admin_user_id, Role.SUPER_ADMIN)
+            self.permission_storage.set_user_roles(admin_user_id, [Role.SUPER_ADMIN])
+            logger.info(f"内置超级管理员已创建: user_id={admin_user_id} email={builtin_email}")
+        else:
+            # 已存在的内置管理员，确保分配到 SUPER_ADMIN 角色（防止之前误降到 admin/user）
+            exist = admin_by_email or admin_by_uname
+            uid = exist["user_id"]
+            roles = self.permission_storage.get_user_roles(uid)
+            if Role.SUPER_ADMIN not in roles:
+                new_roles = [r for r in roles if r != Role.ADMIN and r != Role.VIP and r != Role.USER and r != Role.GUEST]
+                new_roles.insert(0, Role.SUPER_ADMIN)
+                self.permission_manager.set_user_roles(uid, new_roles)
+                self.permission_storage.set_user_roles(uid, new_roles)
+                logger.info(f"内置超级管理员角色已重置为 SUPER_ADMIN: user_id={uid}")
+
+        # 演示用户（历史兼容保留）
         if not self.user_storage.get_user_by_username('demo'):
             demo_user_id = str(uuid.uuid4())
             password_hash = self.password_manager.hash_password('Demo123!')
@@ -236,10 +280,20 @@ class AuthSystem:
                 fail_count = self._captcha_fail_count[email]
                 extra = f"（连续错误{fail_count}次，下一次将升级为滑块验证）" if fail_count >= 1 else ""
                 return False, f"图形验证码错误{extra}", None, (fail_count >= 2)
-        # 查找用户（邮箱）
-        user = self.user_storage.get_user_by_email(email)
+        # 查找用户（支持邮箱、或昵称/用户名 XSVICYYDS 直接登录）
+        user = (self.user_storage.get_user_by_email(email)
+                or self.user_storage.get_user_by_username(email))
+        if not user:
+            # 额外兼容：输入 XSVICYYDS 昵称直接作为登录名
+            for u in self.user_storage.get_all_users():
+                if (u.get("nickname") or u.get("username") or "") == email.strip():
+                    user = u
+                    break
         if not user:
             return False, "邮箱或密码错误", None, should_show_slider
+        # 禁用账号拦截（但内置 XSVICYYDS 超级管理员不会被 disable，这里作为双保险）
+        if str(user.get("status", "active")).lower() != "active" and not self._is_builtin_super_admin(user):
+            return False, "账号已被禁用，请联系管理员 XSVICYYDS", None, should_show_slider
         # 验证密码
         if not self.password_manager.verify_password(password, user['password_hash']):
             return False, "邮箱或密码错误", None, should_show_slider
@@ -488,6 +542,241 @@ class AuthSystem:
         if not self.is_admin():
             return []
         return self.user_storage.get_all_users()
+
+    # ================= 管理员功能：账号 / 权限 / 版本 =================
+
+    def _is_builtin_super_admin(self, user_or_id: Any) -> bool:
+        """判断某用户是否是内置超级管理员 XSVICYYDS（按 user_id/username/email 任一匹配都算）"""
+        if user_or_id is None:
+            return False
+        if isinstance(user_or_id, str):
+            uid = user_or_id
+            user = self.user_storage.get_user(uid)
+            if user is None:
+                # 可能直接用 username / email 传进来
+                user = self.user_storage.get_user_by_username(uid) or self.user_storage.get_user_by_email(uid)
+        else:
+            user = user_or_id
+        if not user:
+            return False
+        email_ok = str(user.get("email", "")).strip().lower() == _BUILTIN_SUPER_ADMIN["email"].strip().lower()
+        uname_ok = str(user.get("username", "")).strip().lower() == _BUILTIN_SUPER_ADMIN["username"].strip().lower()
+        nick_ok = str(user.get("nickname", "")).strip() == _BUILTIN_SUPER_ADMIN["nickname"].strip()
+        return email_ok or uname_ok or nick_ok
+
+    def _current_user_highest_level(self) -> int:
+        """返回当前登录用户的最高角色等级（0 最低）"""
+        if not self._current_user:
+            return 0
+        from .rbac.feature_definitions import FeatureDefinitions  # 局部导入，避免循环依赖
+        hierarchy = FeatureDefinitions.get_role_hierarchy()
+        return max([hierarchy.get(r, 0) for r in self.get_current_user_roles()] or [0])
+
+    def _require_admin(self, *, need_super: bool = False, target_user_id: Optional[str] = None,
+                       protect_builtin: bool = True) -> Tuple[bool, str]:
+        """
+        统一越权保护（与 1249413 经验一致：RBAC 三元组——操作者 + 目标 + 操作）
+        Args:
+            need_super: True 时要求必须 SUPER_ADMIN
+            target_user_id: 目标用户，为空时只检查操作者
+            protect_builtin: True 时内置 SUPER_ADMIN（XSVICYYDS）任何人均不可变更其角色/状态（防止越权）
+        Returns: (ok, message)
+        """
+        if not self._current_user:
+            return False, "未登录"
+        current_level = self._current_user_highest_level()
+        if need_super and current_level < FeatureDefinitions.get_role_hierarchy()[Role.SUPER_ADMIN]:
+            return False, "该操作仅允许 SUPER_ADMIN（XSVICYYDS）执行"
+        if current_level < FeatureDefinitions.get_role_hierarchy()[Role.ADMIN]:
+            return False, "该操作仅允许管理员执行"
+        if target_user_id and protect_builtin:
+            if self._is_builtin_super_admin(target_user_id):
+                # 内置 XSVICYYDS：只有自己（SUPER_ADMIN）才能改自己的密码；其它任何写操作都禁止
+                if need_super and self._current_user["user_id"] != target_user_id:
+                    return False, "禁止修改内置超级管理员（XSVICYYDS）的角色/状态"
+                if not need_super:
+                    # 其它管理员写操作一律拦截
+                    return False, "禁止修改内置超级管理员（XSVICYYDS）的账号/角色/状态"
+        return True, "权限通过"
+
+    def admin_list_users(self) -> List[Dict[str, Any]]:
+        """【管理账号】管理员查看所有用户（含角色、创建时间）"""
+        ok, _ = self._require_admin()
+        if not ok:
+            return []
+        rows = []
+        for user in self.user_storage.get_all_users():
+            roles = self.permission_storage.get_user_roles(user["user_id"])
+            rows.append({
+                "user_id": user["user_id"],
+                "nickname": user.get("nickname") or user.get("username"),
+                "username": user.get("username"),
+                "email": user.get("email"),
+                "status": user.get("status", "active"),
+                "roles": roles,
+                "highest_role": (roles or ["guest"])[0],
+                "created_at": user.get("created_at"),
+                "is_builtin_super_admin": self._is_builtin_super_admin(user["user_id"]),
+            })
+        rows.sort(key=lambda x: (0 if x["is_builtin_super_admin"] else 1,
+                                 FeatureDefinitions.get_role_hierarchy().get(x["highest_role"], 0)),
+                  reverse=True)
+        return rows
+
+    def admin_update_user_role(self, target_user_id: str, new_role_id: str) -> Tuple[bool, str]:
+        """【管理权限】管理员调整目标用户的角色（严格越权保护）"""
+        # 1. 操作者身份：需要 SUPER_ADMIN 才能授予 SUPER_ADMIN；其它角色需要至少 ADMIN
+        need_super = new_role_id == Role.SUPER_ADMIN
+        ok, msg = self._require_admin(need_super=need_super, target_user_id=target_user_id)
+        if not ok:
+            return False, msg
+        # 2. 校验目标角色合法
+        if new_role_id not in {Role.GUEST, Role.USER, Role.VIP, Role.ADMIN, Role.SUPER_ADMIN}:
+            return False, f"未知角色: {new_role_id}"
+        # 3. 目标必须存在
+        target = self.user_storage.get_user(target_user_id)
+        if not target:
+            return False, "目标用户不存在"
+        # 4. 非 SUPER_ADMIN 操作者不得把目标提到 ADMIN 或更高
+        if self._current_user_highest_level() < FeatureDefinitions.get_role_hierarchy()[Role.SUPER_ADMIN]:
+            if new_role_id in {Role.ADMIN, Role.SUPER_ADMIN}:
+                return False, "仅 SUPER_ADMIN（XSVICYYDS）可授予管理员及更高角色"
+        # 5. 写入：使用单元素角色数组（简化；多角色不暴露在 UI）
+        self.permission_manager.set_user_roles(target_user_id, [new_role_id])
+        self.permission_storage.set_user_roles(target_user_id, [new_role_id])
+        self.audit_log_storage.add_log(
+            self._current_user["user_id"], "admin.role.update",
+            f"{self._current_user.get('nickname') or self._current_user['username']} "
+            f"将 {target.get('nickname') or target['username']} 的角色改为 {new_role_id}"
+        )
+        if self._on_permission_change_callback:
+            self._on_permission_change_callback()
+        return True, "角色更新成功"
+
+    def admin_reset_user_password(self, target_user_id: str, new_password: str) -> Tuple[bool, str]:
+        """【管理账号】管理员重置任意非内置用户密码；XSVICYYDS 本人可重置自己密码"""
+        ok, _ = self._require_admin()
+        if not ok:
+            return False, "未登录或无管理员权限"
+        target = self.user_storage.get_user(target_user_id)
+        if not target:
+            return False, "目标用户不存在"
+        if self._is_builtin_super_admin(target_user_id) and self._current_user["user_id"] != target_user_id:
+            return False, "其它管理员不得重置内置超级管理员（XSVICYYDS）的密码"
+        # 严格密码规则复用注册校验
+        ok, msg = self._validate_password_rules(new_password)
+        if not ok:
+            return False, msg
+        pw_hash = self.password_manager.hash_password(new_password)
+        self.user_storage.update_user(target_user_id, password_hash=pw_hash)
+        self.audit_log_storage.add_log(
+            self._current_user["user_id"], "admin.password.reset",
+            f"{self._current_user.get('nickname') or self._current_user['username']} 重置了 "
+            f"{target.get('nickname') or target['username']} 的密码"
+        )
+        return True, "密码已重置"
+
+    def admin_set_user_status(self, target_user_id: str, disabled: bool) -> Tuple[bool, str]:
+        """【管理账号】禁用/启用账号（内置 XSVICYYDS 禁止禁用）"""
+        ok, msg = self._require_admin(target_user_id=target_user_id)
+        if not ok:
+            return False, msg
+        target = self.user_storage.get_user(target_user_id)
+        if not target:
+            return False, "目标用户不存在"
+        if self._current_user_highest_level() < FeatureDefinitions.get_role_hierarchy()[Role.SUPER_ADMIN]:
+            target_role = self.permission_storage.get_user_roles(target_user_id)
+            if Role.ADMIN in target_role or Role.SUPER_ADMIN in target_role:
+                return False, "非 SUPER_ADMIN 不得禁用/启用其它管理员账号"
+        new_status = "disabled" if disabled else "active"
+        self.user_storage.update_user(target_user_id, status=new_status)
+        self.audit_log_storage.add_log(
+            self._current_user["user_id"], "admin.user.status",
+            f"{self._current_user.get('nickname') or self._current_user['username']} "
+            f"将 {target.get('nickname') or target['username']} 账号状态改为 {new_status}"
+        )
+        if self._current_user and self._current_user["user_id"] == target_user_id and disabled:
+            # 禁用自己则立即登出
+            self.logout()
+        return True, "账号状态已更新"
+
+    def admin_delete_user(self, target_user_id: str) -> Tuple[bool, str]:
+        """【管理账号】删除账号（内置 XSVICYYDS 禁止删除）"""
+        ok, msg = self._require_admin(target_user_id=target_user_id)
+        if not ok:
+            return False, msg
+        target = self.user_storage.get_user(target_user_id)
+        if not target:
+            return False, "目标用户不存在"
+        if self._current_user and self._current_user["user_id"] == target_user_id:
+            return False, "不允许删除当前登录账号"
+        if self._current_user_highest_level() < FeatureDefinitions.get_role_hierarchy()[Role.SUPER_ADMIN]:
+            target_role = self.permission_storage.get_user_roles(target_user_id)
+            if Role.ADMIN in target_role or Role.SUPER_ADMIN in target_role:
+                return False, "非 SUPER_ADMIN 不得删除其它管理员账号"
+        self.user_storage.delete_user(target_user_id)
+        try:
+            self.permission_storage.set_user_roles(target_user_id, [])
+        except Exception:
+            pass
+        self.audit_log_storage.add_log(
+            self._current_user["user_id"], "admin.user.delete",
+            f"{self._current_user.get('nickname') or self._current_user['username']} "
+            f"删除了用户 {target.get('nickname') or target['username']}"
+        )
+        return True, "用户已删除"
+
+    def admin_list_roles_matrix(self) -> Dict[str, Any]:
+        """【管理权限】返回角色→权限矩阵（前端直接渲染表格）"""
+        ok, _ = self._require_admin()
+        if not ok:
+            return {"roles": [], "permissions": [], "matrix": {}}
+        from .rbac.feature_definitions import FeatureDefinitions
+        roles = FeatureDefinitions.get_all_roles()
+        perms = FeatureDefinitions.get_all_permissions()
+        role_perm_map = FeatureDefinitions.get_role_permissions_map()
+        matrix: Dict[str, List[str]] = {}
+        for r in roles:
+            matrix[r.role_id] = list(role_perm_map.get(r.role_id, set()))
+        return {
+            "roles": [r.to_dict() for r in roles],
+            "permissions": [p.to_dict() for p in perms],
+            "matrix": matrix,
+            "hierarchy": FeatureDefinitions.get_role_hierarchy(),
+        }
+
+    def admin_list_versions(self) -> List[Dict[str, Any]]:
+        """【管理版本】返回版本发布清单（静态清单，用于管理控制台 Tab 展示）"""
+        ok, msg = self._require_admin(need_super=False)
+        if not ok:
+            return []
+        return [
+            {
+                "tag": "v0.4.43",
+                "title": "小白 v0.4.43 稳定版",
+                "summary": "新增安装包制作流程、桌面动画 20 种、游戏 10 款、系统托盘快捷工具。",
+                "released_at": "2026-06-20T10:00:00+08:00",
+                "github_url": "https://github.com/XSVICYYDS/Smart-Desktop-Pet-White/releases/tag/v0.4.43",
+                "canary": False,
+            },
+            {
+                "tag": "v0.6.0",
+                "title": "小白 v0.6.0 管理能力版",
+                "summary": "新增登录/注册中心（拼图容差 15px / 真人验证前置）、内置 SUPER_ADMIN XSVICYYDS、"
+                           "管理员三大控制台（管理账号 / 管理权限 / 管理版本）。",
+                "released_at": "2026-07-30T09:30:00+08:00",
+                "github_url": "https://github.com/XSVICYYDS/Smart-Desktop-Pet-White/releases/tag/v0.6.0",
+                "canary": False,
+            },
+            {
+                "tag": "v0.7.0-dev",
+                "title": "小白 v0.7.0 开发版（预览）",
+                "summary": "开发版：云端账号同步、游戏得分排行、AI 对话历史聚合、管理员批量发送邮件通知（待发布）。",
+                "released_at": "",
+                "github_url": "",
+                "canary": True,
+            },
+        ]
 
 
 # 单例实例
