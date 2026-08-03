@@ -10,6 +10,7 @@ import {
   User as UserIcon,
   CheckCircle,
   ChevronDown,
+  ShieldCheck,
 } from "lucide-react";
 import { siteConfig } from "@/data/content";
 import xiaobaiLogo from "@/assets/xiaobai-logo.gif";
@@ -17,6 +18,8 @@ import {
   getCurrentDisplayName,
   getCurrentUser,
   isLoggedIn,
+  isCurrentAdmin,
+  isCurrentSuperAdmin,
   logout,
   syncCloudPreview,
 } from "@/lib/authClient";
@@ -132,6 +135,17 @@ export default function Navbar() {
   };
 
   const user = loggedIn ? getCurrentUser() : null;
+  const adminBadge = (() => {
+    if (!loggedIn) return null;
+    if (isCurrentSuperAdmin()) return { level: "超级管理员", color: "from-pink-100 to-rose-100 text-pink-700 border-pink-200", icon: <ShieldCheck size={10} /> };
+    if (isCurrentAdmin()) return { level: "管理员", color: "from-purple-100 to-fuchsia-100 text-purple-700 border-purple-200", icon: <ShieldCheck size={10} /> };
+    return null;
+  })();
+
+  const goAdmin = () => {
+    setMenuOpen(false);
+    navigate("/admin");
+  };
 
   return (
     <nav
@@ -204,8 +218,19 @@ export default function Navbar() {
                     {/* 用户信息头 */}
                     <div className="px-4 py-3 bg-gradient-to-br from-brand-pink to-brand-pink-dark text-white">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-lg font-bold">
-                          {displayName.slice(0, 1).toUpperCase()}
+                        <div className="relative">
+                          <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-lg font-bold">
+                            {displayName.slice(0, 1).toUpperCase()}
+                          </div>
+                          {adminBadge && (
+                            <span
+                              className={`absolute -bottom-1 -right-2 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] bg-gradient-to-r border shadow ${adminBadge.color}`}
+                              title={`当前身份：${adminBadge.level}`}
+                            >
+                              {adminBadge.icon}
+                              {adminBadge.level}
+                            </span>
+                          )}
                         </div>
                         <div className="min-w-0">
                           <div className="font-semibold text-sm truncate">
@@ -222,6 +247,18 @@ export default function Navbar() {
                       </div>
                     </div>
                     <div className="py-1 flex flex-col">
+                      {adminBadge && (
+                        <button
+                          onClick={goAdmin}
+                          className="flex items-center gap-2 px-4 py-2.5 text-sm text-brand-dark hover:bg-pink-50 transition border-b border-pink-50"
+                        >
+                          <ShieldCheck size={15} className="text-brand-pink" />
+                          管理员控制台
+                          <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-brand-pink/10 text-brand-pink border border-pink-100">
+                            管理账号/权限/版本
+                          </span>
+                        </button>
+                      )}
                       <button
                         onClick={handleSync}
                         className="flex items-center gap-2 px-4 py-2.5 text-sm text-brand-dark hover:bg-pink-50 transition"
@@ -296,8 +333,18 @@ export default function Navbar() {
               {loggedIn && displayName ? (
                 <>
                   <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-brand-pink to-brand-pink-dark text-white text-sm font-bold flex items-center justify-center">
-                      {displayName.slice(0, 1).toUpperCase()}
+                    <div className="relative">
+                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-brand-pink to-brand-pink-dark text-white text-sm font-bold flex items-center justify-center">
+                        {displayName.slice(0, 1).toUpperCase()}
+                      </div>
+                      {adminBadge && (
+                        <span
+                          className={`absolute -bottom-1 -right-2 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] bg-gradient-to-r border shadow ${adminBadge.color}`}
+                        >
+                          {adminBadge.icon}
+                          {adminBadge.level}
+                        </span>
+                      )}
                     </div>
                     <div className="min-w-0">
                       <div className="text-sm font-semibold text-brand-dark truncate">
@@ -308,6 +355,15 @@ export default function Navbar() {
                       </div>
                     </div>
                   </div>
+                  {adminBadge && (
+                    <button
+                      onClick={goAdmin}
+                      className="flex items-center justify-center gap-2 py-2 rounded-xl bg-gradient-to-r from-brand-pink/10 to-fuchsia-100/60 text-brand-pink-dark border border-pink-200 text-sm font-medium"
+                    >
+                      <ShieldCheck size={15} />
+                      管理员控制台（管理账号/权限/版本）
+                    </button>
+                  )}
                   <button
                     onClick={handleSync}
                     className="flex items-center justify-center gap-2 py-2 rounded-xl bg-gradient-to-r from-brand-pink/10 to-brand-pink-light/20 text-brand-pink-dark border border-pink-100 text-sm font-medium"

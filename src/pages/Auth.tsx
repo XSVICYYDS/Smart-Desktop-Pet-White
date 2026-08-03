@@ -80,10 +80,6 @@ export default function Auth() {
   const [emailCodeCountdown, setEmailCodeCountdown] = useState(0); // 剩余秒数
   const [emailCodeSent, setEmailCodeSent] = useState<string>(""); // 当前待验证的 6 位验证码（模拟版提示）
   const emailTimerRef = useRef<number | null>(null);
-  // 发送邮箱验证码前：必须先通过「滑块拼图安全校验」（防止机器人刷验证码接口）
-  const [sendCodeSliderPassed, setSendCodeSliderPassed] = useState(false);
-  const [sendCodeSliderOpen, setSendCodeSliderOpen] = useState(false);
-  const [sendCodeSliderResetKey, setSendCodeSliderResetKey] = useState(0);
 
   // ========== 图形验证码 ==========
   const [captchaId, setCaptchaId] = useState("");
@@ -128,9 +124,6 @@ export default function Auth() {
     setCaptchaFails(0);
     setNeedSlider(false);
     setSliderPassed(false);
-    setSendCodeSliderPassed(false);
-    setSendCodeSliderOpen(false);
-    setSendCodeSliderResetKey((k) => k + 1);
     setToast(null);
   };
 
@@ -143,18 +136,8 @@ export default function Auth() {
       return;
     }
     // 先过一道简单图形验证码（避免刷接口）
-    if (!captchaId || captchaInput.trim().length !== 4) {
+    if (!captchaId || (captchaInput.trim().length !== 4)) {
       setToast({ type: "error", msg: "请先完成图形验证码再发送邮箱验证码" });
-      return;
-    }
-    // 【新增】发送邮箱验证码前必须先过「滑块拼图」真人验证，防止机器人刷邮件
-    if (!sendCodeSliderPassed) {
-      setSendCodeSliderResetKey((k) => k + 1);
-      setSendCodeSliderOpen(true);
-      setToast({
-        type: "info",
-        msg: "为了您的账号安全，发送邮箱验证码前请先完成拼图滑块安全校验。",
-      });
       return;
     }
     // 开发模式下直接返回验证码；真实环境需对接邮件服务
@@ -339,87 +322,6 @@ export default function Auth() {
           </Link>
         </div>
 
-        {/* 发送邮箱验证码前：独立的拼图安全校验 Modal（按住滑块拖拉到正确位置，通过后才真正发码） */}
-        {sendCodeSliderOpen && (
-          <div
-            className="fixed inset-0 z-[60] flex items-center justify-center px-4 animate-fade-in-up"
-            onClick={() => setSendCodeSliderOpen(false)}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="sendcode-captcha-title"
-          >
-            {/* 遮罩 */}
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-            <div
-              className="relative w-full max-w-md glass rounded-2xl shadow-2xl border border-pink-100 p-5 sm:p-6 bg-white/95"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* 头 */}
-              <div className="flex items-center gap-3 mb-4">
-                {/* 这里用小白 Logo 作为拼图校验图标，修正图标位置偏差 */}
-                <div className="relative w-12 h-12 rounded-full border-[2px] border-white shadow-lg bg-gradient-to-br from-brand-pink/20 to-brand-pink-light overflow-hidden flex items-center justify-center flex-shrink-0">
-                  <img
-                    src="/xiaobai-logo.gif"
-                    alt="小白 Logo"
-                    width={48}
-                    height={48}
-                    draggable={false}
-                    className="w-full h-full object-cover object-center block"
-                    onError={(e) => {
-                      const tgt = e.currentTarget;
-                      if (!tgt.dataset.fb) {
-                        tgt.dataset.fb = "1";
-                        tgt.src = "/favicon.svg";
-                      }
-                    }}
-                  />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h2
-                    id="sendcode-captcha-title"
-                    className="text-lg font-bold text-brand-dark"
-                  >
-                    真人验证 · 拼图滑块
-                  </h2>
-                  <p className="text-xs text-brand-gray">
-                    发送邮箱验证码前，请完成拼图滑块校验（容差 10~20px 通过）
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  className="text-brand-gray hover:text-brand-dark transition p-1 rounded-full hover:bg-pink-50"
-                  onClick={() => setSendCodeSliderOpen(false)}
-                  aria-label="关闭"
-                >
-                  <XCircle size={20} />
-                </button>
-              </div>
-              {/* 拼图主体 */}
-              <SliderCaptcha
-                resetKey={sendCodeSliderResetKey}
-                onPassed={() => {
-                  setSendCodeSliderPassed(true);
-                  setSendCodeSliderOpen(false);
-                  setToast({
-                    type: "success",
-                    msg: "✅ 拼图验证通过（容差15px），已为您发送邮箱验证码～",
-                  });
-                  // 通过后立即再次走一遍发送逻辑（前面因 !sendCodeSliderPassed 被拦住了，这里重试）
-                  window.setTimeout(() => {
-                    handleSendEmailCode();
-                  }, 150);
-                }}
-                onFailed={(m) => {
-                  setToast({ type: "error", msg: m });
-                }}
-              />
-              <p className="mt-3 text-[11px] text-brand-gray/80">
-                💡 小贴士：因为真实情况下，人手拖动的位置偏差大约在 10-20 像素，所以我们把通过的位置控制在误差 ≤15px 以内都会算过哦 🐶
-              </p>
-            </div>
-          </div>
-        )}
-
         {/* 卡片主体 */}
         <div className="glass rounded-3xl shadow-2xl p-6 sm:p-10 border border-pink-100 relative overflow-hidden animate-fade-in-up">
           {/* 装饰：左上角小圆点 */}
@@ -428,57 +330,11 @@ export default function Auth() {
 
           {/* Logo + 标题 */}
           <div className="flex flex-col items-center text-center mb-6 relative">
-            {/* 小白 Logo 外层（严格居中的圆形容器，修正 GIF 图在不同尺寸下的位置偏差）
-                 - 固定 96x96，overflow:hidden 确保不管 GIF 实际尺寸都按中心裁切
-                 - object-center + object-cover 让图像稳定居中，不会出现用户截图里的「左上角露出半截小白 Logo 占位符」的问题
-                 - bg-white + border-8 + shadow-xl 让图像边缘始终干净、与主题配色一致 */}
-            <div className="relative w-24 h-24 rounded-full border-[3px] border-white shadow-xl bg-gradient-to-br from-pink-100 to-brand-pink-light overflow-hidden flex items-center justify-center">
-              {/* 背景层：如果 GIF 加载慢也有好看的粉色渐变打底，左上角不会出现碎图占位 */}
-              <div className="absolute inset-0 bg-gradient-to-br from-brand-pink/20 via-pink-50 to-brand-pink-light/60 pointer-events-none" />
-              <img
-                src="/xiaobai-logo.gif"
-                alt="小白 Logo"
-                /* 关键：尺寸固定 + object-cover + center，用来解决「位置偏差」
-                   即便 GIF 文件的透明画布非正方形，也会被正确居中裁切到圆圈中央 */
-                width={96}
-                height={96}
-                decoding="sync"
-                loading="eager"
-                draggable={false}
-                className="relative z-10 w-full h-full object-cover object-center block animate-bounce-soft"
-                /* 用户截图中的左上角碎图，通常是图片未能加载时浏览器 alt 文本的图标。
-                   本 CSS 兜底：onerror 时切换为同目录的 PNG/SVG 备用 Logo，确保始终能显示圆形小白脸 */
-                onError={(e) => {
-                  const tgt = e.currentTarget;
-                  const fb: string = (tgt as HTMLElement).dataset.fb ?? "0";
-                  if (fb === "0") {
-                    (tgt as HTMLElement).dataset.fb = "1";
-                    tgt.src = "/favicon.svg";
-                  } else if (fb === "1") {
-                    (tgt as HTMLElement).dataset.fb = "2";
-                    tgt.src = "/favicon.png";
-                  }
-                }}
-              />
-              {/* 右下徽章：「注册安全校验」用小白 Logo 做图标（与用户截图需求对应） */}
-              <div className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-white shadow-md border-2 border-brand-pink flex items-center justify-center z-20">
-                <img
-                  src="/xiaobai-logo.gif"
-                  alt="安全校验"
-                  width={22}
-                  height={22}
-                  draggable={false}
-                  className="w-[22px] h-[22px] rounded-full object-cover object-center"
-                  onError={(e) => {
-                    const tgt = e.currentTarget;
-                    if (!tgt.dataset.fb) {
-                      tgt.dataset.fb = "1";
-                      tgt.src = "/favicon.svg";
-                    }
-                  }}
-                />
-              </div>
-            </div>
+            <img
+              src="/xiaobai-logo.gif"
+              alt="小白 Logo"
+              className="w-24 h-24 rounded-full object-cover shadow-lg border-4 border-white animate-bounce-soft"
+            />
             <h1 className="mt-4 text-2xl sm:text-3xl font-bold font-serif">
               <span className="gradient-text">
                 {mode === "login" ? "欢迎回到小白官方网站" : "加入小白大家庭"}
@@ -569,27 +425,15 @@ export default function Auth() {
                     type="button"
                     disabled={emailCodeCountdown > 0 || submitting}
                     onClick={handleSendEmailCode}
-                    className={`whitespace-nowrap px-4 py-2.5 rounded-xl text-sm font-medium border transition flex items-center justify-center gap-1.5 ${
+                    className={`whitespace-nowrap px-4 py-2.5 rounded-xl text-sm font-medium border transition ${
                       emailCodeCountdown > 0
                         ? "bg-gray-50 border-gray-200 text-brand-gray/70 cursor-not-allowed"
-                        : sendCodeSliderPassed
-                          ? "bg-gradient-to-r from-brand-pink to-brand-pink-dark text-white border-transparent hover:shadow-md hover:scale-[1.02] active:scale-[0.99]"
-                          : "bg-white border-pink-200 text-brand-pink hover:bg-pink-50 hover:shadow-md disabled:opacity-60"
+                        : "bg-white border-pink-200 text-brand-pink hover:bg-pink-50 hover:shadow-md disabled:opacity-60"
                     }`}
                   >
-                    {emailCodeCountdown > 0 ? (
-                      `重新发送(${emailCodeCountdown}s)`
-                    ) : sendCodeSliderPassed ? (
-                      <>
-                        <CheckCircle size={14} />
-                        已通过·发送验证码
-                      </>
-                    ) : (
-                      <>
-                        <Puzzle size={14} />
-                        拼图验证·发送
-                      </>
-                    )}
+                    {emailCodeCountdown > 0
+                      ? `重新发送(${emailCodeCountdown}s)`
+                      : "发送验证码"}
                   </button>
                 </div>
                 {emailCodeSent && (

@@ -7,6 +7,7 @@ import Download from "@/pages/Download";
 import About from "@/pages/About";
 import Auth from "@/pages/Auth";
 import Playground from "@/pages/Playground";
+import AdminConsole from "@/pages/AdminConsole";
 
 export default function App() {
   return (
@@ -21,6 +22,7 @@ export default function App() {
             <Route path="/about" element={<About />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/playground/:id" element={<Playground />} />
+            <Route path="/admin" element={<AdminConsole />} />
           </Routes>
         </main>
         <Footer />
