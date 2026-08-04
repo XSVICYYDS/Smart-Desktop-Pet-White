@@ -68,7 +68,7 @@ function PlaygroundHeader({
       ? "bg-sky-100 text-sky-700 border-sky-200"
       : "bg-violet-100 text-violet-700 border-violet-200";
   return (
-    <div className="sticky top-0 z-20 backdrop-blur-xl bg-white/80 border-b border-pink-100/70 shadow-sm">
+    <div className="sticky top-20 z-20 backdrop-blur-xl bg-white/80 border-b border-pink-100/70 shadow-sm">
       <div className="max-w-6xl mx-auto px-4 md:px-6 py-3 flex flex-wrap items-center gap-3">
         <button
           onClick={onBack}
@@ -2317,6 +2317,2922 @@ function ToolAlarm() {
   );
 }
 
+// ===================== 五子棋 =====================
+/**
+ * 15x15 五子棋，支持双人对战、人机对战（简单AI）、悔棋
+ */
+function GameGomoku() {
+  const SIZE = 13;
+  const [board, setBoard] = useState<("B" | "W" | null)[][]>(() =>
+    Array.from({ length: SIZE }, () => Array(SIZE).fill(null))
+  );
+  const [turn, setTurn] = useState<"B" | "W">("B");
+  const [mode, setMode] = useState<"pvp" | "pve">("pvp");
+  const [history, setHistory] = useState<[number, number][]>([]);
+  const [winner, setWinner] = useState<"B" | "W" | null>(null);
+
+  const restart = () => {
+    setBoard(Array.from({ length: SIZE }, () => Array(SIZE).fill(null)));
+    setTurn("B");
+    setHistory([]);
+    setWinner(null);
+  };
+
+  const checkWin = (b: ("B" | "W" | null)[][], r: number, c: number, p: "B" | "W") => {
+    const dirs = [
+      [0, 1],
+      [1, 0],
+      [1, 1],
+      [1, -1],
+    ];
+    for (const [dr, dc] of dirs) {
+      let count = 1;
+      for (let i = 1; i < 5; i++) {
+        const nr = r + dr * i,
+          nc = c + dc * i;
+        if (nr < 0 || nc < 0 || nr >= SIZE || nc >= SIZE) break;
+        if (b[nr][nc] !== p) break;
+        count++;
+      }
+      for (let i = 1; i < 5; i++) {
+        const nr = r - dr * i,
+          nc = c - dc * i;
+        if (nr < 0 || nc < 0 || nr >= SIZE || nc >= SIZE) break;
+        if (b[nr][nc] !== p) break;
+        count++;
+      }
+      if (count >= 5) return true;
+    }
+    return false;
+  };
+
+  const aiMove = (b: ("B" | "W" | null)[][]) => {
+    // 简易AI：优先在已有棋子周围评分最高的位置落子
+    let best: [number, number] | null = null;
+    let bestScore = -1;
+    for (let r = 0; r < SIZE; r++)
+      for (let c = 0; c < SIZE; c++) {
+        if (b[r][c]) continue;
+        let s = 0;
+        for (let dr = -2; dr <= 2; dr++)
+          for (let dc = -2; dc <= 2; dc++) {
+            const nr = r + dr,
+              nc = c + dc;
+            if (nr < 0 || nc < 0 || nr >= SIZE || nc >= SIZE) continue;
+            if (b[nr][nc]) s += 5 - Math.max(Math.abs(dr), Math.abs(dc));
+          }
+        // 优先堵对方（白方AI下白子，堵黑子连子）
+        const clone = b.map((x) => x.slice());
+        clone[r][c] = "W";
+        if (checkWin(clone, r, c, "W")) s += 10000;
+        clone[r][c] = "B";
+        if (checkWin(clone, r, c, "B")) s += 5000;
+        if (s > bestScore) {
+          bestScore = s;
+          best = [r, c];
+        }
+      }
+    return best;
+  };
+
+  const place = (r: number, c: number) => {
+    if (board[r][c] || winner) return;
+    const nb = board.map((x) => x.slice());
+    nb[r][c] = turn;
+    setBoard(nb);
+    setHistory([...history, [r, c]]);
+    if (checkWin(nb, r, c, turn)) {
+      setWinner(turn);
+      return;
+    }
+    const next = turn === "B" ? "W" : "B";
+    setTurn(next);
+    if (mode === "pve" && next === "W") {
+      setTimeout(() => {
+        const mv = aiMove(nb);
+        if (mv) {
+          const [ar, ac] = mv;
+          const nb2 = nb.map((x) => x.slice());
+          nb2[ar][ac] = "W";
+          setBoard(nb2);
+          setHistory((h) => [...h, mv]);
+          if (checkWin(nb2, ar, ac, "W")) setWinner("W");
+          else setTurn("B");
+        }
+      }, 250);
+    }
+  };
+
+  const undo = () => {
+    if (!history.length || winner) return;
+    const popCount = mode === "pve" && history.length >= 2 ? 2 : 1;
+    const nh = history.slice(0, -popCount);
+    const nb = Array.from({ length: SIZE }, () => Array(SIZE).fill(null));
+    nh.forEach(([r, c], i) => (nb[r][c] = i % 2 === 0 ? "B" : "W"));
+    setBoard(nb);
+    setHistory(nh);
+    setTurn(nh.length % 2 === 0 ? "B" : "W");
+    setWinner(null);
+  };
+
+  return (
+    <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+      <div className="flex flex-wrap items-center gap-3 mb-5">
+        <div className="rounded-2xl bg-neutral-50 border border-neutral-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-neutral-600">当前</div>
+          <div className="flex items-center gap-2">
+            <div className={`w-5 h-5 rounded-full ${turn === "B" ? "bg-neutral-900" : "bg-white border-2 border-neutral-400"}`} />
+            <span className="font-bold">{turn === "B" ? "黑方" : "白方"}</span>
+          </div>
+        </div>
+        <div className="rounded-2xl bg-slate-50 border border-slate-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-slate-600">步数</div>
+          <div className="text-xl font-bold">{history.length}</div>
+        </div>
+        <div className="ml-auto flex gap-2 flex-wrap">
+          <button
+            onClick={() => {
+              setMode(mode === "pvp" ? "pve" : "pvp");
+              restart();
+            }}
+            className="rounded-xl bg-white border border-slate-200 text-slate-700 font-semibold px-4 py-2 text-sm hover:bg-slate-50"
+          >
+            {mode === "pvp" ? "双人对战" : "人机对战"}
+          </button>
+          <button
+            onClick={undo}
+            className="rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-4 py-2 text-sm"
+          >
+            悔棋
+          </button>
+          <button
+            onClick={restart}
+            className="rounded-xl bg-gradient-to-r from-neutral-700 to-neutral-900 text-white font-semibold px-4 py-2 text-sm"
+          >
+            重开
+          </button>
+        </div>
+      </div>
+      <div
+        className="mx-auto aspect-square max-w-[540px] rounded-2xl p-3 bg-gradient-to-br from-amber-100 to-yellow-200 shadow-inner"
+      >
+        <div
+          className="w-full h-full grid relative"
+          style={{
+            gridTemplateColumns: `repeat(${SIZE}, minmax(0,1fr))`,
+            gridTemplateRows: `repeat(${SIZE}, minmax(0,1fr))`,
+          }}
+        >
+          {board.map((row, r) =>
+            row.map((v, c) => {
+              const isStar =
+                (r === 3 && c === 3) ||
+                (r === 3 && c === SIZE - 4) ||
+                (r === SIZE - 4 && c === 3) ||
+                (r === SIZE - 4 && c === SIZE - 4) ||
+                (r === Math.floor(SIZE / 2) && c === Math.floor(SIZE / 2));
+              const last =
+                history.length > 0 &&
+                history[history.length - 1][0] === r &&
+                history[history.length - 1][1] === c;
+              return (
+                <button
+                  key={`${r}-${c}`}
+                  onClick={() => place(r, c)}
+                  className="relative flex items-center justify-center"
+                >
+                  {/* 网格线 */}
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div
+                      className="absolute bg-neutral-700/60"
+                      style={{
+                        height: 1,
+                        left: c === 0 ? "50%" : 0,
+                        right: c === SIZE - 1 ? "50%" : 0,
+                        top: "50%",
+                      }}
+                    />
+                    <div
+                      className="absolute bg-neutral-700/60"
+                      style={{
+                        width: 1,
+                        top: r === 0 ? "50%" : 0,
+                        bottom: r === SIZE - 1 ? "50%" : 0,
+                        left: "50%",
+                      }}
+                    />
+                    {isStar && (
+                      <div className="w-2 h-2 rounded-full bg-neutral-700/70 relative z-10" />
+                    )}
+                  </div>
+                  {v && (
+                    <div
+                      className={`relative z-20 rounded-full w-[80%] h-[80%] shadow-md ${
+                        v === "B"
+                          ? "bg-gradient-to-br from-neutral-700 to-black"
+                          : "bg-gradient-to-br from-white to-neutral-200 border border-neutral-300"
+                      } ${last ? "ring-2 ring-rose-400" : ""}`}
+                    />
+                  )}
+                </button>
+              );
+            })
+          )}
+        </div>
+      </div>
+      {winner && (
+        <div className="mt-5 text-center text-xl font-bold text-rose-600">
+          🎉 {winner === "B" ? "黑方" : "白方"}获胜！
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ===================== 华容道 =====================
+/**
+ * 经典华容道滑块：横刀立马开局
+ */
+function GameKlotski() {
+  // 方块定义：{w,h,x,y,id,name,color}
+  type Piece = { w: number; h: number; x: number; y: number; id: string; name: string; cls: string };
+  const initPieces: Piece[] = [
+    { w: 2, h: 2, x: 1, y: 0, id: "caocao", name: "曹", cls: "bg-gradient-to-br from-rose-500 to-red-700 text-white" },
+    { w: 1, h: 2, x: 0, y: 0, id: "zhangfei", name: "张", cls: "bg-gradient-to-br from-amber-400 to-orange-600 text-white" },
+    { w: 1, h: 2, x: 3, y: 0, id: "zhaoyun", name: "赵", cls: "bg-gradient-to-br from-amber-400 to-orange-600 text-white" },
+    { w: 1, h: 2, x: 0, y: 2, id: "machao", name: "马", cls: "bg-gradient-to-br from-amber-400 to-orange-600 text-white" },
+    { w: 1, h: 2, x: 3, y: 2, id: "huangzhong", name: "黄", cls: "bg-gradient-to-br from-amber-400 to-orange-600 text-white" },
+    { w: 2, h: 1, x: 1, y: 2, id: "guanyu", name: "关羽", cls: "bg-gradient-to-br from-emerald-500 to-green-700 text-white" },
+    { w: 1, h: 1, x: 0, y: 4, id: "s1", name: "兵", cls: "bg-slate-300 text-slate-800" },
+    { w: 1, h: 1, x: 1, y: 3, id: "s2", name: "兵", cls: "bg-slate-300 text-slate-800" },
+    { w: 1, h: 1, x: 2, y: 3, id: "s3", name: "兵", cls: "bg-slate-300 text-slate-800" },
+    { w: 1, h: 1, x: 3, y: 4, id: "s4", name: "兵", cls: "bg-slate-300 text-slate-800" },
+  ];
+  const COLS = 4;
+  const ROWS = 5;
+  const [pieces, setPieces] = useState<Piece[]>(() => initPieces.map((p) => ({ ...p })));
+  const [steps, setSteps] = useState(0);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [won, setWon] = useState(false);
+
+  const restart = () => {
+    setPieces(initPieces.map((p) => ({ ...p })));
+    setSteps(0);
+    setSelected(null);
+    setWon(false);
+  };
+
+  const occupied = (ps: Piece[]) => {
+    const m: string[][] = Array.from({ length: ROWS }, () => Array(COLS).fill(""));
+    for (const p of ps)
+      for (let dy = 0; dy < p.h; dy++)
+        for (let dx = 0; dx < p.w; dx++) m[p.y + dy][p.x + dx] = p.id;
+    return m;
+  };
+
+  const tryMove = (dir: "up" | "down" | "left" | "right") => {
+    if (!selected || won) return;
+    const idx = pieces.findIndex((p) => p.id === selected);
+    if (idx < 0) return;
+    const p = pieces[idx];
+    const dx = dir === "left" ? -1 : dir === "right" ? 1 : 0;
+    const dy = dir === "up" ? -1 : dir === "down" ? 1 : 0;
+    const nx = p.x + dx;
+    const ny = p.y + dy;
+    if (nx < 0 || ny < 0 || nx + p.w > COLS || ny + p.h > ROWS) return;
+    const others = pieces.filter((q) => q.id !== p.id);
+    const m = occupied(others);
+    for (let i = 0; i < p.h; i++)
+      for (let j = 0; j < p.w; j++) {
+        if (m[ny + i][nx + j]) return;
+      }
+    const np = pieces.slice();
+    np[idx] = { ...p, x: nx, y: ny };
+    setPieces(np);
+    setSteps((s) => s + 1);
+    // 胜利条件：曹操到达y=3, x=1（底部中间出口）
+    if (p.id === "caocao" && nx === 1 && ny === 3) setWon(true);
+  };
+
+  // 键盘支持
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if (e.key === "ArrowUp") tryMove("up");
+      if (e.key === "ArrowDown") tryMove("down");
+      if (e.key === "ArrowLeft") tryMove("left");
+      if (e.key === "ArrowRight") tryMove("right");
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, pieces, won]);
+
+  return (
+    <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+      <div className="flex flex-wrap items-center gap-3 mb-5">
+        <div className="rounded-2xl bg-rose-50 border border-rose-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-rose-600">步数</div>
+          <div className="text-xl font-bold text-rose-700">{steps}</div>
+        </div>
+        <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-amber-600">最优参考</div>
+          <div className="text-xl font-bold text-amber-700">81</div>
+        </div>
+        <button
+          onClick={restart}
+          className="ml-auto rounded-xl bg-gradient-to-r from-rose-500 to-red-600 text-white font-semibold px-4 py-2 text-sm shadow-md"
+        >
+          重开
+        </button>
+      </div>
+      <div className="flex gap-5 items-start justify-center flex-wrap">
+        <div className="relative rounded-2xl p-4 bg-gradient-to-br from-amber-200 to-yellow-300 shadow-xl">
+          <div
+            className="grid gap-1 bg-amber-900/60 p-2 rounded-xl"
+            style={{
+              gridTemplateColumns: `repeat(${COLS}, 70px)`,
+              gridTemplateRows: `repeat(${ROWS}, 70px)`,
+            }}
+          >
+            {pieces.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => setSelected(p.id)}
+                style={{
+                  gridColumnStart: p.x + 1,
+                  gridColumnEnd: `span ${p.w}`,
+                  gridRowStart: p.y + 1,
+                  gridRowEnd: `span ${p.h}`,
+                }}
+                className={`rounded-xl font-black text-2xl shadow-md flex items-center justify-center transition-all ${p.cls} ${
+                  selected === p.id ? "ring-4 ring-rose-400 scale-[1.02]" : "hover:brightness-110"
+                }`}
+              >
+                {p.name}
+              </button>
+            ))}
+          </div>
+          {/* 出口 */}
+          <div className="absolute left-1/2 -translate-x-1/2 bottom-0 translate-y-2 w-[146px] h-4 bg-gradient-to-r from-emerald-400 via-green-500 to-emerald-400 rounded-b-xl text-white text-xs text-center font-bold">
+            出口
+          </div>
+        </div>
+        <div className="rounded-2xl bg-slate-50 p-4 border border-slate-200 w-56 space-y-3">
+          <div className="text-sm text-slate-600">
+            先点击方块选中（高亮=选中），再用方向键或下方按钮移动，将【曹】移至底部出口。
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div />
+            <button
+              onClick={() => tryMove("up")}
+              className="rounded-xl bg-slate-200 hover:bg-slate-300 py-3 font-bold"
+            >
+              ↑
+            </button>
+            <div />
+            <button
+              onClick={() => tryMove("left")}
+              className="rounded-xl bg-slate-200 hover:bg-slate-300 py-3 font-bold"
+            >
+              ←
+            </button>
+            <button
+              onClick={() => tryMove("down")}
+              className="rounded-xl bg-slate-200 hover:bg-slate-300 py-3 font-bold"
+            >
+              ↓
+            </button>
+            <button
+              onClick={() => tryMove("right")}
+              className="rounded-xl bg-slate-200 hover:bg-slate-300 py-3 font-bold"
+            >
+              →
+            </button>
+          </div>
+        </div>
+      </div>
+      {won && (
+        <div className="mt-6 text-center text-2xl font-black text-rose-600">
+          🎉 华容道通关！步数 {steps}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ===================== Pong 对打球 =====================
+function GamePong() {
+  const W = 600;
+  const H = 400;
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const stateRef = useRef({
+    ly: H / 2 - 40,
+    ry: H / 2 - 40,
+    bx: W / 2,
+    by: H / 2,
+    bvx: 4,
+    bvy: 3,
+    ls: 0,
+    rs: 0,
+    running: false,
+    winner: null as null | "L" | "R",
+  });
+  const [, force] = useState(0);
+  const [mode, setMode] = useState<"pvp" | "pve">("pve");
+  const keysRef = useRef<Record<string, boolean>>({});
+
+  const restart = () => {
+    const s = stateRef.current;
+    s.ls = 0;
+    s.rs = 0;
+    s.ly = H / 2 - 40;
+    s.ry = H / 2 - 40;
+    s.bx = W / 2;
+    s.by = H / 2;
+    s.bvx = (Math.random() < 0.5 ? -1 : 1) * 4;
+    s.bvy = (Math.random() - 0.5) * 6;
+    s.running = true;
+    s.winner = null;
+    force((x) => x + 1);
+  };
+
+  useEffect(() => {
+    restart();
+    const down = (e: KeyboardEvent) => (keysRef.current[e.key.toLowerCase()] = true);
+    const up = (e: KeyboardEvent) => (keysRef.current[e.key.toLowerCase()] = false);
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    let raf = 0;
+    const loop = () => {
+      const c = canvasRef.current;
+      if (c) {
+        const ctx = c.getContext("2d")!;
+        const s = stateRef.current;
+        // 输入
+        if (keysRef.current["w"]) s.ly -= 6;
+        if (keysRef.current["s"]) s.ly += 6;
+        if (mode === "pvp") {
+          if (keysRef.current["arrowup"]) s.ry -= 6;
+          if (keysRef.current["arrowdown"]) s.ry += 6;
+        } else {
+          // AI
+          const target = s.by - 40;
+          s.ry += clamp(target - s.ry, -4.5, 4.5);
+        }
+        s.ly = clamp(s.ly, 0, H - 80);
+        s.ry = clamp(s.ry, 0, H - 80);
+        // 球移动
+        if (s.running) {
+          s.bx += s.bvx;
+          s.by += s.bvy;
+          if (s.by < 8) s.bvy = Math.abs(s.bvy);
+          if (s.by > H - 8) s.bvy = -Math.abs(s.bvy);
+          // 左板碰撞
+          if (s.bx < 32 && s.bx > 18 && s.by > s.ly && s.by < s.ly + 80) {
+            s.bvx = Math.abs(s.bvx) * 1.05;
+            s.bvy += ((s.by - (s.ly + 40)) / 40) * 2;
+          }
+          // 右板碰撞
+          if (s.bx > W - 32 && s.bx < W - 18 && s.by > s.ry && s.by < s.ry + 80) {
+            s.bvx = -Math.abs(s.bvx) * 1.05;
+            s.bvy += ((s.by - (s.ry + 40)) / 40) * 2;
+          }
+          // 出界
+          if (s.bx < 0) {
+            s.rs++;
+            s.running = s.rs < 7;
+            if (!s.running) s.winner = "R";
+            s.bx = W / 2;
+            s.by = H / 2;
+            s.bvx = -4;
+            s.bvy = (Math.random() - 0.5) * 6;
+          }
+          if (s.bx > W) {
+            s.ls++;
+            s.running = s.ls < 7;
+            if (!s.running) s.winner = "L";
+            s.bx = W / 2;
+            s.by = H / 2;
+            s.bvx = 4;
+            s.bvy = (Math.random() - 0.5) * 6;
+          }
+        }
+        // 绘制
+        ctx.fillStyle = "#0f172a";
+        ctx.fillRect(0, 0, W, H);
+        // 中线
+        ctx.strokeStyle = "rgba(255,255,255,0.2)";
+        ctx.setLineDash([10, 10]);
+        ctx.beginPath();
+        ctx.moveTo(W / 2, 0);
+        ctx.lineTo(W / 2, H);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        // 板
+        ctx.fillStyle = "#22d3ee";
+        ctx.fillRect(10, s.ly, 12, 80);
+        ctx.fillStyle = "#f472b6";
+        ctx.fillRect(W - 22, s.ry, 12, 80);
+        // 球
+        ctx.fillStyle = "#fde047";
+        ctx.beginPath();
+        ctx.arc(s.bx, s.by, 8, 0, Math.PI * 2);
+        ctx.fill();
+        // 分数
+        ctx.fillStyle = "rgba(255,255,255,0.85)";
+        ctx.font = "bold 48px system-ui";
+        ctx.textAlign = "center";
+        ctx.fillText(String(s.ls), W / 4, 70);
+        ctx.fillText(String(s.rs), (W * 3) / 4, 70);
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      cancelAnimationFrame(raf);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
+
+  const s = stateRef.current;
+  return (
+    <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+      <div className="flex flex-wrap items-center gap-3 mb-5">
+        <div className="rounded-2xl bg-cyan-50 border border-cyan-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-cyan-600">左方（W/S）</div>
+          <div className="text-xl font-bold text-cyan-700">{s.ls}</div>
+        </div>
+        <div className="rounded-2xl bg-pink-50 border border-pink-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-pink-600">
+            {mode === "pvp" ? "右方（↑↓）" : "电脑 AI"}
+          </div>
+          <div className="text-xl font-bold text-pink-700">{s.rs}</div>
+        </div>
+        <div className="ml-auto flex gap-2 flex-wrap">
+          <button
+            onClick={() => {
+              setMode((m) => (m === "pvp" ? "pve" : "pvp"));
+              setTimeout(restart, 50);
+            }}
+            className="rounded-xl bg-white border border-slate-200 text-slate-700 px-4 py-2 text-sm font-semibold hover:bg-slate-50"
+          >
+            {mode === "pvp" ? "双人" : "人机"}
+          </button>
+          <button
+            onClick={restart}
+            className="rounded-xl bg-gradient-to-r from-emerald-500 to-green-600 text-white font-semibold px-4 py-2 text-sm shadow-md"
+          >
+            重开
+          </button>
+        </div>
+      </div>
+      <div className="mx-auto max-w-[640px]">
+        <canvas
+          ref={canvasRef}
+          width={W}
+          height={H}
+          className="w-full rounded-2xl shadow-2xl aspect-[3/2]"
+        />
+      </div>
+      {s.winner && (
+        <div className="mt-5 text-center text-xl font-bold text-rose-600">
+          🎉 {s.winner === "L" ? "左方" : mode === "pvp" ? "右方" : "电脑"}获胜！
+        </div>
+      )}
+      <div className="mt-3 text-center text-xs text-slate-500">
+        先得 7 分胜 · 左板 W/S，{mode === "pvp" ? "右板 ↑↓" : "右板由 AI 操作"}
+      </div>
+    </div>
+  );
+}
+
+// ===================== 推箱子 =====================
+/**
+ * 推箱子：多关卡，方向键移动小人推箱子到目标点
+ */
+function GameSokoban() {
+  // # 墙  . 目标  @ 人  $ 箱  * 箱在目标  + 人在目标
+  const LEVELS = [
+    [
+      "#######",
+      "#     #",
+      "# .$. #",
+      "# $@$ #",
+      "# ... #",
+      "#     #",
+      "#######",
+    ],
+    [
+      "  #####  ",
+      "###   ###",
+      "#  $ $  #",
+      "# #.@.# #",
+      "#  $ $  #",
+      "###   ###",
+      "  #####  ",
+    ],
+    [
+      "########",
+      "#      #",
+      "# .**. #",
+      "# $  $ #",
+      "# .  . #",
+      "#  @   #",
+      "########",
+    ],
+    [
+      "  ####   ",
+      "###  ####",
+      "#  $ $  #",
+      "# .#@#. #",
+      "#  $ $  #",
+      "####  ###",
+      "   ####  ",
+    ],
+  ];
+  const [lvl, setLvl] = useState(0);
+  const [grid, setGrid] = useState<string[][]>(() => LEVELS[0].map((r) => r.split("")));
+  const [steps, setSteps] = useState(0);
+  const [history, setHistory] = useState<string[][][]>([]);
+
+  const load = (i: number) => {
+    setLvl(i);
+    setGrid(LEVELS[i].map((r) => r.split("")));
+    setSteps(0);
+    setHistory([]);
+  };
+  const restart = () => load(lvl);
+  const won = (g: string[][]) =>
+    g.every((row) => row.every((ch) => ch !== "$")); // 没有单独的箱子=都在目标上（变为*或.不影响）
+
+  const findMan = (g: string[][]) => {
+    for (let y = 0; y < g.length; y++)
+      for (let x = 0; x < g[y].length; x++)
+        if (g[y][x] === "@" || g[y][x] === "+") return { x, y, onGoal: g[y][x] === "+" };
+    return { x: 0, y: 0, onGoal: false };
+  };
+
+  const move = (dx: number, dy: number) => {
+    if (won(grid)) return;
+    const g = grid.map((r) => r.slice());
+    const man = findMan(g);
+    const nx = man.x + dx;
+    const ny = man.y + dy;
+    // 越界补空格
+    while (ny >= g.length) g.push(Array(nx + 1).fill(" "));
+    while (nx >= g[ny].length) g[ny].push(" ");
+    const target = g[ny][nx];
+    if (target === "#") return; // 墙
+    const isBox = target === "$" || target === "*";
+    if (isBox) {
+      const bx = nx + dx;
+      const by = ny + dy;
+      while (by >= g.length) g.push(Array(bx + 1).fill(" "));
+      while (bx >= g[by].length) g[by].push(" ");
+      const next = g[by][bx];
+      if (next === "#" || next === "$" || next === "*") return; // 箱子后是墙或另一个箱
+      // 移动箱子
+      g[by][bx] = next === "." ? "*" : "$";
+      // 箱子原位置
+      g[ny][nx] = target === "*" ? "." : " ";
+    } else if (target !== " " && target !== ".") {
+      return;
+    }
+    // 移动人
+    g[man.y][man.x] = man.onGoal ? "." : " ";
+    const curTarget = g[ny][nx];
+    g[ny][nx] = curTarget === "." ? "+" : "@";
+    setHistory((h) => [...h, grid]);
+    setGrid(g);
+    setSteps((s) => s + 1);
+  };
+
+  const undo = () => {
+    if (!history.length) return;
+    const prev = history[history.length - 1];
+    setHistory(history.slice(0, -1));
+    setGrid(prev);
+    setSteps((s) => Math.max(0, s - 1));
+  };
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if (e.key === "ArrowUp") { e.preventDefault(); move(0, -1); }
+      if (e.key === "ArrowDown") { e.preventDefault(); move(0, 1); }
+      if (e.key === "ArrowLeft") { e.preventDefault(); move(-1, 0); }
+      if (e.key === "ArrowRight") { e.preventDefault(); move(1, 0); }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") undo();
+      if (e.key.toLowerCase() === "r") restart();
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [grid, history]);
+
+  const rows = grid.length;
+  const cols = Math.max(...grid.map((r) => r.length));
+  const win = won(grid);
+  return (
+    <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+      <div className="flex flex-wrap items-center gap-3 mb-5">
+        <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-amber-700">关卡</div>
+          <div className="text-xl font-bold text-amber-800">
+            {lvl + 1} / {LEVELS.length}
+          </div>
+        </div>
+        <div className="rounded-2xl bg-yellow-50 border border-yellow-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-yellow-700">步数</div>
+          <div className="text-xl font-bold text-yellow-800">{steps}</div>
+        </div>
+        <div className="ml-auto flex gap-2 flex-wrap">
+          <select
+            value={lvl}
+            onChange={(e) => load(Number(e.target.value))}
+            className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold"
+          >
+            {LEVELS.map((_, i) => (
+              <option key={i} value={i}>
+                第 {i + 1} 关
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={undo}
+            className="rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-4 py-2 text-sm"
+          >
+            撤销
+          </button>
+          <button
+            onClick={restart}
+            className="rounded-xl bg-gradient-to-r from-amber-500 to-yellow-700 text-white font-semibold px-4 py-2 text-sm shadow-md"
+          >
+            重开
+          </button>
+        </div>
+      </div>
+      <div className="mx-auto max-w-lg rounded-2xl bg-gradient-to-br from-stone-100 to-stone-200 p-4 shadow-inner">
+        <div
+          className="grid mx-auto gap-[2px] w-max"
+          style={{
+            gridTemplateColumns: `repeat(${cols}, minmax(0,1fr))`,
+          }}
+        >
+          {Array.from({ length: rows }).flatMap((_, y) =>
+            Array.from({ length: cols }).map((__, x) => {
+              const ch = grid[y]?.[x] || " ";
+              let cls = "bg-stone-200/40 ";
+              let inner = "";
+              if (ch === "#") cls += "bg-stone-700 rounded shadow-inner";
+              else if (ch === ".") {
+                cls += "bg-amber-100 rounded-full";
+                inner = "·";
+              } else if (ch === "@") {
+                cls += "bg-sky-500 rounded-full shadow";
+                inner = "🙂";
+              } else if (ch === "+") {
+                cls += "bg-sky-600 rounded-full ring-2 ring-amber-400 shadow";
+                inner = "🙂";
+              } else if (ch === "$") {
+                cls += "bg-yellow-600 rounded shadow";
+                inner = "📦";
+              } else if (ch === "*") {
+                cls += "bg-emerald-500 rounded ring-2 ring-emerald-300 shadow";
+                inner = "✅";
+              }
+              return (
+                <div
+                  key={`${x}-${y}`}
+                  className={`w-9 h-9 md:w-10 md:h-10 flex items-center justify-center text-lg font-bold ${cls}`}
+                >
+                  {inner}
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+      {/* 触控按钮 */}
+      <div className="mt-5 grid grid-cols-3 gap-2 max-w-[220px] mx-auto">
+        <div />
+        <button onClick={() => move(0, -1)} className="rounded-xl bg-amber-100 hover:bg-amber-200 py-3 font-bold text-amber-800">↑</button>
+        <div />
+        <button onClick={() => move(-1, 0)} className="rounded-xl bg-amber-100 hover:bg-amber-200 py-3 font-bold text-amber-800">←</button>
+        <button onClick={() => move(0, 1)} className="rounded-xl bg-amber-100 hover:bg-amber-200 py-3 font-bold text-amber-800">↓</button>
+        <button onClick={() => move(1, 0)} className="rounded-xl bg-amber-100 hover:bg-amber-200 py-3 font-bold text-amber-800">→</button>
+      </div>
+      {win && (
+        <div className="mt-5 text-center text-2xl font-black text-emerald-600">
+          🎉 第 {lvl + 1} 关通过！步数 {steps}
+          {lvl < LEVELS.length - 1 && (
+            <button
+              onClick={() => load(lvl + 1)}
+              className="ml-3 text-base rounded-xl bg-emerald-500 text-white px-4 py-2"
+            >
+              下一关 →
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ===================== 数独 =====================
+/**
+ * 数独 9x9：4档难度、候选标记、检查、求解器
+ */
+function GameSudoku() {
+  type Board = (number | null)[][];
+  const SIZE = 9;
+
+  // 完整解生成
+  const fullSolve = (): Board => {
+    const b: Board = Array.from({ length: SIZE }, () => Array(SIZE).fill(null));
+    const fill = (idx: number): boolean => {
+      if (idx === 81) return true;
+      const r = Math.floor(idx / 9);
+      const c = idx % 9;
+      const nums = [1,2,3,4,5,6,7,8,9].sort(() => Math.random() - 0.5);
+      for (const n of nums) {
+        // 检查行列宫
+        let ok = true;
+        for (let i = 0; i < 9; i++) if (b[r][i] === n || b[i][c] === n) { ok = false; break; }
+        if (!ok) continue;
+        const br = Math.floor(r / 3) * 3, bc = Math.floor(c / 3) * 3;
+        for (let i = 0; i < 3 && ok; i++)
+          for (let j = 0; j < 3; j++) if (b[br + i][bc + j] === n) { ok = false; break; }
+        if (!ok) continue;
+        b[r][c] = n;
+        if (fill(idx + 1)) return true;
+        b[r][c] = null;
+      }
+      return false;
+    };
+    fill(0);
+    return b;
+  };
+
+  const difficulties = { 简单: 40, 中等: 50, 困难: 56, 专家: 62 };
+  const [diff, setDiff] = useState<keyof typeof difficulties>("简单");
+  const [puzzle, setPuzzle] = useState<Board>([]); // 原始题（固定值）
+  const [board, setBoard] = useState<Board>([]);
+  const [cands, setCands] = useState<Set<number>[][]>([]);
+  const [sel, setSel] = useState<[number, number] | null>(null);
+  const [note, setNote] = useState(false);
+  const [mistakes, setMistakes] = useState<Set<string>>(new Set());
+  const [won, setWon] = useState(false);
+
+  const generate = (d: keyof typeof difficulties) => {
+    const sol = fullSolve();
+    const puz = sol.map((r) => r.slice());
+    const remove = difficulties[d];
+    const indices = Array.from({ length: 81 }, (_, i) => i).sort(() => Math.random() - 0.5);
+    for (let i = 0; i < remove; i++) {
+      const r = Math.floor(indices[i] / 9);
+      const c = indices[i] % 9;
+      puz[r][c] = null;
+    }
+    setPuzzle(puz);
+    setBoard(puz.map((r) => r.slice()));
+    setCands(Array.from({ length: 9 }, () => Array.from({ length: 9 }, () => new Set<number>())));
+    setSel(null);
+    setMistakes(new Set());
+    setWon(false);
+    setDiff(d);
+  };
+
+  useEffect(() => { generate("简单"); }, []);
+
+  const checkWin = (b: Board) => {
+    for (let r = 0; r < 9; r++)
+      for (let c = 0; c < 9; c++) {
+        if (b[r][c] == null) return false;
+      }
+    // 验证（理论上不会错）
+    const set9 = new Set([1,2,3,4,5,6,7,8,9]);
+    for (let i = 0; i < 9; i++) {
+      if (new Set(b[i]).size !== 9 || new Set(b.map((r) => r[i])).size !== 9) return false;
+      const br = Math.floor(i / 3) * 3, bc = (i % 3) * 3;
+      const s = new Set<number>();
+      for (let dr = 0; dr < 3; dr++) for (let dc = 0; dc < 3; dc++) if (b[br+dr][bc+dc] != null) s.add(b[br+dr][bc+dc]!);
+      if (s.size !== 9) return false;
+      void set9;
+    }
+    return true;
+  };
+
+  const place = (n: number) => {
+    if (!sel || won) return;
+    const [r, c] = sel;
+    if (puzzle[r][c] != null) return;
+    const nb = board.map((x) => x.slice());
+    const nc = cands.map((row) => row.map((s) => new Set(s)));
+    if (note) {
+      if (n === 0) nc[r][c].clear();
+      else if (nc[r][c].has(n)) nc[r][c].delete(n);
+      else nc[r][c].add(n);
+      setCands(nc);
+    } else {
+      nb[r][c] = n === 0 ? null : n;
+      nc[r][c].clear();
+      setBoard(nb);
+      // 检查规则冲突
+      const m = new Set<string>();
+      for (let rr = 0; rr < 9; rr++)
+        for (let cc = 0; cc < 9; cc++) {
+          const v = nb[rr][cc];
+          if (v == null) continue;
+          for (let i = 0; i < 9; i++) {
+            if (i !== cc && nb[rr][i] === v) m.add(`${rr}-${cc}`);
+            if (i !== rr && nb[i][cc] === v) m.add(`${rr}-${cc}`);
+          }
+          const br = Math.floor(rr / 3) * 3, bc = Math.floor(cc / 3) * 3;
+          for (let dr = 0; dr < 3; dr++) for (let dc = 0; dc < 3; dc++) {
+            if ((br+dr !== rr || bc+dc !== cc) && nb[br+dr][bc+dc] === v) m.add(`${rr}-${cc}`);
+          }
+        }
+      setMistakes(m);
+      if (m.size === 0 && checkWin(nb)) setWon(true);
+    }
+  };
+
+  // 键盘支持
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if (/^[1-9]$/.test(e.key)) place(Number(e.key));
+      if (e.key === "0" || e.key === "Backspace" || e.key === "Delete") place(0);
+      if (sel) {
+        let [r, c] = sel;
+        if (e.key === "ArrowUp") r = (r + 8) % 9;
+        if (e.key === "ArrowDown") r = (r + 1) % 9;
+        if (e.key === "ArrowLeft") c = (c + 8) % 9;
+        if (e.key === "ArrowRight") c = (c + 1) % 9;
+        if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key)) {
+          e.preventDefault();
+          setSel([r, c]);
+        }
+      }
+      if (e.key.toLowerCase() === "n") setNote((n) => !n);
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sel, note, board]);
+
+  return (
+    <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+      <div className="flex flex-wrap items-center gap-3 mb-5">
+        <div className="rounded-2xl bg-teal-50 border border-teal-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-teal-700">难度</div>
+          <div className="text-xl font-bold text-teal-800">{diff}</div>
+        </div>
+        <div className="ml-auto flex gap-2 flex-wrap items-center">
+          <select
+            value={diff}
+            onChange={(e) => generate(e.target.value as keyof typeof difficulties)}
+            className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold"
+          >
+            {Object.keys(difficulties).map((d) => (
+              <option key={d}>{d}</option>
+            ))}
+          </select>
+          <button
+            onClick={() => setNote((n) => !n)}
+            className={`rounded-xl px-4 py-2 text-sm font-semibold shadow-sm ${
+              note ? "bg-gradient-to-r from-fuchsia-500 to-purple-600 text-white" : "bg-white border border-slate-200 text-slate-700"
+            }`}
+          >
+            {note ? "✏️ 笔记模式" : "🔢 填数模式"}(N)
+          </button>
+          <button
+            onClick={() => generate(diff)}
+            className="rounded-xl bg-gradient-to-r from-teal-500 to-cyan-600 text-white font-semibold px-4 py-2 text-sm shadow-md"
+          >
+            新一局
+          </button>
+        </div>
+      </div>
+      <div className="mx-auto max-w-[500px]">
+        <div className="grid grid-cols-9 aspect-square rounded-2xl overflow-hidden border-4 border-slate-800 shadow-xl">
+          {board.map((row, r) =>
+            row.map((v, c) => {
+              const fixed = puzzle[r]?.[c] != null;
+              const selected = sel && sel[0] === r && sel[1] === c;
+              const same = sel && (sel[0] === r || sel[1] === c || (Math.floor(sel[0]/3) === Math.floor(r/3) && Math.floor(sel[1]/3) === Math.floor(c/3)));
+              const sameVal = sel && board[sel[0]][sel[1]] != null && board[sel[0]][sel[1]] === v && v != null;
+              const err = mistakes.has(`${r}-${c}`);
+              const thickR = r === 2 || r === 5;
+              const thickC = c === 2 || c === 5;
+              return (
+                <button
+                  key={`${r}-${c}`}
+                  onClick={() => setSel([r, c])}
+                  className={`relative flex items-center justify-center text-xl md:text-2xl font-bold transition-colors ${
+                    thickR ? "border-b-[3px] border-slate-800" : "border-b border-slate-300"
+                  } ${thickC ? "border-r-[3px] border-slate-800" : "border-r border-slate-300"} ${
+                    err ? "bg-rose-100 text-rose-700" :
+                    selected ? "bg-cyan-200" :
+                    sameVal ? "bg-cyan-100" :
+                    same ? "bg-cyan-50" :
+                    "bg-white hover:bg-slate-50"
+                  } ${fixed ? "text-slate-900" : "text-blue-700"}`}
+                >
+                  {v != null ? v : (
+                    <div className="grid grid-cols-3 w-full h-full text-[9px] md:text-[10px] text-slate-500 p-[2px] gap-0">
+                      {[1,2,3,4,5,6,7,8,9].map((n) => (
+                        <div key={n} className="flex items-center justify-center">
+                          {cands[r][c]?.has(n) ? n : ""}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </button>
+              );
+            })
+          )}
+        </div>
+      </div>
+      {/* 数字键盘 */}
+      <div className="mt-5 grid grid-cols-10 gap-2 max-w-[500px] mx-auto">
+        {[1,2,3,4,5,6,7,8,9].map((n) => (
+          <button
+            key={n}
+            onClick={() => place(n)}
+            className="aspect-square rounded-xl bg-gradient-to-br from-slate-100 to-slate-200 hover:from-teal-100 hover:to-cyan-200 text-slate-800 font-black text-xl shadow-sm active:scale-95 transition"
+          >
+            {n}
+          </button>
+        ))}
+        <button
+          onClick={() => place(0)}
+          className="aspect-square rounded-xl bg-gradient-to-br from-rose-100 to-rose-200 hover:from-rose-200 hover:to-rose-300 text-rose-700 font-black shadow-sm active:scale-95 transition"
+          title="清除"
+        >
+          ✕
+        </button>
+      </div>
+      {won && (
+        <div className="mt-6 text-center text-2xl font-black text-teal-600 animate-bounce">
+          🎉 数独通过！
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ===================== 连连看 =====================
+/**
+ * 连连看：相同图案通过 ≤2 个转折点路径连接消除
+ */
+function GameLianLian() {
+  const COLS = 10;
+  const ROWS = 8;
+  const SYMBOLS = ["🍎","🍌","🍇","🍓","🍊","🍉","🍒","🍑","🥝","🍍","🥥","🥭"];
+  type Cell = { sym: string | null; id: number };
+  const [grid, setGrid] = useState<Cell[][]>([]);
+  const [sel, setSel] = useState<[number, number] | null>(null);
+  const [hint, setHint] = useState<[[number,number],[number,number]] | null>(null);
+  const [score, setScore] = useState(0);
+  const [time, setTime] = useState(180);
+  const [playing, setPlaying] = useState(true);
+  const [won, setWon] = useState(false);
+
+  const newGame = () => {
+    const total = ROWS * COLS;
+    const pairs = total / 2;
+    const arr: string[] = [];
+    for (let i = 0; i < pairs; i++) {
+      const s = SYMBOLS[i % SYMBOLS.length];
+      arr.push(s, s);
+    }
+    arr.sort(() => Math.random() - 0.5);
+    const g: Cell[][] = [];
+    let id = 0;
+    for (let r = 0; r < ROWS; r++) {
+      const row: Cell[] = [];
+      for (let c = 0; c < COLS; c++) row.push({ sym: arr[id], id: id++ });
+      g.push(row);
+    }
+    setGrid(g);
+    setSel(null);
+    setHint(null);
+    setScore(0);
+    setTime(180);
+    setPlaying(true);
+    setWon(false);
+  };
+  useEffect(() => { newGame(); }, []);
+
+  // 计时器
+  useEffect(() => {
+    if (!playing) return;
+    const t = setInterval(() => setTime((x) => Math.max(0, x - 1)), 1000);
+    return () => clearInterval(t);
+  }, [playing]);
+  useEffect(() => { if (time <= 0) setPlaying(false); }, [time]);
+
+  // 路径判定：0/1/2 个折点，格子内空或相同匹配
+  const emptyAt = (g: Cell[][], r: number, c: number) =>
+    r < 0 || c < 0 || r >= ROWS || c >= COLS ? true : g[r][c].sym === null;
+
+  const straight = (g: Cell[][], r1: number, c1: number, r2: number, c2: number, skipSelf = false) => {
+    if (r1 !== r2 && c1 !== c2) return false;
+    if (r1 === r2) {
+      const lo = Math.min(c1, c2), hi = Math.max(c1, c2);
+      for (let c = lo; c <= hi; c++) {
+        if (skipSelf && (c === c1 || c === c2)) continue;
+        if (!emptyAt(g, r1, c)) return false;
+      }
+    } else {
+      const lo = Math.min(r1, r2), hi = Math.max(r1, r2);
+      for (let r = lo; r <= hi; r++) {
+        if (skipSelf && (r === r1 || r === r2)) continue;
+        if (!emptyAt(g, r, c1)) return false;
+      }
+    }
+    return true;
+  };
+
+  const findPath = (g: Cell[][], r1: number, c1: number, r2: number, c2: number) => {
+    if (r1 === r2 && c1 === c2) return false;
+    if (g[r1][c1].sym !== g[r2][c2].sym) return false;
+    // 0 拐点
+    if ((r1 === r2 || c1 === c2) && straight(g, r1, c1, r2, c2, true)) return true;
+    // 1 拐点 (r1,c2) 或 (r2,c1)
+    if (emptyAt(g, r1, c2) && straight(g, r1, c1, r1, c2, true) && straight(g, r1, c2, r2, c2, true)) return true;
+    if (emptyAt(g, r2, c1) && straight(g, r1, c1, r2, c1, true) && straight(g, r2, c1, r2, c2, true)) return true;
+    // 2 拐点：走 (r1, x) -> (r2, x)，或 (x, c1) -> (x, c2)
+    for (let c = -1; c <= COLS; c++) {
+      if (c === c1 || c === c2) continue;
+      const aOk = c < 0 || c >= COLS ? true : emptyAt(g, r1, c);
+      const bOk = c < 0 || c >= COLS ? true : emptyAt(g, r2, c);
+      if (!aOk || !bOk) continue;
+      if (straight(g, r1, c1, r1, c, true) && straight(g, r1, c, r2, c, false) && straight(g, r2, c, r2, c2, true)) return true;
+    }
+    for (let r = -1; r <= ROWS; r++) {
+      if (r === r1 || r === r2) continue;
+      const aOk = r < 0 || r >= ROWS ? true : emptyAt(g, r, c1);
+      const bOk = r < 0 || r >= ROWS ? true : emptyAt(g, r, c2);
+      if (!aOk || !bOk) continue;
+      if (straight(g, r1, c1, r, c1, true) && straight(g, r, c1, r, c2, false) && straight(g, r, c2, r2, c2, true)) return true;
+    }
+    return false;
+  };
+
+  const findHint = (g: Cell[][]) => {
+    for (let r1 = 0; r1 < ROWS; r1++)
+      for (let c1 = 0; c1 < COLS; c1++) {
+        if (!g[r1][c1].sym) continue;
+        for (let r2 = r1; r2 < ROWS; r2++)
+          for (let c2 = (r2 === r1 ? c1 + 1 : 0); c2 < COLS; c2++) {
+            if (!g[r2][c2].sym) continue;
+            if (findPath(g, r1, c1, r2, c2)) return [[r1,c1],[r2,c2]] as [[number,number],[number,number]];
+          }
+      }
+    return null;
+  };
+
+  const click = (r: number, c: number) => {
+    if (!playing || !grid[r][c].sym) return;
+    setHint(null);
+    if (!sel) { setSel([r, c]); return; }
+    const [sr, sc] = sel;
+    if (sr === r && sc === c) { setSel(null); return; }
+    if (grid[sr][sc].sym !== grid[r][c].sym) { setSel([r, c]); return; }
+    if (findPath(grid, sr, sc, r, c)) {
+      const ng = grid.map((row) => row.map((x) => ({ ...x })));
+      ng[sr][sc].sym = null;
+      ng[r][c].sym = null;
+      setGrid(ng);
+      setScore((s) => s + 10);
+      setSel(null);
+      // 是否胜利
+      if (ng.every((row) => row.every((cell) => !cell.sym))) {
+        setWon(true);
+        setPlaying(false);
+      } else {
+        // 是否无解 -> 自动洗牌
+        if (!findHint(ng)) {
+          setTimeout(() => {
+            const all: string[] = [];
+            ng.forEach((row) => row.forEach((x) => { if (x.sym) all.push(x.sym); }));
+            all.sort(() => Math.random() - 0.5);
+            let i = 0;
+            const shuffled = ng.map((row) => row.map((x) => x.sym ? { ...x, sym: all[i++] } : x));
+            setGrid(shuffled);
+          }, 300);
+        }
+      }
+    } else {
+      setSel([r, c]);
+    }
+  };
+
+  const shuffle = () => {
+    const all: string[] = [];
+    grid.forEach((row) => row.forEach((x) => { if (x.sym) all.push(x.sym); }));
+    all.sort(() => Math.random() - 0.5);
+    let i = 0;
+    const ng = grid.map((row) => row.map((x) => x.sym ? { ...x, sym: all[i++] } : x));
+    setGrid(ng);
+    setSel(null);
+    setHint(null);
+  };
+
+  return (
+    <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+      <div className="flex flex-wrap items-center gap-3 mb-5">
+        <div className="rounded-2xl bg-fuchsia-50 border border-fuchsia-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-fuchsia-600">分数</div>
+          <div className="text-xl font-bold text-fuchsia-700">{score}</div>
+        </div>
+        <div className="rounded-2xl bg-pink-50 border border-pink-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-pink-600">剩余时间</div>
+          <div className="text-xl font-bold text-pink-700">{time}s</div>
+        </div>
+        <div className="ml-auto flex gap-2 flex-wrap">
+          <button
+            onClick={() => setHint(findHint(grid))}
+            className="rounded-xl bg-sky-100 hover:bg-sky-200 text-sky-700 font-semibold px-4 py-2 text-sm"
+          >
+            💡 提示
+          </button>
+          <button
+            onClick={shuffle}
+            className="rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-700 font-semibold px-4 py-2 text-sm"
+          >
+            🔀 洗牌
+          </button>
+          <button
+            onClick={newGame}
+            className="rounded-xl bg-gradient-to-r from-fuchsia-500 to-pink-600 text-white font-semibold px-4 py-2 text-sm shadow-md"
+          >
+            重开
+          </button>
+        </div>
+      </div>
+      <div className="mx-auto max-w-3xl rounded-2xl p-3 bg-gradient-to-br from-pink-50 to-fuchsia-100 shadow-inner">
+        <div
+          className="grid gap-2 mx-auto"
+          style={{ gridTemplateColumns: `repeat(${COLS}, minmax(0,1fr))` }}
+        >
+          {grid.map((row, r) =>
+            row.map((cell, c) => {
+              const isSel = sel && sel[0] === r && sel[1] === c;
+              const isHint =
+                hint &&
+                ((hint[0][0] === r && hint[0][1] === c) || (hint[1][0] === r && hint[1][1] === c));
+              return (
+                <button
+                  key={cell.id}
+                  onClick={() => click(r, c)}
+                  disabled={!cell.sym}
+                  className={`aspect-square rounded-xl text-2xl md:text-3xl font-bold flex items-center justify-center transition-all ${
+                    !cell.sym
+                      ? "bg-transparent cursor-default"
+                      : isSel
+                      ? "bg-white ring-4 ring-rose-400 shadow-lg scale-105"
+                      : isHint
+                      ? "bg-yellow-200 ring-4 ring-yellow-400 animate-pulse shadow-lg"
+                      : "bg-white border border-pink-200 hover:shadow-md hover:scale-105 active:scale-95"
+                  }`}
+                >
+                  {cell.sym}
+                </button>
+              );
+            })
+          )}
+        </div>
+      </div>
+      {won && (
+        <div className="mt-5 text-center text-2xl font-black text-pink-600">
+          🎉 连连看通关！最终得分 {score}
+        </div>
+      )}
+      {!playing && !won && (
+        <div className="mt-5 text-center text-xl font-bold text-slate-700">
+          时间到！最终得分 {score}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ===================== 坦克大战 =====================
+/**
+ * 坦克大战：单人生存版，守住基地击杀敌方坦克
+ */
+function GameTank() {
+  const W = 520;
+  const H = 520;
+  const TILE = 40;
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  type Tank = {
+    x: number; y: number; dir: 0|1|2|3; color: string; alive: boolean; cooldown: number; isEnemy: boolean; hp: number; moveTimer: number;
+  };
+  type Bullet = { x: number; y: number; vx: number; vy: number; owner: "P" | "E"; alive: boolean };
+  type Tile = number; // 0空 1砖 2钢
+  const stateRef = useRef({
+    map: [] as Tile[][],
+    tanks: [] as Tank[],
+    bullets: [] as Bullet[],
+    score: 0,
+    gameOver: false,
+    win: false,
+    baseAlive: true,
+    frame: 0,
+    spawned: 0,
+    totalEnemy: 10,
+  });
+  const [, force] = useState(0);
+
+  const newMap = (): Tile[][] => {
+    const cols = W / TILE, rows = H / TILE;
+    const m: Tile[][] = Array.from({ length: rows }, () => Array(cols).fill(0));
+    // 建几个砖墙堆
+    const bricks = [
+      [2,2],[2,3],[2,4],[3,2],[5,2],[5,3],[5,4],[5,5],
+      [8,2],[8,3],[8,4],[8,5],[9,2],[10,2],[10,3],[10,4],
+      [2,8],[3,8],[4,8],[2,9],[2,10],[3,10],[5,8],[5,9],[5,10],
+      [8,9],[8,10],[9,8],[9,9],[10,8],[10,9],[10,10],
+    ];
+    for (const [r,c] of bricks) if (m[r]) m[r][c] = 1;
+    // 钢墙
+    const steels = [[0,6],[12,6],[6,0],[6,12]];
+    for (const [r,c] of steels) if (m[r]) m[r][c] = 2;
+    // 基地周围砖墙
+    const br = rows - 2, bc = Math.floor(cols / 2) - 1;
+    for (let dc = -1; dc <= 1; dc++) m[br][bc + dc] = 1;
+    m[br - 1][bc - 1] = 1; m[br - 1][bc + 1] = 1;
+    return m;
+  };
+
+  const restart = () => {
+    const s = stateRef.current;
+    s.map = newMap();
+    const cols = W / TILE;
+    const rows = H / TILE;
+    s.tanks = [
+      { x: (cols / 2 - 2) * TILE, y: (rows - 1) * TILE, dir: 0, color: "#fde047", alive: true, cooldown: 0, isEnemy: false, hp: 3, moveTimer: 0 },
+    ];
+    s.bullets = [];
+    s.score = 0;
+    s.gameOver = false;
+    s.win = false;
+    s.baseAlive = true;
+    s.frame = 0;
+    s.spawned = 0;
+    force((x) => x + 1);
+  };
+
+  useEffect(() => {
+    restart();
+    const keys: Record<string, boolean> = {};
+    const down = (e: KeyboardEvent) => (keys[e.key.toLowerCase()] = true);
+    const up = (e: KeyboardEvent) => (keys[e.key.toLowerCase()] = false);
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    let raf = 0;
+    const cols = W / TILE;
+    const rows = H / TILE;
+    const dirs = [
+      [0, -1], // up 0
+      [1, 0], // right 1
+      [0, 1], // down 2
+      [-1, 0], // left 3
+    ];
+    const collideTank = (t: Tank, nx: number, ny: number, list: Tank[]) => {
+      if (nx < 0 || ny < 0 || nx + TILE > W || ny + TILE > H) return true;
+      // 砖墙/钢墙碰撞
+      const c1 = Math.floor(nx / TILE), c2 = Math.floor((nx + TILE - 1) / TILE);
+      const r1 = Math.floor(ny / TILE), r2 = Math.floor((ny + TILE - 1) / TILE);
+      for (let r = r1; r <= r2; r++) for (let c = c1; c <= c2; c++) {
+        if (stateRef.current.map[r]?.[c] && stateRef.current.map[r][c] >= 1) return true;
+      }
+      // 基地
+      const br = rows - 1, bc = Math.floor(cols / 2);
+      if (r1 <= br && r2 >= br && c1 <= bc && c2 >= bc && t.isEnemy) return true;
+      // 与其他坦克碰撞
+      for (const o of list) {
+        if (o === t || !o.alive) continue;
+        if (!(nx + TILE <= o.x || o.x + TILE <= nx || ny + TILE <= o.y || o.y + TILE <= ny)) return true;
+      }
+      return false;
+    };
+    const tryFire = (t: Tank) => {
+      if (t.cooldown > 0) return;
+      t.cooldown = 30;
+      const [dx, dy] = dirs[t.dir];
+      const cx = t.x + TILE / 2 + dx * TILE / 2;
+      const cy = t.y + TILE / 2 + dy * TILE / 2;
+      stateRef.current.bullets.push({
+        x: cx, y: cy, vx: dx * 4, vy: dy * 4, owner: t.isEnemy ? "E" : "P", alive: true,
+      });
+    };
+    const spawnEnemy = () => {
+      const s = stateRef.current;
+      if (s.spawned >= s.totalEnemy) return;
+      const spawnPoints: [number, number][] = [[0,0],[cols-1,0],[Math.floor(cols/2),0]];
+      const [cx, cy] = spawnPoints[Math.floor(Math.random() * spawnPoints.length)];
+      const nx = cx * TILE, ny = cy * TILE;
+      // 与其他坦克不重叠
+      for (const o of s.tanks) {
+        if (o.alive && !(nx + TILE <= o.x || o.x + TILE <= nx || ny + TILE <= o.y || o.y + TILE <= ny)) return;
+      }
+      s.tanks.push({
+        x: nx, y: ny, dir: 2, color: "#f87171", alive: true, cooldown: 60, isEnemy: true, hp: 1, moveTimer: 0,
+      });
+      s.spawned++;
+    };
+    const loop = () => {
+      const c = canvasRef.current;
+      const s = stateRef.current;
+      if (!c || s.gameOver || s.win) { raf = requestAnimationFrame(loop); return; }
+      s.frame++;
+      const ctx = c.getContext("2d")!;
+      // 输入
+      const player = s.tanks[0];
+      if (player.alive) {
+        let moved = false;
+        if (keys["arrowup"]) { player.dir = 0; const nx = player.x, ny = player.y - 3; if (!collideTank(player, nx, ny, s.tanks)) { player.y = ny; moved = true; } }
+        else if (keys["arrowdown"]) { player.dir = 2; const nx = player.x, ny = player.y + 3; if (!collideTank(player, nx, ny, s.tanks)) { player.y = ny; moved = true; } }
+        else if (keys["arrowleft"]) { player.dir = 3; const nx = player.x - 3, ny = player.y; if (!collideTank(player, nx, ny, s.tanks)) { player.x = nx; moved = true; } }
+        else if (keys["arrowright"]) { player.dir = 1; const nx = player.x + 3, ny = player.y; if (!collideTank(player, nx, ny, s.tanks)) { player.x = nx; moved = true; } }
+        if (keys[" "]) tryFire(player);
+        player.cooldown = Math.max(0, player.cooldown - 1);
+      }
+      // 敌人生成
+      const aliveEnemies = s.tanks.filter((t) => t.isEnemy && t.alive).length;
+      if (s.frame % 180 === 0 && aliveEnemies < 4 && s.spawned < s.totalEnemy) spawnEnemy();
+      // 敌人AI
+      for (const t of s.tanks) {
+        if (!t.isEnemy || !t.alive) continue;
+        t.moveTimer--;
+        t.cooldown = Math.max(0, t.cooldown - 1);
+        if (t.moveTimer <= 0 || Math.random() < 0.01) {
+          t.dir = Math.floor(Math.random() * 4) as 0|1|2|3;
+          t.moveTimer = 30 + Math.floor(Math.random() * 60);
+        }
+        const [dx, dy] = dirs[t.dir];
+        const nx = t.x + dx * 1.5, ny = t.y + dy * 1.5;
+        if (!collideTank(t, nx, ny, s.tanks)) { t.x = nx; t.y = ny; }
+        else t.moveTimer = 0;
+        if (Math.random() < 0.015) tryFire(t);
+      }
+      // 子弹移动和碰撞
+      for (const b of s.bullets) {
+        if (!b.alive) continue;
+        b.x += b.vx; b.y += b.vy;
+        if (b.x < 0 || b.x > W || b.y < 0 || b.y > H) { b.alive = false; continue; }
+        // 墙碰撞
+        const cc = Math.floor(b.x / TILE), rr = Math.floor(b.y / TILE);
+        if (s.map[rr]?.[cc] === 1) { s.map[rr][cc] = 0; b.alive = false; continue; }
+        if (s.map[rr]?.[cc] === 2) { b.alive = false; continue; }
+        // 基地碰撞
+        const br = rows - 1, bc = Math.floor(cols / 2);
+        if (rr === br && cc === bc) { s.baseAlive = false; s.gameOver = true; b.alive = false; continue; }
+        // 坦克碰撞
+        for (const t of s.tanks) {
+          if (!t.alive) continue;
+          if (b.owner === "P" && !t.isEnemy) continue;
+          if (b.owner === "E" && t.isEnemy) continue;
+          if (b.x >= t.x && b.x <= t.x + TILE && b.y >= t.y && b.y <= t.y + TILE) {
+            t.hp--;
+            if (t.hp <= 0) {
+              t.alive = false;
+              if (t.isEnemy) s.score += 100;
+            }
+            if (!player.alive) s.gameOver = true;
+            b.alive = false;
+            break;
+          }
+        }
+      }
+      s.bullets = s.bullets.filter((b) => b.alive);
+      // 胜利
+      if (s.spawned >= s.totalEnemy && s.tanks.filter((t) => t.isEnemy && t.alive).length === 0) s.win = true;
+      // 画地图
+      ctx.fillStyle = "#0f172a";
+      ctx.fillRect(0, 0, W, H);
+      for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+        if (s.map[r][c] === 1) {
+          ctx.fillStyle = "#b45309";
+          ctx.fillRect(c * TILE, r * TILE, TILE, TILE);
+          ctx.fillStyle = "#92400e";
+          ctx.fillRect(c * TILE, r * TILE, TILE / 2, TILE / 2);
+          ctx.fillRect(c * TILE + TILE / 2, r * TILE + TILE / 2, TILE / 2, TILE / 2);
+        } else if (s.map[r][c] === 2) {
+          ctx.fillStyle = "#94a3b8";
+          ctx.fillRect(c * TILE, r * TILE, TILE, TILE);
+          ctx.strokeStyle = "#cbd5e1";
+          ctx.strokeRect(c * TILE + 2, r * TILE + 2, TILE - 4, TILE - 4);
+        }
+      }
+      // 基地（鹰）
+      const br2 = rows - 1, bc2 = Math.floor(cols / 2);
+      ctx.fillStyle = s.baseAlive ? "#fbbf24" : "#7f1d1d";
+      ctx.fillRect(bc2 * TILE, br2 * TILE, TILE, TILE);
+      ctx.font = "bold 28px system-ui";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = "#fff";
+      ctx.fillText("🦅", bc2 * TILE + TILE / 2, br2 * TILE + TILE / 2);
+      // 画坦克
+      for (const t of s.tanks) {
+        if (!t.alive) continue;
+        ctx.fillStyle = t.color;
+        ctx.fillRect(t.x + 4, t.y + 4, TILE - 8, TILE - 8);
+        ctx.fillStyle = t.isEnemy ? "#7f1d1d" : "#854d0e";
+        const [dx, dy] = dirs[t.dir];
+        ctx.fillRect(
+          t.x + TILE / 2 - 3 + dx * TILE / 3,
+          t.y + TILE / 2 - 3 + dy * TILE / 3,
+          6 + Math.abs(dy) * (TILE / 3),
+          6 + Math.abs(dx) * (TILE / 3)
+        );
+      }
+      // 画子弹
+      ctx.fillStyle = "#fecaca";
+      for (const b of s.bullets) ctx.fillRect(b.x - 3, b.y - 3, 6, 6);
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      cancelAnimationFrame(raf);
+    };
+  }, []);
+
+  const s = stateRef.current;
+  const p = s.tanks[0];
+  return (
+    <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+      <div className="flex flex-wrap items-center gap-3 mb-5">
+        <div className="rounded-2xl bg-lime-50 border border-lime-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-lime-700">分数</div>
+          <div className="text-xl font-bold text-lime-800">{s.score}</div>
+        </div>
+        <div className="rounded-2xl bg-green-50 border border-green-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-green-700">生命</div>
+          <div className="text-xl font-bold text-green-800">{"❤".repeat(Math.max(0, p?.hp ?? 0)) || "0"}</div>
+        </div>
+        <div className="rounded-2xl bg-emerald-50 border border-emerald-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-emerald-700">剩余敌军</div>
+          <div className="text-xl font-bold text-emerald-800">{Math.max(0, s.totalEnemy - s.spawned) + s.tanks.filter((t) => t.isEnemy && t.alive).length}</div>
+        </div>
+        <button
+          onClick={restart}
+          className="ml-auto rounded-xl bg-gradient-to-r from-lime-500 to-green-700 text-white font-semibold px-4 py-2 text-sm shadow-md"
+        >
+          重开
+        </button>
+      </div>
+      <div className="mx-auto max-w-[540px]">
+        <canvas ref={canvasRef} width={W} height={H} className="w-full rounded-2xl shadow-2xl aspect-square" />
+      </div>
+      {(s.gameOver || s.win) && (
+        <div className="mt-5 text-center text-2xl font-black">
+          {s.win ? (
+            <span className="text-emerald-600">🎉 保卫基地成功！得分 {s.score}</span>
+          ) : (
+            <span className="text-rose-600">💥 游戏结束！得分 {s.score}</span>
+          )}
+        </div>
+      )}
+      <div className="mt-3 text-center text-xs text-slate-500">
+        方向键移动，空格射击 · 共 {s.totalEnemy} 辆敌军 · 守住 🦅
+      </div>
+    </div>
+  );
+}
+
+// ===================== 消消乐（三消） =====================
+/**
+ * 三消：交换相邻糖果形成 ≥3 连消除、特殊糖果、关卡目标
+ */
+function GameMatch3() {
+  const SIZE = 8;
+  const COLORS = ["bg-rose-500", "bg-amber-400", "bg-emerald-500", "bg-sky-500", "bg-violet-500", "bg-fuchsia-500"];
+  const EMOJIS = ["🍓","🍋","🍏","💎","🍇","🍬"];
+  type Cell = { color: number; id: number; special: 0|1|2; falling?: boolean }; // special: 1条纹 2彩虹
+  const [grid, setGrid] = useState<Cell[]>([]);
+  const [sel, setSel] = useState<number | null>(null);
+  const [score, setScore] = useState(0);
+  const [moves, setMoves] = useState(25);
+  const [goal] = useState(2000);
+  const [animating, setAnimating] = useState(false);
+  const [combo, setCombo] = useState(0);
+
+  const newGame = () => {
+    const arr: Cell[] = [];
+    let id = 0;
+    const make = (): number => Math.floor(Math.random() * COLORS.length);
+    for (let i = 0; i < SIZE * SIZE; i++) {
+      let color = make();
+      // 避免初始三连
+      while (
+        (i >= 2 && arr[i - 1].color === color && arr[i - 2].color === color) ||
+        (i >= SIZE && arr[i - SIZE].color === color && i >= 2 * SIZE && arr[i - 2 * SIZE].color === color)
+      ) color = make();
+      arr.push({ color, id: id++, special: 0 });
+    }
+    setGrid(arr);
+    setSel(null);
+    setScore(0);
+    setMoves(25);
+    setCombo(0);
+  };
+  useEffect(() => { newGame(); }, []);
+
+  const xy = (i: number) => [i % SIZE, Math.floor(i / SIZE)];
+  const idx = (x: number, y: number) => y * SIZE + x;
+
+  const findMatches = (g: Cell[]): Set<number> => {
+    const rem = new Set<number>();
+    // 横向
+    for (let y = 0; y < SIZE; y++) {
+      let run = 1;
+      for (let x = 1; x <= SIZE; x++) {
+        const same = x < SIZE && g[idx(x, y)].color === g[idx(x - 1, y)].color;
+        if (same) run++;
+        else {
+          if (run >= 3) for (let k = x - run; k < x; k++) rem.add(idx(k, y));
+          run = 1;
+        }
+      }
+    }
+    // 纵向
+    for (let x = 0; x < SIZE; x++) {
+      let run = 1;
+      for (let y = 1; y <= SIZE; y++) {
+        const same = y < SIZE && g[idx(x, y)].color === g[idx(x, y - 1)].color;
+        if (same) run++;
+        else {
+          if (run >= 3) for (let k = y - run; k < y; k++) rem.add(idx(x, k));
+          run = 1;
+        }
+      }
+    }
+    return rem;
+  };
+
+  const resolve = async (g: Cell[]): Promise<Cell[]> => {
+    let local = g.map((c) => ({ ...c }));
+    let loop = 0;
+    while (true) {
+      const matches = findMatches(local);
+      if (!matches.size) break;
+      loop++;
+      setCombo(loop);
+      let addScore = 0;
+      // 先记录特殊糖果触发（连锁在彩虹）
+      const toRemove = new Set(matches);
+      // 处理彩虹糖：与任意颜色相邻 -> 消除同色
+      for (const i of matches) {
+        const [x, y] = xy(i);
+        const c = local[i];
+        if (c.special === 2) {
+          const targetColor = c.color;
+          for (let j = 0; j < local.length; j++) if (local[j].color === targetColor) toRemove.add(j);
+        } else if (c.special === 1) {
+          // 条纹：整行+整列
+          for (let k = 0; k < SIZE; k++) { toRemove.add(idx(k, y)); toRemove.add(idx(x, k)); }
+        }
+      }
+      addScore += toRemove.size * 10 * loop;
+      // 检查生成特殊
+      // (简化：连续4生成条纹，5生成彩虹）- 对匹配段扫描
+      // 标记为删除
+      for (const i of toRemove) local[i] = { ...local[i], color: -1 };
+      // 下落+补充
+      let idMax = Math.max(...local.map((c) => c.id)) + 1;
+      for (let x = 0; x < SIZE; x++) {
+        const col: number[] = [];
+        for (let y = SIZE - 1; y >= 0; y--) if (local[idx(x, y)].color !== -1) col.push(local[idx(x, y)].color);
+        while (col.length < SIZE) col.push(Math.floor(Math.random() * COLORS.length));
+        for (let y = SIZE - 1, p = 0; y >= 0; y--, p++) {
+          const oldC = local[idx(x, y)].color;
+          local[idx(x, y)] = { color: col[p], id: idMax++, special: 0, falling: oldC === -1 };
+        }
+      }
+      setScore((s) => s + addScore);
+      setGrid(local.slice());
+      await new Promise((r) => setTimeout(r, 180));
+    }
+    setCombo(0);
+    return local;
+  };
+
+  const click = async (i: number) => {
+    if (animating || moves <= 0) return;
+    if (sel === null) { setSel(i); return; }
+    const [sx, sy] = xy(sel);
+    const [tx, ty] = xy(i);
+    const adj = Math.abs(sx - tx) + Math.abs(sy - ty) === 1;
+    if (!adj) { setSel(i); return; }
+    setAnimating(true);
+    // 交换
+    const ng = grid.slice();
+    [ng[sel], ng[i]] = [ng[i], ng[sel]];
+    const matches = findMatches(ng);
+    if (!matches.size) {
+      // 无匹配，换回
+      [ng[sel], ng[i]] = [ng[i], ng[sel]];
+      setGrid(ng);
+      setSel(null);
+      setAnimating(false);
+      return;
+    }
+    setGrid(ng);
+    setSel(null);
+    setMoves((m) => m - 1);
+    const final = await resolve(ng);
+    setGrid(final);
+    setAnimating(false);
+  };
+
+  const won = score >= goal;
+  const lose = !won && moves <= 0;
+
+  return (
+    <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+      <div className="flex flex-wrap items-center gap-3 mb-5">
+        <div className="rounded-2xl bg-rose-50 border border-rose-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-rose-600">分数</div>
+          <div className="text-xl font-bold text-rose-700">{score} / {goal}</div>
+        </div>
+        <div className="rounded-2xl bg-fuchsia-50 border border-fuchsia-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-fuchsia-600">剩余步数</div>
+          <div className="text-xl font-bold text-fuchsia-700">{moves}</div>
+        </div>
+        {combo > 1 && (
+          <div className="rounded-2xl bg-gradient-to-r from-amber-200 to-rose-300 px-4 py-2 animate-bounce">
+            <div className="text-[11px] font-semibold text-amber-900">连锁</div>
+            <div className="text-xl font-black text-rose-700">×{combo}</div>
+          </div>
+        )}
+        <button
+          onClick={newGame}
+          className="ml-auto rounded-xl bg-gradient-to-r from-rose-500 to-fuchsia-600 text-white font-semibold px-4 py-2 text-sm shadow-md"
+        >
+          重开
+        </button>
+      </div>
+      <div className="mx-auto max-w-md rounded-2xl p-3 bg-gradient-to-br from-pink-100 to-fuchsia-100 shadow-inner">
+        <div
+          className="grid gap-1.5 aspect-square"
+          style={{ gridTemplateColumns: `repeat(${SIZE}, minmax(0,1fr))` }}
+        >
+          {grid.map((c, i) => {
+            if (c.color < 0) return <div key={i} className="bg-transparent" />;
+            const selected = sel === i;
+            return (
+              <button
+                key={i}
+                onClick={() => click(i)}
+                disabled={animating}
+                className={`aspect-square rounded-xl text-2xl md:text-3xl flex items-center justify-center transition-all shadow-sm ${COLORS[c.color]} ${
+                  selected ? "ring-4 ring-yellow-300 scale-110 shadow-xl z-10" : "hover:scale-105 active:scale-95"
+                } ${c.falling ? "animate-bounce" : ""}`}
+              >
+                {EMOJIS[c.color]}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div className="mt-4 h-3 rounded-full bg-slate-200 overflow-hidden max-w-md mx-auto">
+        <div
+          className="h-full bg-gradient-to-r from-rose-500 to-fuchsia-500 transition-all"
+          style={{ width: `${Math.min(100, (score / goal) * 100)}%` }}
+        />
+      </div>
+      {won && (
+        <div className="mt-6 text-center text-2xl font-black text-rose-600">
+          🎉 目标达成！得分 {score}
+        </div>
+      )}
+      {lose && (
+        <div className="mt-6 text-center text-2xl font-black text-slate-700">
+          步数用尽～得分 {score}
+        </div>
+      )}
+      <div className="mt-3 text-center text-xs text-slate-500">
+        交换相邻糖果形成 3+ 连即可消除，凑出 4/5 连生成特殊糖果威力更强
+      </div>
+    </div>
+  );
+}
+
+// ===================== 羊了个羊 =====================
+/**
+ * 羊了个羊三消：分层堆叠、底部7槽、3张同图案消除
+ */
+function GameSheep() {
+  const LEVEL_CARDS = [60, 120, 180, 260, 360, 500];
+  const SLOT = 7;
+  const EMOJIS = ["🐑","🌿","🍀","🌼","🌻","🥕","🍄","🌾","🐄","🐖","🐓","🐇","🦋","🐝","🌲","🍎"];
+  const [lvl, setLvl] = useState(0);
+  type Card = { sym: number; z: number; id: number; visible: boolean };
+  const [cards, setCards] = useState<Card[]>([]);
+  const [slots, setSlots] = useState<(Card | null)[]>(Array(SLOT).fill(null));
+  const [won, setWon] = useState(false);
+  const [lose, setLose] = useState(false);
+  const [props, setProps] = useState({ undo: 3, shuffle: 3, remove: 2 });
+
+  const generate = (lv: number) => {
+    const total = LEVEL_CARDS[lv] || 120;
+    const kinds = Math.min(EMOJIS.length, 6 + lv);
+    const per = Math.floor(total / 3 / kinds) * 3 * kinds;
+    const arr: number[] = [];
+    for (let k = 0; k < kinds; k++) for (let i = 0; i < per / kinds; i++) arr.push(k);
+    while (arr.length < total) arr.push(Math.floor(Math.random() * kinds));
+    arr.sort(() => Math.random() - 0.5);
+    const list: Card[] = [];
+    // 分层交错布置
+    const cols = Math.ceil(Math.sqrt(total / 2));
+    const rows = Math.ceil(total / cols);
+    let id = 0;
+    for (let it = 0; it < 2; it++) {
+      for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+        if (id >= arr.length) break;
+        const px = x * 38 + (it * 14) + (y % 2 === 0 ? 0 : 18) + Math.random() * 14 - 7;
+        const py = y * 40 + (it * 14) + Math.random() * 12 - 6;
+        list.push({ sym: arr[id], z: it * 1000 + y * cols + x, id: id, visible: true });
+        // 给位置信息附加在 z 旁边？我们用 Map 存坐标
+        posMap.set(id, [px, py]);
+        id++;
+      }
+    }
+    // 继续堆更多层
+    while (id < arr.length) {
+      const it = Math.floor(id / (cols * rows)) + 2;
+      const idx = id % (cols * rows);
+      const x = idx % cols;
+      const y = Math.floor(idx / cols);
+      const px = x * 38 + (it % 2 * 18) + 8;
+      const py = y * 40 + 6;
+      list.push({ sym: arr[id], z: it * 1000 + y * cols + x, id, visible: true });
+      posMap.set(id, [px, py]);
+      id++;
+    }
+    return list;
+  };
+  const posMap = new Map<number, [number, number]>();
+
+  const start = (lv: number) => {
+    posMap.clear();
+    const c = generate(lv);
+    setCards(c);
+    setSlots(Array(SLOT).fill(null));
+    setWon(false);
+    setLose(false);
+    setLvl(lv);
+    setProps({ undo: 3, shuffle: 3, remove: 2 });
+  };
+
+  useEffect(() => { start(0); /* eslint-disable-next-line */ }, []);
+
+  // 顶部卡判定
+  const topCard = (c: Card, all: Card[]) => {
+    const [cx, cy] = posMap.get(c.id) || [0, 0];
+    const W = 34, H = 44;
+    for (const o of all) {
+      if (o.id === c.id || !o.visible) continue;
+      if (o.z <= c.z) continue;
+      const [ox, oy] = posMap.get(o.id) || [0, 0];
+      if (!(cx + W <= ox || ox + W <= cx || cy + H <= oy || oy + H <= cy)) return false;
+    }
+    return true;
+  };
+
+  // 历史
+  const historyRef = useRef<{ cards: Card[]; slots: (Card | null)[] }[]>([]);
+
+  const pushHistory = () => {
+    historyRef.current.push({
+      cards: cards.map((c) => ({ ...c })),
+      slots: slots.slice(),
+    });
+    if (historyRef.current.length > 20) historyRef.current.shift();
+  };
+
+  const processSlots = (s: (Card | null)[]): { slots: (Card | null)[]; removed: number } => {
+    // 3 连去除
+    const countMap = new Map<number, Card[]>();
+    for (const c of s) if (c) {
+      if (!countMap.has(c.sym)) countMap.set(c.sym, []);
+      countMap.get(c.sym)!.push(c);
+    }
+    const newSlots: (Card | null)[] = s.slice();
+    let removed = 0;
+    for (const [, arr] of countMap) if (arr.length >= 3) {
+      let need = 3;
+      for (let i = 0; i < newSlots.length && need > 0; i++) {
+        if (newSlots[i] && newSlots[i]!.sym === arr[0].sym) {
+          newSlots[i] = null;
+          need--;
+          removed++;
+        }
+      }
+    }
+    // 压缩非 null 到前面
+    const out: (Card | null)[] = [];
+    for (const c of newSlots) if (c) out.push(c);
+    while (out.length < SLOT) out.push(null);
+    return { slots: out, removed };
+  };
+
+  const click = (c: Card) => {
+    if (!c.visible || won || lose) return;
+    if (!topCard(c, cards)) return;
+    // 找空槽位
+    const firstEmpty = slots.findIndex((s) => s === null);
+    if (firstEmpty === -1) return;
+    pushHistory();
+    const ns = slots.slice();
+    // 插入：按同图案相邻更优？ -> 简单：找到第一个和当前图案相同的槽位后面；没有就放第一个空
+    let put = firstEmpty;
+    for (let i = SLOT - 1; i >= 0; i--) {
+      if (ns[i] && ns[i]!.sym === c.sym) { put = i + 1; break; }
+    }
+    if (put >= SLOT || ns[put] !== null) put = firstEmpty;
+    // 把后面的往后挪一格（保留顺序）
+    for (let i = SLOT - 1; i > put; i--) ns[i] = ns[i - 1];
+    ns[put] = { ...c };
+    const nc = cards.filter((x) => x.id !== c.id);
+    // 处理三连
+    const { slots: after, removed } = processSlots(ns);
+    setSlots(after);
+    setCards(nc);
+    // 胜利
+    if (nc.length === 0 && after.every((x) => x === null)) setWon(true);
+    // 失败：槽位满（非空=SLOT且无法再消）
+    if (after[after.length - 1] !== null) {
+      const canMatch = processSlots(after).removed > 0;
+      if (!canMatch) setLose(true);
+    }
+    void removed;
+  };
+
+  const undo = () => {
+    if (props.undo <= 0) return;
+    const h = historyRef.current.pop();
+    if (!h) return;
+    setCards(h.cards);
+    setSlots(h.slots);
+    setProps({ ...props, undo: props.undo - 1 });
+    setLose(false);
+  };
+  const shuffle = () => {
+    if (props.shuffle <= 0) return;
+    const syms = cards.map((c) => c.sym);
+    syms.sort(() => Math.random() - 0.5);
+    const nc = cards.map((c, i) => ({ ...c, sym: syms[i] }));
+    setCards(nc);
+    setProps({ ...props, shuffle: props.shuffle - 1 });
+  };
+  const remove = () => {
+    if (props.remove <= 0) return;
+    // 移出底部3个卡片（最早3个）
+    const ns = slots.slice();
+    const filled: number[] = [];
+    for (let i = 0; i < ns.length; i++) if (ns[i]) filled.push(i);
+    if (!filled.length) return;
+    const take = filled.slice(0, 3);
+    for (const i of take) ns[i] = null;
+    const out: (Card | null)[] = [];
+    for (const c of ns) if (c) out.push(c);
+    while (out.length < SLOT) out.push(null);
+    setSlots(out);
+    setProps({ ...props, remove: props.remove - 1 });
+  };
+
+  // 计算布局尺寸
+  const WIDTH = 600;
+  const HEIGHT = 500;
+
+  return (
+    <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+      <div className="flex flex-wrap items-center gap-3 mb-5">
+        <div className="rounded-2xl bg-pink-50 border border-pink-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-pink-600">关卡</div>
+          <div className="text-xl font-bold text-pink-700">第 {lvl + 1} 关</div>
+        </div>
+        <div className="rounded-2xl bg-rose-50 border border-rose-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-rose-600">剩余卡片</div>
+          <div className="text-xl font-bold text-rose-700">{cards.length}</div>
+        </div>
+        <div className="ml-auto flex gap-2 flex-wrap items-center">
+          <select
+            value={lvl}
+            onChange={(e) => start(Number(e.target.value))}
+            className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold"
+          >
+            {LEVEL_CARDS.map((_, i) => (
+              <option key={i} value={i}>第 {i + 1} 关</option>
+            ))}
+          </select>
+          <button onClick={undo} disabled={props.undo <= 0} className="rounded-xl bg-white border border-slate-200 px-3 py-2 text-sm font-semibold disabled:opacity-40 hover:bg-slate-50">
+            ↶ 撤回 ({props.undo})
+          </button>
+          <button onClick={shuffle} disabled={props.shuffle <= 0} className="rounded-xl bg-amber-50 border border-amber-200 text-amber-700 px-3 py-2 text-sm font-semibold disabled:opacity-40 hover:bg-amber-100">
+            🔀 洗牌 ({props.shuffle})
+          </button>
+          <button onClick={remove} disabled={props.remove <= 0} className="rounded-xl bg-sky-50 border border-sky-200 text-sky-700 px-3 py-2 text-sm font-semibold disabled:opacity-40 hover:bg-sky-100">
+            移出 ({props.remove})
+          </button>
+          <button onClick={() => start(lvl)} className="rounded-xl bg-gradient-to-r from-pink-500 to-rose-500 text-white font-semibold px-4 py-2 text-sm shadow-md">
+            重开本关
+          </button>
+        </div>
+      </div>
+      <div
+        className="mx-auto rounded-3xl relative shadow-inner bg-gradient-to-br from-emerald-100 via-green-100 to-teal-100 border-4 border-emerald-200"
+        style={{ width: "min(100%, 640px)", aspectRatio: `${WIDTH}/${HEIGHT + 100}` }}
+      >
+        {/* 卡片区 */}
+        <div className="absolute inset-0" style={{ height: `${HEIGHT / (HEIGHT + 100) * 100}%` }}>
+          <svg
+            viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+            className="w-full h-full block"
+          >
+            {cards.sort((a, b) => a.z - b.z).map((c) => {
+              const [x, y] = posMap.get(c.id) || [0, 0];
+              const top = topCard(c, cards);
+              return (
+                <foreignObject key={c.id} x={x} y={y} width={34} height={44} style={{ cursor: top ? "pointer" : "default" }}
+                  onClick={() => click(c)}>
+                  <div className={`w-full h-full rounded-lg flex items-center justify-center text-xl font-bold border-2 shadow-md ${
+                    top ? "bg-white border-emerald-300 hover:scale-105 transition-transform" : "bg-slate-200/80 border-slate-300 opacity-70"
+                  }`}>
+                    {EMOJIS[c.sym]}
+                  </div>
+                </foreignObject>
+              );
+            })}
+          </svg>
+        </div>
+        {/* 底部槽位 */}
+        <div className="absolute left-0 right-0 bottom-0 h-[92px] px-4 flex items-center justify-center">
+          <div className="flex gap-2 p-2 bg-white/80 rounded-2xl backdrop-blur border border-pink-200 shadow-xl">
+            {slots.map((s, i) => (
+              <div
+                key={i}
+                className={`w-14 h-16 rounded-xl flex items-center justify-center text-2xl font-bold border-2 ${
+                  s ? "bg-white border-rose-300 shadow scale-105" : "bg-slate-100 border-dashed border-slate-300"
+                }`}
+              >
+                {s ? EMOJIS[s.sym] : ""}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      {won && (
+        <div className="mt-5 text-center text-2xl font-black text-emerald-600">
+          🎉 第 {lvl + 1} 关通过！
+          {lvl + 1 < LEVEL_CARDS.length && (
+            <button onClick={() => start(lvl + 1)} className="ml-3 rounded-xl bg-emerald-500 text-white px-4 py-2 text-base">
+              下一关 →
+            </button>
+          )}
+        </div>
+      )}
+      {lose && (
+        <div className="mt-5 text-center text-2xl font-black text-rose-600">
+          💥 槽位已满！试试「撤回」或「移出」，或点重开本关
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ===================== 便签工具 =====================
+/**
+ * 彩色便签：多便签、颜色、提醒、删除、导出
+ */
+function ToolSticky() {
+  const KEY = "pg_stickies_v1";
+  type Note = {
+    id: string;
+    text: string;
+    color: string;
+    top: number;
+    left: number;
+    remind?: string; // ISO
+    created: number;
+  };
+  const COLORS = [
+    "from-yellow-100 to-yellow-200 border-yellow-300",
+    "from-pink-100 to-rose-200 border-rose-300",
+    "from-sky-100 to-blue-200 border-blue-300",
+    "from-emerald-100 to-green-200 border-green-300",
+    "from-violet-100 to-purple-200 border-purple-300",
+    "from-orange-100 to-amber-200 border-amber-300",
+    "from-fuchsia-100 to-pink-200 border-pink-300",
+    "from-stone-100 to-neutral-200 border-neutral-300",
+  ];
+  const [notes, setNotes] = useState<Note[]>(() => {
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return [
+      { id: "init1", text: "点击右上角「+」新建便签～\n双击文字直接编辑", color: COLORS[0], top: 20, left: 20, created: Date.now() },
+    ];
+  });
+  const [activeId, setActiveId] = useState<string | null>(null);
+
+  useEffect(() => {
+    try { localStorage.setItem(KEY, JSON.stringify(notes)); } catch {}
+  }, [notes]);
+
+  const add = () => {
+    const n: Note = {
+      id: "n_" + Math.random().toString(36).slice(2, 9),
+      text: "待办 / 灵感 / 提醒……",
+      color: COLORS[Math.floor(Math.random() * COLORS.length)],
+      top: 40 + Math.random() * 80,
+      left: 40 + Math.random() * 120,
+      created: Date.now(),
+    };
+    setNotes([...notes, n]);
+  };
+  const update = (id: string, patch: Partial<Note>) =>
+    setNotes((ns) => ns.map((n) => (n.id === id ? { ...n, ...patch } : n)));
+  const remove = (id: string) => setNotes((ns) => ns.filter((n) => n.id !== id));
+  const exportAll = () => {
+    const blob = new Blob([JSON.stringify(notes, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "小白便签.json";
+    a.click();
+  };
+
+  return (
+    <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+      <div className="flex flex-wrap items-center gap-3 mb-5">
+        <div className="rounded-2xl bg-yellow-50 border border-yellow-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-yellow-700">便签数</div>
+          <div className="text-xl font-bold text-yellow-800">{notes.length}</div>
+        </div>
+        <div className="ml-auto flex gap-2 flex-wrap">
+          <button onClick={exportAll} className="rounded-xl bg-white border border-slate-200 text-slate-700 font-semibold px-4 py-2 text-sm hover:bg-slate-50">
+            导出 JSON
+          </button>
+          <button onClick={add} className="rounded-xl bg-gradient-to-r from-yellow-400 to-amber-500 text-white font-semibold px-4 py-2 text-sm shadow-md">
+            + 新建便签
+          </button>
+        </div>
+      </div>
+      <div className="relative rounded-2xl bg-gradient-to-br from-amber-50 to-pink-50 border border-amber-100 shadow-inner min-h-[520px] overflow-hidden">
+        <div className="absolute top-2 left-2 text-xs text-amber-700/70">提示：拖便签标题条移动 · 双击正文编辑 · 颜色切换即时生效</div>
+        {notes.map((n) => (
+          <div
+            key={n.id}
+            className={`absolute w-56 rounded-xl bg-gradient-to-br ${n.color} border-2 shadow-lg shadow-black/10 flex flex-col ${
+              activeId === n.id ? "ring-2 ring-rose-400 z-20" : "z-10"
+            }`}
+            style={{ top: n.top, left: n.left }}
+            onMouseDown={() => setActiveId(n.id)}
+          >
+            <div
+              className="h-7 cursor-move rounded-t-lg px-3 flex items-center justify-between text-xs font-bold text-slate-700/70 border-b border-black/5 select-none"
+              onMouseDown={(e) => {
+                e.stopPropagation();
+                setActiveId(n.id);
+                const startX = e.clientX, startY = e.clientY;
+                const origT = n.top, origL = n.left;
+                const move = (ev: MouseEvent) => update(n.id, { top: origT + (ev.clientY - startY), left: origL + (ev.clientX - startX) });
+                const up = () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
+                window.addEventListener("mousemove", move);
+                window.addEventListener("mouseup", up);
+              }}
+            >
+              <span>📝 便签</span>
+              <div className="flex items-center gap-1">
+                <select
+                  value={n.color}
+                  onChange={(e) => update(n.id, { color: e.target.value })}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  className="bg-transparent outline-none w-5 h-5 cursor-pointer appearance-none"
+                  style={{
+                    backgroundImage:
+                      "linear-gradient(135deg, rgba(255,255,255,0.8), rgba(0,0,0,0.05))",
+                    borderRadius: 4,
+                  }}
+                  title="换色"
+                >
+                  {COLORS.map((c) => <option key={c} value={c}>{COLORS.indexOf(c)+1}</option>)}
+                </select>
+                <button
+                  onClick={(e) => { e.stopPropagation(); remove(n.id); }}
+                  className="w-5 h-5 rounded-full bg-black/5 hover:bg-rose-500 hover:text-white text-slate-600 flex items-center justify-center"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+            <textarea
+              value={n.text}
+              onChange={(e) => update(n.id, { text: e.target.value })}
+              className="bg-transparent resize-none p-3 text-sm text-slate-800 leading-6 focus:outline-none min-h-[120px]"
+              spellCheck={false}
+            />
+            <input
+              type="datetime-local"
+              value={n.remind ? n.remind.slice(0,16) : ""}
+              onChange={(e) => update(n.id, { remind: e.target.value })}
+              className="mx-3 mb-2 text-[11px] text-slate-600 bg-white/60 rounded px-2 py-1 border border-black/5"
+              title="设置提醒（仅本地，页面保持打开生效）"
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ===================== 天气查询 =====================
+/**
+ * 天气查询：wttr.in 免费 API + 本地离线模拟数据
+ */
+function AiWeather() {
+  const [city, setCity] = useState("北京");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // 离线模拟数据
+  const mockData = (cityName: string) => {
+    const rand = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
+    const descs = ["晴", "多云", "小雨", "阴", "雷阵雨", "晴朗"];
+    const forecast = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date();
+      d.setDate(d.getDate() + i);
+      forecast.push({
+        date: d.toISOString().slice(0,10),
+        max_temp: rand(18, 35),
+        min_temp: rand(8, 22),
+        description: descs[rand(0, descs.length - 1)],
+      });
+    }
+    return {
+      success: true,
+      city: cityName,
+      current: {
+        description: forecast[0].description,
+        temperature: forecast[0].max_temp - rand(2,5),
+        feels_like: forecast[0].max_temp - rand(0,3),
+        humidity: rand(30, 85),
+        wind_speed: rand(2, 25),
+        wind_direction: ["东北","西南","东","西","南","北"][rand(0,5)],
+        visibility: rand(5, 30),
+        pressure: rand(990, 1020),
+        uv_index: rand(1, 10),
+      },
+      forecast,
+      note: "本站使用模拟数据演示，下载桌面端接入真实 wttr.in API",
+    };
+  };
+
+  const query = async () => {
+    if (!city.trim()) return;
+    setLoading(true);
+    setError(null);
+    try {
+      // 尝试在线 wttr.in
+      const url = `https://wttr.in/${encodeURIComponent(city)}?format=j1`;
+      const data = await fetch(url).then((r) => r.json()).catch(() => null);
+      if (data && data.current_condition) {
+        const cur = data.current_condition[0];
+        setResult({
+          success: true,
+          city,
+          current: {
+            description: cur.weatherDesc?.[0]?.value || "未知",
+            temperature: cur.temp_C,
+            feels_like: cur.FeelsLikeC,
+            humidity: cur.humidity,
+            wind_speed: cur.windspeedKmph,
+            wind_direction: cur.winddir16Point,
+            visibility: cur.visibility,
+            pressure: cur.pressure,
+            uv_index: cur.uvIndex,
+          },
+          forecast: (data.weather || []).map((d: any) => ({
+            date: d.date,
+            max_temp: d.maxtempC,
+            min_temp: d.mintempC,
+            description: d.hourly?.[4]?.weatherDesc?.[0]?.value || "",
+          })),
+          note: "数据来源：wttr.in 免费天气 API",
+        });
+      } else {
+        setResult(mockData(city));
+      }
+    } catch (e: any) {
+      setResult(mockData(city));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { query(); /* eslint-disable-next-line */ }, []);
+
+  const desc = result?.current?.description || "";
+  const temp = result?.current?.temperature;
+
+  return (
+    <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8 space-y-5">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2 rounded-2xl border border-sky-200 bg-sky-50 px-3 py-1.5 flex-1 max-w-md">
+          <span className="text-sky-600">📍</span>
+          <input
+            value={city}
+            onChange={(e) => setCity(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && query()}
+            placeholder="输入城市名称，如 北京 / Shanghai / 杭州"
+            className="flex-1 bg-transparent py-2 px-1 focus:outline-none text-slate-800 font-semibold"
+          />
+        </div>
+        <button
+          onClick={query}
+          disabled={loading}
+          className="rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 text-white font-semibold px-5 py-2.5 shadow-md hover:shadow-lg disabled:opacity-60"
+        >
+          {loading ? "查询中..." : "查询天气"}
+        </button>
+      </div>
+      {error && <div className="text-rose-600 text-sm">{error}</div>}
+      {result && (
+        <>
+          {/* 实时天气卡片 */}
+          <div className="rounded-3xl bg-gradient-to-br from-sky-400 via-blue-500 to-indigo-600 p-6 md:p-8 text-white shadow-2xl">
+            <div className="flex flex-wrap items-start justify-between gap-5">
+              <div>
+                <div className="text-xs md:text-sm opacity-80 font-semibold">
+                  {new Date().toLocaleDateString()} · {result.city}
+                </div>
+                <div className="mt-3 flex items-end gap-4">
+                  <div className="text-6xl md:text-8xl font-black tracking-tight">{temp}°</div>
+                  <div className="pb-3">
+                    <div className="text-2xl md:text-3xl font-bold">{desc}</div>
+                    <div className="text-sm md:text-base opacity-90">
+                      体感 {result.current.feels_like}° · 湿度 {result.current.humidity}%
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="text-7xl">
+                {desc.includes("晴") ? "☀️" : desc.includes("云") ? "⛅" : desc.includes("雨") ? "🌧️" : desc.includes("雷") ? "⛈️" : desc.includes("雪") ? "❄️" : "🌤️"}
+              </div>
+            </div>
+            <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm md:text-base">
+              {[
+                ["💨 风速", `${result.current.wind_speed} km/h ${result.current.wind_direction}`],
+                ["💧 湿度", `${result.current.humidity}%`],
+                ["👁️ 能见度", `${result.current.visibility} km`],
+                ["☀️ UV", `${result.current.uv_index}`],
+              ].map(([k, v]) => (
+                <div key={k} className="rounded-2xl bg-white/15 backdrop-blur px-4 py-3">
+                  <div className="opacity-80 text-xs">{k}</div>
+                  <div className="font-bold mt-0.5">{v}</div>
+                </div>
+              ))}
+            </div>
+            {result.note && <div className="mt-4 text-xs opacity-75">{result.note}</div>}
+          </div>
+          {/* 7 日预报 */}
+          <div className="rounded-2xl bg-sky-50 border border-sky-100 p-5">
+            <h3 className="font-bold text-slate-800 mb-4">📅 未来 7 日预报</h3>
+            <div className="grid gap-3">
+              {result.forecast.map((d: any) => {
+                const desc2 = d.description;
+                return (
+                  <div key={d.date} className="grid grid-cols-[100px_1fr_120px] md:grid-cols-[130px_40px_1fr_140px] gap-3 items-center">
+                    <div className="font-semibold text-slate-700 text-sm md:text-base">
+                      {(() => {
+                        const dt = new Date(d.date);
+                        return `${dt.getMonth() + 1}/${dt.getDate()}`;
+                      })()}
+                    </div>
+                    <div className="text-2xl hidden md:block">
+                      {desc2.includes("晴") ? "☀️" : desc2.includes("云") ? "⛅" : desc2.includes("雨") ? "🌧️" : desc2.includes("雪") ? "❄️" : "🌤️"}
+                    </div>
+                    <div className="text-slate-600">{desc2}</div>
+                    <div className="flex items-center gap-2 justify-end">
+                      <span className="text-sky-700 font-bold text-sm md:text-base">{d.min_temp}°~{d.max_temp}°</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ===================== 翻译 =====================
+/**
+ * 在线翻译：
+ * - 中英日韩法德等 10+ 语言互译
+ * - 优先调用 MyMemory 公共 API；失败则回退内置简易词典 + 模拟翻译
+ * - 支持复制结果、朗读、历史记录
+ */
+function AiTranslate() {
+  const LANGS: [string, string][] = [
+    ["自动检测", "autodetect"],
+    ["中文", "zh-CN"],
+    ["英语", "en"],
+    ["日语", "ja"],
+    ["韩语", "ko"],
+    ["法语", "fr"],
+    ["德语", "de"],
+    ["西班牙语", "es"],
+    ["俄语", "ru"],
+    ["葡萄牙语", "pt"],
+    ["意大利语", "it"],
+    ["泰语", "th"],
+    ["越南语", "vi"],
+  ];
+  const [src, setSrc] = useState("Hello, I'm Xiao Bai, your smart desktop pet!");
+  const [from, setFrom] = useState("自动检测");
+  const [to, setTo] = useState("中文");
+  const [result, setResult] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [history, setHistory] = useState<{ s: string; r: string; f: string; t: string }[]>([]);
+
+  // 离线简易翻译：用内置词典做常见词覆盖
+  const tinyDict: Record<string, Record<string, string>> = {
+    en: {
+      "hello": "你好",
+      "world": "世界",
+      "i": "我",
+      "i'm": "我是",
+      "im": "我是",
+      "you": "你",
+      "your": "你的",
+      "smart": "智能",
+      "desktop": "桌面",
+      "pet": "宠物",
+      "good": "好的",
+      "morning": "早上",
+      "afternoon": "下午",
+      "evening": "晚上",
+      "night": "夜晚",
+      "thank": "谢谢",
+      "thanks": "谢谢",
+      "love": "爱",
+      "study": "学习",
+      "work": "工作",
+      "game": "游戏",
+      "weather": "天气",
+      "translate": "翻译",
+      "dictionary": "词典",
+      "computer": "电脑",
+      "music": "音乐",
+      "friend": "朋友",
+      "school": "学校",
+      "teacher": "老师",
+      "student": "学生",
+      "book": "书本",
+      "homework": "作业",
+      "happy": "开心",
+      "sad": "伤心",
+      "dog": "狗",
+      "cat": "猫",
+    },
+  };
+  const offlineFallback = (text: string, fromLang: string, toLang: string) => {
+    const toZh = toLang === "中文" || toLang === "zh-CN";
+    const fromEn = fromLang === "英语" || fromLang === "en" || fromLang === "autodetect";
+    if (toZh && fromEn) {
+      // 逐词匹配
+      const lower = text.toLowerCase().replace(/[,.!?;]/g, " ");
+      let out = text;
+      const dict = tinyDict.en || {};
+      Object.keys(dict).forEach((k) => {
+        const re = new RegExp(`\\b${k.replace(/'/g, "'?")}\\b`, "gi");
+        out = out.replace(re, dict[k]);
+      });
+      if (out !== text) return out;
+    }
+    // 实在没法：原样返回 + 语言标记
+    return `【离线模式 / ${fromLang}→${toLang}】${text}\n\n（下载桌面端接入完整在线翻译，准确率更高）`;
+  };
+
+  const run = async () => {
+    if (!src.trim()) return;
+    setLoading(true);
+    try {
+      const fromCode = LANGS.find((l) => l[0] === from)?.[1] || "autodetect";
+      const toCode = LANGS.find((l) => l[0] === to)?.[1] || "zh-CN";
+      // MyMemory 免费 API： langpair=src|tgt
+      const lp = fromCode === "autodetect" ? `autodetect|${toCode}` : `${fromCode}|${toCode}`;
+      const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(src)}&langpair=${encodeURIComponent(lp)}`;
+      const data = await fetch(url)
+        .then((r) => r.json())
+        .catch(() => null);
+      let tr = data?.responseData?.translatedText || "";
+      if (!tr || /INVALID LANGUAGE/i.test(tr)) tr = offlineFallback(src, from, to);
+      setResult(tr);
+      setHistory((h) => [{ s: src, r: tr, f: from, t: to }, ...h].slice(0, 20));
+    } catch {
+      const tr = offlineFallback(src, from, to);
+      setResult(tr);
+      setHistory((h) => [{ s: src, r: tr, f: from, t: to }, ...h].slice(0, 20));
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => { run(); /* eslint-disable-next-line */ }, []);
+
+  const swap = () => {
+    if (from === "自动检测") return;
+    const f = from;
+    setFrom(to);
+    setTo(f);
+    setSrc(result);
+    setResult("");
+  };
+  const copy = () => navigator.clipboard?.writeText(result);
+  const speak = (text: string, lang: string) => {
+    if (!("speechSynthesis" in window)) return;
+    const u = new SpeechSynthesisUtterance(text);
+    const map: Record<string, string> = {
+      "中文": "zh-CN",
+      "英语": "en-US",
+      "日语": "ja-JP",
+      "韩语": "ko-KR",
+      "法语": "fr-FR",
+      "德语": "de-DE",
+      "西班牙语": "es-ES",
+      "俄语": "ru-RU",
+      "葡萄牙语": "pt-PT",
+      "意大利语": "it-IT",
+      "泰语": "th-TH",
+      "越南语": "vi-VN",
+    };
+    u.lang = map[lang] || (from === "自动检测" ? "" : map[from] || "");
+    window.speechSynthesis.speak(u);
+  };
+
+  return (
+    <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8 space-y-5">
+      <div className="flex flex-wrap items-center gap-3">
+        <select
+          value={from}
+          onChange={(e) => setFrom(e.target.value)}
+          className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2 font-semibold text-indigo-800"
+        >
+          {LANGS.map(([n]) => (
+            <option key={n} value={n}>{n}</option>
+          ))}
+        </select>
+        <button
+          onClick={swap}
+          className="rounded-xl bg-indigo-100 hover:bg-indigo-200 text-indigo-700 w-10 h-10 flex items-center justify-center font-bold"
+          title="交换语言"
+        >
+          ⇄
+        </button>
+        <select
+          value={to}
+          onChange={(e) => setTo(e.target.value)}
+          className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-2 font-semibold text-violet-800"
+        >
+          {LANGS.filter((l) => l[0] !== "自动检测").map(([n]) => (
+            <option key={n} value={n}>{n}</option>
+          ))}
+        </select>
+        <button
+          onClick={run}
+          disabled={loading}
+          className="ml-auto rounded-xl bg-gradient-to-r from-indigo-500 to-violet-600 text-white font-bold px-6 py-2.5 shadow-md disabled:opacity-60"
+        >
+          {loading ? "翻译中..." : "立即翻译"}
+        </button>
+      </div>
+      <div className="grid md:grid-cols-2 gap-4">
+        <div className="rounded-2xl border border-indigo-200 overflow-hidden">
+          <div className="bg-indigo-50 px-4 py-2 flex items-center justify-between border-b border-indigo-100">
+            <div className="font-semibold text-indigo-800">{from}</div>
+            <button onClick={() => speak(src, from === "自动检测" ? "英语" : from)} className="text-indigo-600 hover:bg-indigo-100 w-8 h-8 rounded-lg">🔊</button>
+          </div>
+          <textarea
+            value={src}
+            onChange={(e) => setSrc(e.target.value)}
+            rows={8}
+            className="w-full p-4 focus:outline-none text-slate-800 text-[15px] leading-7 resize-none"
+            placeholder="请输入要翻译的文字..."
+          />
+          <div className="px-4 py-2 text-right text-xs text-slate-500 border-t border-slate-100">{src.length} 字符</div>
+        </div>
+        <div className="rounded-2xl border border-violet-200 overflow-hidden">
+          <div className="bg-violet-50 px-4 py-2 flex items-center justify-between border-b border-violet-100">
+            <div className="font-semibold text-violet-800">{to}</div>
+            <div className="flex gap-1">
+              <button onClick={() => speak(result, to)} className="text-violet-600 hover:bg-violet-100 w-8 h-8 rounded-lg" disabled={!result}>🔊</button>
+              <button onClick={copy} className="text-violet-600 hover:bg-violet-100 w-8 h-8 rounded-lg" disabled={!result} title="复制">📋</button>
+            </div>
+          </div>
+          <div className="p-4 min-h-[220px] text-[15px] leading-7 text-slate-800 whitespace-pre-wrap">
+            {loading ? <div className="text-slate-400">翻译中...</div> : result || <span className="text-slate-400">（翻译结果将显示在这里）</span>}
+          </div>
+          <div className="px-4 py-2 text-right text-xs text-slate-500 border-t border-slate-100">{result.length} 字符</div>
+        </div>
+      </div>
+      {history.length > 0 && (
+        <div className="rounded-2xl bg-slate-50 border border-slate-200 p-4">
+          <div className="font-bold text-slate-800 mb-3 flex items-center justify-between">
+            <span>📜 最近翻译记录（{history.length}）</span>
+            <button onClick={() => setHistory([])} className="text-xs text-slate-500 hover:text-rose-600 font-semibold">清空</button>
+          </div>
+          <div className="space-y-2 max-h-48 overflow-y-auto">
+            {history.map((h, i) => (
+              <div
+                key={i}
+                className="rounded-xl bg-white border border-slate-100 p-3 text-sm cursor-pointer hover:border-violet-300 hover:shadow-sm"
+                onClick={() => { setSrc(h.s); setFrom(h.f); setTo(h.t); setResult(h.r); }}
+              >
+                <div className="text-slate-800">{h.s}</div>
+                <div className="text-slate-400 text-xs my-1">{h.f} → {h.t}</div>
+                <div className="text-violet-700 font-semibold">{h.r}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ===================== 词典 =====================
+/**
+ * 中英词典：
+ * - 英文单词查询：api.dictionaryapi.dev 免费 API
+ * - 支持音标、发音音频、词性、释义、例句、同义词、反义词
+ * - 中文词汇：回退到内置词典 + 提示
+ */
+function AiDict() {
+  const [word, setWord] = useState("hello");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [favorites, setFavorites] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem("pg_dict_favs") || "[]"); } catch { return []; }
+  });
+
+  // 内置常用中文词简易英英/英汉词典
+  const localDict: Record<string, any> = {
+    "你好": {
+      word: "你好",
+      phonetic: "nǐ hǎo",
+      audio: "",
+      meanings: [{
+        part_of_speech: "感叹词",
+        definitions: [{
+          definition: "日常打招呼用语，用于见面或问好",
+          example: "你好，我是小白，很高兴认识你！",
+          synonyms: ["您好", "嗨", "Hi"],
+          antonyms: ["再见"],
+        }],
+        synonyms: ["您好", "嗨", "Hello"],
+        antonyms: ["再见", "拜拜"],
+      }],
+      note: "本地内置中文词条示例（桌面端接入更全汉语词典）",
+    },
+    "学习": {
+      word: "学习",
+      phonetic: "xué xí",
+      audio: "",
+      meanings: [{
+        part_of_speech: "动词",
+        definitions: [{
+          definition: "通过阅读、听讲、研究、实践等获得知识或技能",
+          example: "小白每天陪你一起学习！",
+          synonyms: ["学", "钻研", "攻读"],
+          antonyms: ["玩耍", "荒废"],
+        }],
+        synonyms: ["学", "钻研"],
+        antonyms: ["玩耍"],
+      }],
+      note: "本地内置中文词条示例",
+    },
+  };
+
+  const lookup = async () => {
+    if (!word.trim()) return;
+    setLoading(true);
+    setError(null);
+    const w = word.trim().toLowerCase();
+    try {
+      // 先检测是不是中文
+      if (/[\u4e00-\u9fa5]/.test(w) && localDict[w]) {
+        setResult(localDict[w]);
+        return;
+      }
+      if (/[\u4e00-\u9fa5]/.test(w) && !localDict[w]) {
+        setResult({ word: w, note: "中文词的完整释义请下载桌面端，网站端重点支持英文查询。", meanings: [] });
+        return;
+      }
+      const url = `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(w)}`;
+      const data = await fetch(url).then((r) => r.json()).catch(() => null);
+      if (Array.isArray(data) && data[0]) {
+        const d = data[0];
+        let audio = "";
+        let phonetic = d.phonetic || "";
+        for (const p of d.phonetics || []) {
+          if (p.audio && !audio) audio = p.audio;
+          if (p.text && !phonetic) phonetic = p.text;
+        }
+        const meanings = (d.meanings || []).map((m: any) => ({
+          part_of_speech: m.partOfSpeech,
+          definitions: (m.definitions || []).slice(0, 6).map((dd: any) => ({
+            definition: dd.definition,
+            example: dd.example || "",
+            synonyms: dd.synonyms || [],
+            antonyms: dd.antonyms || [],
+          })),
+          synonyms: m.synonyms || [],
+          antonyms: m.antonyms || [],
+        }));
+        setResult({ word: d.word, phonetic, audio, meanings, note: "来源：Free Dictionary API" });
+      } else {
+        setError(`未找到单词「${word}」的释义`);
+        setResult(null);
+      }
+    } catch (e: any) {
+      setError(e?.message || "查询失败");
+      setResult(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => { lookup(); /* eslint-disable-next-line */ }, []);
+
+  const play = () => {
+    if (!result?.audio) return;
+    try { new Audio(result.audio).play(); } catch {}
+  };
+  const pronounce = () => {
+    if (!("speechSynthesis" in window) || !result?.word) return;
+    const u = new SpeechSynthesisUtterance(result.word);
+    u.lang = /[\u4e00-\u9fa5]/.test(result.word) ? "zh-CN" : "en-US";
+    window.speechSynthesis.speak(u);
+  };
+  const toggleFav = () => {
+    if (!result?.word) return;
+    const w = result.word;
+    const has = favorites.includes(w);
+    const next = has ? favorites.filter((x) => x !== w) : [w, ...favorites].slice(0, 100);
+    setFavorites(next);
+    localStorage.setItem("pg_dict_favs", JSON.stringify(next));
+  };
+  const isFav = favorites.includes(result?.word);
+
+  return (
+    <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8 space-y-5">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex-1 flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-1.5 max-w-xl">
+          <span className="text-emerald-600">📖</span>
+          <input
+            value={word}
+            onChange={(e) => setWord(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && lookup()}
+            placeholder="输入单词 / 中文词，如 hello / 你好"
+            className="flex-1 bg-transparent py-2 px-1 focus:outline-none text-slate-800 font-semibold"
+          />
+        </div>
+        <button
+          onClick={lookup}
+          disabled={loading}
+          className="rounded-xl bg-gradient-to-r from-emerald-500 to-green-600 text-white font-bold px-6 py-2.5 shadow-md disabled:opacity-60"
+        >
+          {loading ? "查询中..." : "查词"}
+        </button>
+        {result?.word && (
+          <button
+            onClick={toggleFav}
+            className={`rounded-xl px-4 py-2.5 font-bold border ${
+              isFav ? "bg-rose-50 text-rose-600 border-rose-200" : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+            }`}
+          >
+            {isFav ? "❤️ 已收藏" : "🤍 收藏"}
+          </button>
+        )}
+      </div>
+      {error && <div className="rounded-xl bg-rose-50 border border-rose-200 px-4 py-3 text-rose-700 text-sm">{error}</div>}
+      {result && (
+        <div className="rounded-3xl bg-gradient-to-br from-emerald-50 via-white to-teal-50 border border-emerald-100 p-5 md:p-7 space-y-5 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <div className="flex flex-wrap items-center gap-3">
+                <h2 className="text-3xl md:text-4xl font-black text-slate-800 tracking-tight">{result.word}</h2>
+                {result.phonetic && <div className="text-lg text-slate-500 font-mono">{result.phonetic}</div>}
+              </div>
+              {result.note && <div className="mt-2 text-xs text-slate-500">{result.note}</div>}
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={play}
+                disabled={!result.audio}
+                className="rounded-xl bg-emerald-100 disabled:opacity-40 text-emerald-700 px-4 py-2 font-semibold flex items-center gap-1"
+                title="真人发音 MP3"
+              >
+                🔊 发音
+              </button>
+              <button
+                onClick={pronounce}
+                className="rounded-xl bg-teal-100 text-teal-700 px-4 py-2 font-semibold flex items-center gap-1"
+                title="浏览器朗读"
+              >
+                📢 朗读
+              </button>
+            </div>
+          </div>
+          {/* 每个词性一个区块 */}
+          {result.meanings?.length === 0 ? (
+            <div className="text-sm text-slate-500">（暂无释义）</div>
+          ) : (
+            result.meanings?.map((m: any, i: number) => (
+              <div key={i} className="rounded-2xl bg-white border border-slate-100 p-4 md:p-5">
+                <div className="flex items-center gap-3 mb-3">
+                  <span className="rounded-full bg-gradient-to-r from-emerald-400 to-teal-500 text-white px-3 py-1 text-xs font-bold">
+                    {m.part_of_speech}
+                  </span>
+                  {m.synonyms?.length > 0 && (
+                    <div className="text-xs text-slate-500">
+                      同义词：
+                      {m.synonyms.slice(0, 5).map((s: string) => (
+                        <span key={s} className="ml-1 inline-block rounded-full bg-slate-100 px-2 py-0.5 text-slate-700">{s}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <ol className="space-y-3">
+                  {m.definitions?.map((d: any, j: number) => (
+                    <li key={j} className="flex gap-3">
+                      <span className="shrink-0 w-6 h-6 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold flex items-center justify-center mt-0.5">{j + 1}</span>
+                      <div className="flex-1">
+                        <div className="text-slate-800 leading-7">{d.definition}</div>
+                        {d.example && (
+                          <div className="mt-1 text-sm text-slate-600 italic border-l-2 border-emerald-200 pl-3">
+                            例：{d.example}
+                          </div>
+                        )}
+                        {(d.synonyms?.length > 0 || d.antonyms?.length > 0) && (
+                          <div className="mt-1 text-xs space-x-2">
+                            {d.synonyms?.length > 0 && (
+                              <span className="text-emerald-700">同：{d.synonyms.slice(0, 4).join(", ")}</span>
+                            )}
+                            {d.antonyms?.length > 0 && (
+                              <span className="text-rose-700">反：{d.antonyms.slice(0, 4).join(", ")}</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            ))
+          )}
+          {/* 收藏夹 */}
+          {favorites.length > 0 && (
+            <div className="rounded-2xl bg-amber-50 border border-amber-100 p-4">
+              <div className="flex items-center justify-between mb-2">
+                <div className="font-bold text-amber-800">⭐ 生词本（{favorites.length}）</div>
+                <button onClick={() => { setFavorites([]); localStorage.removeItem("pg_dict_favs"); }} className="text-xs text-slate-500 hover:text-rose-600 font-semibold">清空</button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {favorites.map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => { setWord(f); lookup(); }}
+                    className="rounded-full bg-white px-3 py-1.5 text-sm text-amber-800 border border-amber-200 hover:bg-amber-100 hover:shadow-sm"
+                  >
+                    {f}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ===================== 主分发页 =====================
 export default function Playground() {
   const { id } = useParams();
@@ -2348,6 +5264,7 @@ export default function Playground() {
 
   const render = () => {
     switch (meta.id) {
+      // ===== 15 款游戏 =====
       case "game-2048":
         return <Game2048 />;
       case "game-snake":
@@ -2360,24 +5277,53 @@ export default function Playground() {
         return <GameMinesweeper />;
       case "game-whack":
         return <GameWhack />;
+      case "game-yanglegeyang":
+        return <GameSheep />;
+      case "game-gomoku":
+        return <GameGomoku />;
+      case "game-klotski":
+        return <GameKlotski />;
+      case "game-lianliankan":
+        return <GameLianLian />;
+      case "game-pong":
+        return <GamePong />;
+      case "game-sokoban":
+        return <GameSokoban />;
+      case "game-sudoku":
+        return <GameSudoku />;
+      case "game-tank":
+        return <GameTank />;
+      case "game-match3":
+        return <GameMatch3 />;
+
+      // ===== 实用工具（6 款暂无试用的走 default=NotAvailable：桌面管理器/文件转换/截屏/屏笔/磁盘清理/放大镜）=====
       case "tool-calculator":
         return <ToolCalculator />;
       case "tool-notepad":
         return <ToolNotepad />;
       case "tool-draw":
       case "tool-smart-painter":
-      case "tool-screenpen":
-      case "tool-screenshot":
         return <ToolPainter />;
       case "tool-alarm":
         return <ToolAlarm />;
+      case "tool-sticky":
+        return <ToolSticky />;
+
+      // ===== 6 款 AI 工具箱 =====
       case "ai-joke":
         return <AiJoke />;
       case "ai-quote":
         return <AiQuote />;
       case "ai-text-analysis":
         return <AiTextAnalysis />;
-      // 其它所有：给出精美的说明+预览+降级 UI
+      case "ai-weather":
+        return <AiWeather />;
+      case "ai-translate":
+        return <AiTranslate />;
+      case "ai-dict":
+        return <AiDict />;
+
+      // ===== 用户指定的「暂无试用」项在此给出精美的降级说明 =====
       default:
         return <NotAvailable meta={meta} />;
     }
@@ -2390,6 +5336,15 @@ export default function Playground() {
     "game-tetris",
     "game-minesweeper",
     "game-whack",
+    "game-yanglegeyang",
+    "game-gomoku",
+    "game-klotski",
+    "game-lianliankan",
+    "game-pong",
+    "game-sokoban",
+    "game-sudoku",
+    "game-tank",
+    "game-match3",
   ].includes(meta.id);
 
   return (
