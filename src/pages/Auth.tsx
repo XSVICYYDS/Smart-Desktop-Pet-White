@@ -40,6 +40,7 @@ import {
   validateNickname,
   validatePasswordRules,
   isLoggedIn,
+  verifyGraphCaptcha,
   type GraphCaptcha,
 } from "@/lib/authClient";
 
@@ -84,6 +85,10 @@ export default function Auth() {
   // ========== 图形验证码 ==========
   const [captchaId, setCaptchaId] = useState("");
   const [captchaInput, setCaptchaInput] = useState("");
+  // 递增时强制 CaptchaCanvas 重新生成新图片 + 新 id
+  // 关键：每次切换 Tab / 发送邮箱验证码后 / 提交表单后都要 +1，
+  // 否则 verifyGraphCaptcha 删除记录后继续用同一个 captchaId 会"怎么输都错"
+  const [captchaRefreshKey, setCaptchaRefreshKey] = useState(0);
   // 图形验证码连续错误次数：达到阈值 needSlider=true，强制先过滑块
   const [captchaFails, setCaptchaFails] = useState(0);
   const [needSlider, setNeedSlider] = useState(false);
@@ -125,6 +130,9 @@ export default function Auth() {
     setNeedSlider(false);
     setSliderPassed(false);
     setToast(null);
+    // 切换 Tab 必须强制刷新图形验证码 id + 图片
+    // （否则注册时消耗掉 captchaId 后，切换到登录仍用已删除的 id 提交→永远图形码错误）
+    setCaptchaRefreshKey((k) => k + 1);
   };
 
   // ============== 发送邮箱验证码 ==============
@@ -135,9 +143,29 @@ export default function Auth() {
       setToast({ type: "error", msg: eRes.msg });
       return;
     }
-    // 先过一道简单图形验证码（避免刷接口）
-    if (!captchaId || (captchaInput.trim().length !== 4)) {
-      setToast({ type: "error", msg: "请先完成图形验证码再发送邮箱验证码" });
+    // 必须先真的通过一次图形验证码校验，防止接口刷（verifyGraphCaptcha 内部会立即消耗掉这个 id）
+    if (!captchaId) {
+      setToast({ type: "error", msg: "图形验证码尚未生成，请稍等片刻或点击刷新图形码" });
+      return;
+    }
+    if ((captchaInput.trim().length) !== 4) {
+      setToast({ type: "error", msg: "请先输入完整的 4 位图形验证码，再点击发送邮箱验证码" });
+      return;
+    }
+    const graphOk = verifyGraphCaptcha(captchaId, captchaInput);
+    // 无论校验是否通过，只要调用过 verifyGraphCaptcha，记录都已消耗→必须刷新新图形码
+    setCaptchaRefreshKey((k) => k + 1);
+    if (!graphOk) {
+      const next = captchaFails + 1;
+      setCaptchaFails(next);
+      if (next >= 2) {
+        setNeedSlider(true);
+        setSliderResetKey((k) => k + 1);
+        setSliderPassed(false);
+        setToast({ type: "error", msg: `图形验证码错误（连续错误${next}次，请先完成拼图滑块再发送邮箱验证码）` });
+        return;
+      }
+      setToast({ type: "error", msg: `图形验证码错误（连续错误${next}次，下一次错误将升级为拼图滑块）` });
       return;
     }
     // 开发模式下直接返回验证码；真实环境需对接邮件服务
@@ -231,9 +259,6 @@ export default function Auth() {
           setToast({ type: "error", msg: eR.msg });
           return;
         }
-        if (emailCodeSent && emailCode.trim() !== emailCodeSent) {
-          // 用 lib 的 verifyEmailCode 来走统一流程（过期/次数校验）
-        }
         const pwR = validatePasswordRules(password);
         if (!pwR.ok) {
           setToast({ type: "error", msg: pwR.msg });
@@ -275,8 +300,11 @@ export default function Auth() {
       }
     } finally {
       setSubmitting(false);
-      // 提交后无论如何都重置图形验证码输入框（保持验证码图片不变，只有点击刷新才变）
+      // 提交后无论如何：
+      // 1) 重置图形验证码输入框
+      // 2) 强制生成新的 captcha id + 图片（verifyGraphCaptcha 已删除旧 id，不复用）
       setCaptchaInput("");
+      setCaptchaRefreshKey((k) => k + 1);
     }
   };
 
@@ -331,7 +359,7 @@ export default function Auth() {
           {/* Logo + 标题 */}
           <div className="flex flex-col items-center text-center mb-6 relative">
             <img
-              src="/xiaobai-logo.gif"
+              src={`${import.meta.env.BASE_URL}xiaobai-logo.gif`}
               alt="小白 Logo"
               className="w-24 h-24 rounded-full object-cover shadow-lg border-4 border-white animate-bounce-soft"
             />
@@ -532,6 +560,7 @@ export default function Auth() {
                   onChange={(e) => setCaptchaInput(e.target.value)}
                 />
                 <CaptchaCanvas
+                  refreshKey={captchaRefreshKey}
                   onChange={(cap: GraphCaptcha) => {
                     setCaptchaId(cap.id);
                     // 刷新图片时自动清空输入框，保留错误计数，避免用户通过刷新图片绕过计数
