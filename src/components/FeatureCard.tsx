@@ -1,8 +1,16 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { LucideIcon } from "lucide-react";
-import { Play, Sparkles, ArrowRight, Star } from "lucide-react";
+import { Play, Sparkles, ArrowRight, Star, ThumbsUp, Heart } from "lucide-react";
 import type { FeatureMeta } from "../data/playgroundData";
 import { FeatureDetailModal } from "./FeatureDetailModal";
+import {
+  getFeatureLikes,
+  toggleThumbsUp,
+  toggleHeart,
+  subscribeSocial,
+  getCurrentActor,
+  type FeatureLikes,
+} from "@/lib/socialStore";
 
 /**
  * 通用功能卡片组件
@@ -27,6 +35,50 @@ interface FeatureCardProps {
   onNavigatePlayground?: (id: string) => void;
 }
 
+/**
+ * 点赞/喜欢 子按钮：根据自己是否点过给出不同配色 + hover 提示
+ */
+function LikesButton(props: {
+  type: "up" | "heart";
+  likes: FeatureLikes;
+  myId: string;
+  onClick: (e: React.MouseEvent) => void;
+}) {
+  const { type, likes, myId, onClick } = props;
+  const voted =
+    type === "up" ? likes.upVoters.includes(myId) : likes.heartVoters.includes(myId);
+  const count = type === "up" ? likes.thumbsUp : likes.hearts;
+  const Icon = type === "up" ? ThumbsUp : Heart;
+  const activeCls =
+    type === "up"
+      ? "bg-rose-50 text-rose-600 border-rose-200"
+      : "bg-pink-50 text-pink-600 border-pink-200";
+  const fillCls =
+    type === "up"
+      ? voted
+        ? "fill-rose-500 stroke-rose-600"
+        : "stroke-slate-500"
+      : voted
+      ? "fill-pink-500 stroke-pink-600"
+      : "stroke-slate-500";
+  const titleText = voted
+    ? `再次点击取消${type === "up" ? "赞" : "喜欢"}`
+    : `点个${type === "up" ? "赞👍" : "喜欢❤️"}，${type === "up" ? "可上首页推荐" : "获得更优先推荐"}`;
+
+  return (
+    <button
+      onClick={onClick}
+      title={titleText}
+      className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg transition-all hover:scale-105 border ${
+        voted ? `${activeCls} font-semibold` : "bg-white border-slate-200"
+      }`}
+    >
+      <Icon className={`w-3.5 h-3.5 ${fillCls}`} />
+      <span>{count}</span>
+    </button>
+  );
+}
+
 export function FeatureCard({
   meta,
   Icon,
@@ -34,6 +86,36 @@ export function FeatureCard({
   onNavigatePlayground,
 }: FeatureCardProps) {
   const [showDetail, setShowDetail] = useState(false);
+  const [likes, setLikes] = useState<FeatureLikes>(() => getFeatureLikes(meta.id));
+
+  /**
+   * 订阅社交数据变更（其它标签页点赞/取消时，这里会同步刷新显示）
+   */
+  useEffect(() => {
+    const off = subscribeSocial(() => setLikes(getFeatureLikes(meta.id)));
+    return off;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meta.id]);
+
+  /**
+   * 点赞按钮切换（👍）—— 阻止冒泡避免被父层误认为"卡片点击"
+   */
+  const onToggleUp = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const { like } = toggleThumbsUp(meta.id);
+    setLikes(like);
+  };
+
+  /**
+   * 喜欢按钮切换（❤️）
+   */
+  const onToggleHeart = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const { like } = toggleHeart(meta.id);
+    setLikes(like);
+  };
 
   const handleEnter = () => setShowDetail(true);
   const handlePlay = () => {
@@ -79,13 +161,34 @@ export function FeatureCard({
           </div>
 
           {/* 名称 + 描述 */}
-          <div className="px-5 pt-1 pb-4 flex-1">
+          <div className="px-5 pt-1 pb-2 flex-1">
             <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
               {meta.name}
             </h3>
             <p className="mt-2 text-sm text-slate-600 leading-relaxed line-clamp-3 min-h-[3.75rem]">
               {meta.summary}
             </p>
+          </div>
+
+          {/* 点赞 & 喜欢统计条 */}
+          <div className="px-5 pb-2 flex items-center justify-between text-xs text-slate-500">
+            <div className="flex items-center gap-4">
+              <LikesButton
+                type="up"
+                likes={likes}
+                myId={getCurrentActor().userId}
+                onClick={onToggleUp}
+              />
+              <LikesButton
+                type="heart"
+                likes={likes}
+                myId={getCurrentActor().userId}
+                onClick={onToggleHeart}
+              />
+            </div>
+            <div className="text-[11px] opacity-80">
+              热度 {likes.thumbsUp * 2 + likes.hearts * 3}
+            </div>
           </div>
 
           {/* 底部按钮组 */}

@@ -1,8 +1,9 @@
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Sparkles, Gamepad2, Wrench, Layers, Dog, Brain,
   Download, ArrowRight, Cloud, Languages, BookOpen,
-  Smile, Quote, FileText, Github,
+  Smile, Quote, FileText, Github, ThumbsUp, Heart, Flame,
 } from "lucide-react";
 import { useScrollReveal } from "@/hooks/useScrollReveal";
 import SectionTitle from "@/components/SectionTitle";
@@ -10,6 +11,12 @@ import StatCounter from "@/components/StatCounter";
 import DownloadButton from "@/components/DownloadButton";
 import { LucideIcon } from "lucide-react";
 import { stats, highlights, petFeatures, games, tools, aiTools, siteConfig } from "@/data/content";
+import { findFeatureByName } from "@/data/playgroundData";
+import {
+  computeHotScore,
+  getFeatureLikes,
+  subscribeSocial,
+} from "@/lib/socialStore";
 import xiaobaiLogo from "@/assets/xiaobai-logo.gif";
 
 const iconMap: Record<string, LucideIcon> = {
@@ -50,6 +57,41 @@ function FloatingParticles() {
 export default function Home() {
   const { ref: featuresRef, isVisible: featuresVisible } = useScrollReveal();
   const { ref: downloadRef, isVisible: downloadVisible } = useScrollReveal();
+
+  // 订阅社交存储变更，点赞后实时刷新榜单
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const off = subscribeSocial(() => setTick((t) => t + 1));
+    return off;
+  }, []);
+
+  /** 按热度排序工具函数（赞×2 + 喜欢×3） */
+  const hotSorted = <T extends { name: string }>(arr: T[], limit?: number) => {
+    void tick;
+    const ranked = arr
+      .map((x) => {
+        const meta = findFeatureByName(x.name);
+        const likes = meta ? getFeatureLikes(meta.id) : null;
+        return {
+          row: x,
+          meta,
+          likes,
+          hot: likes ? computeHotScore(likes) : 0,
+        };
+      })
+      .sort((a, b) => b.hot - a.hot);
+    return typeof limit === "number" ? ranked.slice(0, limit) : ranked;
+  };
+
+  // 全站跨分类 Top 3 推荐
+  const topOverall = useMemo(() => {
+    void tick;
+    return hotSorted([...games, ...tools, ...aiTools], 3);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tick]);
+  const topGames = useMemo(() => hotSorted(games, 10), [tick]);
+  const topTools = useMemo(() => hotSorted(tools, 8), [tick]);
+  const topAi = useMemo(() => hotSorted(aiTools), [tick]);
 
   return (
     <div>
@@ -173,33 +215,136 @@ export default function Home() {
         </div>
       </section>
 
+      {/* 🔥 全站人气推荐 Top 3（游戏/工具/AI 跨分类） */}
+      <section className="py-16 px-6 bg-gradient-to-b from-white via-amber-50/50 to-pink-50">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center mb-10">
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50 text-amber-700 text-sm font-medium mb-4 shadow-sm">
+              <Flame size={16} className="animate-pulse" />
+              全站人气 Top 3 · 实时热度
+            </div>
+            <h2 className="font-serif text-3xl md:text-4xl font-bold text-brand-dark mb-2">
+              大家<span className="gradient-text">最喜欢</span>
+            </h2>
+            <p className="text-brand-gray text-sm md:text-base max-w-xl mx-auto">
+              热度 = 赞👍×2 + 喜欢❤️×3，你每一次点击都会把喜欢的功能推向更多人
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            {topOverall.map((row, idx) => {
+              const Icon = iconMap[(row.row as any).icon] || Sparkles;
+              const rankGradient =
+                idx === 0
+                  ? "from-amber-400 via-orange-500 to-pink-500"
+                  : idx === 1
+                  ? "from-slate-300 via-slate-400 to-slate-500"
+                  : "from-amber-600 via-amber-700 to-yellow-800";
+              const likes = row.likes;
+              return (
+                <Link
+                  key={`top-${idx}-${row.meta?.id}`}
+                  to={row.meta ? `/playground/${row.meta.id}` : "/features"}
+                  className={`relative rounded-3xl p-[1px] shadow-xl hover:shadow-2xl hover:-translate-y-1.5 transition-all bg-gradient-to-br ${rankGradient} group`}
+                >
+                  <div className="rounded-[calc(1.5rem-1px)] p-6 h-full bg-gradient-to-br from-white via-white/90 to-white/80">
+                    <div
+                      className={`absolute -top-4 -left-4 w-12 h-12 rounded-full flex items-center justify-center font-black text-white shadow-lg ${
+                        idx === 0
+                          ? "bg-gradient-to-br from-amber-400 to-orange-500 text-lg"
+                          : idx === 1
+                          ? "bg-gradient-to-br from-slate-400 to-slate-600"
+                          : "bg-gradient-to-br from-amber-700 to-yellow-800"
+                      }`}
+                    >
+                      {idx === 0 ? "🥇" : idx === 1 ? "🥈" : "🥉"}
+                    </div>
+                    <div className="flex items-start gap-4">
+                      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-pink-100 via-violet-100 to-amber-100 flex items-center justify-center text-brand-pink shadow-inner shrink-0 group-hover:scale-105 transition">
+                        <Icon size={32} />
+                      </div>
+                      <div className="flex-1 min-w-0 pt-1">
+                        <h4 className="font-bold text-brand-dark text-lg truncate">
+                          {row.meta?.name || row.row.name}
+                        </h4>
+                        <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">
+                          {row.meta?.summary || (row.row as any).description}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-5 rounded-2xl bg-gradient-to-r from-orange-50 via-pink-50 to-violet-50 border border-orange-100 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-gradient-to-r from-orange-400 to-pink-500 text-white text-xs font-bold shadow-sm">
+                          <Flame size={12} /> 热度 {row.hot}
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-slate-600">
+                          <span className="inline-flex items-center gap-1">
+                            <ThumbsUp size={12} className="text-rose-500" /> {likes?.thumbsUp ?? 0}
+                          </span>
+                          <span className="inline-flex items-center gap-1">
+                            <Heart size={12} className="text-pink-500 fill-pink-500/20" /> {likes?.hearts ?? 0}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex items-center justify-between">
+                      <span className="text-[11px] text-slate-400">点击打开功能 →</span>
+                      <ArrowRight size={16} className="text-brand-pink group-hover:translate-x-1 transition" />
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
       {/* Games Preview Section */}
       <section className="py-20 px-6">
         <div className="max-w-6xl mx-auto">
           <SectionTitle
             title="15 款休闲游戏"
-            subtitle="从经典到创新，总有一款适合你"
+            subtitle="从经典到创新，按人气自动排序"
           />
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-            {games.slice(0, 10).map((game) => {
+            {topGames.map((entry) => {
+              const game = entry.row as any;
               const Icon = iconMap[game.icon] || Gamepad2;
+              const hot = entry.hot;
+              const likes = entry.likes;
               return (
-                <div
+                <Link
                   key={game.name}
+                  to={entry.meta ? `/playground/${entry.meta.id}` : "/features"}
                   className={`rounded-xl p-4 text-center transition-all duration-300 hover:-translate-y-1 ${
-                    game.featured
+                    hot > 0 || game.featured
                       ? "bg-gradient-to-br from-brand-pink to-brand-pink-dark text-white shadow-lg shadow-pink-200/50"
                       : "bg-white border border-pink-50 hover:shadow-md"
                   }`}
                 >
                   <Icon size={32} className="mx-auto mb-2" />
-                  <h4 className={`font-semibold text-sm ${game.featured ? "text-white" : "text-brand-dark"}`}>
+                  <h4 className={`font-semibold text-sm ${hot > 0 || game.featured ? "text-white" : "text-brand-dark"}`}>
                     {game.name}
                   </h4>
-                  {game.featured && (
-                    <p className="text-xs text-white/80 mt-1">{game.description}</p>
+                  {(hot > 0 || game.featured) && (
+                    <>
+                      <p className="text-xs text-white/80 mt-1 line-clamp-2 min-h-[2em]">{game.description}</p>
+                      <div className="mt-2 flex items-center justify-center gap-2 text-[11px]">
+                        <span className="inline-flex items-center gap-0.5 bg-white/20 px-2 py-0.5 rounded-full">
+                          <Flame size={10} /> {hot}
+                        </span>
+                        <span className="inline-flex items-center gap-0.5 bg-white/20 px-2 py-0.5 rounded-full">
+                          <ThumbsUp size={10} /> {likes?.thumbsUp ?? 0}
+                        </span>
+                        <span className="inline-flex items-center gap-0.5 bg-white/20 px-2 py-0.5 rounded-full">
+                          <Heart size={10} /> {likes?.hearts ?? 0}
+                        </span>
+                      </div>
+                    </>
                   )}
-                </div>
+                </Link>
               );
             })}
           </div>
@@ -219,22 +364,40 @@ export default function Home() {
         <div className="max-w-6xl mx-auto">
           <SectionTitle
             title="十余款实用工具"
-            subtitle="桌面管理、画板、截图、转换器... 一站式效率工具集"
+            subtitle="桌面管理、画板、截图、转换器... 按人气自动排序"
           />
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {tools.slice(0, 8).map((tool) => {
+            {topTools.map((entry) => {
+              const tool = entry.row as any;
               const Icon = iconMap[tool.icon] || Wrench;
+              const hot = entry.hot;
+              const likes = entry.likes;
+              const featured = hot > 0 || tool.featured;
               return (
-                <div
+                <Link
                   key={tool.name}
-                  className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition-all hover:-translate-y-1 border border-pink-50"
+                  to={entry.meta ? `/playground/${entry.meta.id}` : "/features"}
+                  className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition-all hover:-translate-y-1 border border-pink-50 group"
                 >
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-3 ${tool.featured ? "bg-brand-pink text-white" : "bg-pink-50 text-brand-pink"}`}>
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-3 ${featured ? "bg-gradient-to-br from-brand-pink to-pink-600 text-white shadow" : "bg-pink-50 text-brand-pink"}`}>
                     <Icon size={20} />
                   </div>
                   <h4 className="font-semibold text-sm text-brand-dark mb-1">{tool.name}</h4>
-                  <p className="text-xs text-brand-gray">{tool.description}</p>
-                </div>
+                  <p className="text-xs text-brand-gray line-clamp-2 min-h-[2em]">{tool.description}</p>
+                  {hot > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1 text-[11px]">
+                      <span className="inline-flex items-center gap-0.5 bg-gradient-to-r from-orange-100 to-pink-100 text-orange-700 px-2 py-0.5 rounded-full border border-orange-200">
+                        <Flame size={10} /> {hot}
+                      </span>
+                      <span className="inline-flex items-center gap-0.5 bg-rose-50 text-rose-600 px-2 py-0.5 rounded-full">
+                        <ThumbsUp size={10} /> {likes?.thumbsUp ?? 0}
+                      </span>
+                      <span className="inline-flex items-center gap-0.5 bg-pink-50 text-pink-600 px-2 py-0.5 rounded-full">
+                        <Heart size={10} /> {likes?.hearts ?? 0}
+                      </span>
+                    </div>
+                  )}
+                </Link>
               );
             })}
           </div>
@@ -246,24 +409,45 @@ export default function Home() {
         <div className="max-w-6xl mx-auto">
           <SectionTitle
             title="AI 智能助手"
-            subtitle="天气、翻译、词典、笑话... 你的智能小帮手"
+            subtitle="天气、翻译、词典、笑话... 按人气自动排序"
           />
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {aiTools.map((tool) => {
+            {topAi.map((entry) => {
+              const tool = entry.row as any;
               const Icon = iconMap[tool.icon] || Brain;
+              const hot = entry.hot;
+              const likes = entry.likes;
               return (
-                <div
+                <Link
                   key={tool.name}
-                  className="flex items-center gap-3 bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow border border-pink-50"
+                  to={entry.meta ? `/playground/${entry.meta.id}` : "/features"}
+                  className="flex items-center gap-3 bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow border border-pink-50 group"
                 >
-                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-400 flex items-center justify-center text-white shrink-0">
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white shrink-0 ${
+                    hot > 0
+                      ? "bg-gradient-to-br from-fuchsia-500 via-violet-500 to-indigo-500 shadow"
+                      : "bg-gradient-to-br from-emerald-400 to-teal-400"
+                  }`}>
                     <Icon size={24} />
                   </div>
-                  <div>
-                    <h4 className="font-semibold text-brand-dark">{tool.name}</h4>
-                    <p className="text-xs text-brand-gray">{tool.description}</p>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-semibold text-brand-dark truncate">{tool.name}</h4>
+                    <p className="text-xs text-brand-gray line-clamp-2 min-h-[2em]">{tool.description}</p>
+                    {hot > 0 && (
+                      <div className="mt-1 flex flex-wrap gap-1 text-[11px]">
+                        <span className="inline-flex items-center gap-0.5 bg-gradient-to-r from-orange-100 to-pink-100 text-orange-700 px-2 py-0.5 rounded-full border border-orange-200">
+                          <Flame size={10} /> {hot}
+                        </span>
+                        <span className="inline-flex items-center gap-0.5 bg-rose-50 text-rose-600 px-2 py-0.5 rounded-full">
+                          <ThumbsUp size={10} /> {likes?.thumbsUp ?? 0}
+                        </span>
+                        <span className="inline-flex items-center gap-0.5 bg-pink-50 text-pink-600 px-2 py-0.5 rounded-full">
+                          <Heart size={10} /> {likes?.hearts ?? 0}
+                        </span>
+                      </div>
+                    )}
                   </div>
-                </div>
+                </Link>
               );
             })}
           </div>

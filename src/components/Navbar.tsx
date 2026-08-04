@@ -11,6 +11,8 @@ import {
   CheckCircle,
   ChevronDown,
   ShieldCheck,
+  MessageCircle,
+  Users,
 } from "lucide-react";
 import { siteConfig } from "@/data/content";
 import xiaobaiLogo from "@/assets/xiaobai-logo.gif";
@@ -27,6 +29,7 @@ import {
 const navLinks = [
   { to: "/", label: "首页" },
   { to: "/features", label: "功能详情" },
+  { to: "/social", label: "社交中心" },
   { to: "/download", label: "下载" },
   { to: "/about", label: "关于" },
 ];
@@ -259,6 +262,19 @@ export default function Navbar() {
                           </span>
                         </button>
                       )}
+                      <button
+                        onClick={() => {
+                          setMenuOpen(false);
+                          navigate("/social");
+                        }}
+                        className="flex items-center gap-2 px-4 py-2.5 text-sm text-brand-dark hover:bg-pink-50 transition"
+                      >
+                        <Users size={15} className="text-fuchsia-500" />
+                        社交中心
+                        <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-fuchsia-50 text-fuchsia-700 border border-fuchsia-200">
+                          好友 / 群聊
+                        </span>
+                      </button>
                       <button
                         onClick={handleSync}
                         className="flex items-center gap-2 px-4 py-2.5 text-sm text-brand-dark hover:bg-pink-50 transition"
