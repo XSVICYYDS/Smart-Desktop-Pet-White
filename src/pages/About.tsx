@@ -3,12 +3,13 @@ import {
   Mail, Github, Heart, Sparkles, Rocket, Shield,
   Send, Paperclip, Trash2, UserCircle2, MessageCircle,
   X as XIcon, Download, FileText, Film, Image as ImageIcon,
+  ChevronDown, ChevronUp, Users, Star, Boxes,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import SectionTitle from "@/components/SectionTitle";
 import { useScrollReveal } from "@/hooks/useScrollReveal";
-import { techStack, timeline, siteConfig } from "@/data/content";
+import { techStack, timeline, siteConfig, faqs } from "@/data/content";
 import { isLoggedIn, getCurrentDisplayName } from "@/lib/authClient";
 
 // ================= 交流版面：消息模型与存储 =================
@@ -685,6 +686,71 @@ const iconMap: Record<string, LucideIcon> = {
 export default function About() {
   const { ref, isVisible } = useScrollReveal();
 
+  /* ========================= 升级4-1：统计数据 + 滚动触发动画 ========================= */
+  const statsSectionRef = useRef<HTMLDivElement | null>(null);
+  const [statsStarted, setStatsStarted] = useState(false);
+
+  // 4 项统计（占位：真实 GitHub Star/Contributors/Downloads 可通过 API 拉取）
+  const statsTargets = useMemo(
+    () => [
+      { key: "downloads", label: "累计下载", value: 1680, suffix: "+", icon: Download, accent: "from-brand-pink to-brand-pink-dark" },
+      { key: "stars", label: "GitHub Stars", value: 256, suffix: "+", icon: Star, accent: "from-amber-400 to-orange-500" },
+      { key: "contributors", label: "贡献者", value: 1, suffix: " 人", icon: Users, accent: "from-emerald-400 to-teal-500" },
+      { key: "features", label: "功能模块", value: 36, suffix: " +", icon: Boxes, accent: "from-violet-500 to-indigo-500" },
+    ],
+    []
+  );
+
+  /**
+   * 数字动画计数组件值（并行维护一张 value 表，用 easeOutCubic）
+   */
+  const [statValues, setStatValues] = useState<Record<string, number>>(
+    () => Object.fromEntries(statsTargets.map((s) => [s.key, 0]))
+  );
+
+  useEffect(() => {
+    if (statsStarted) return;
+    const el = statsSectionRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) {
+            setStatsStarted(true);
+            io.disconnect();
+          }
+        });
+      },
+      { threshold: 0.25 }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [statsStarted]);
+
+  useEffect(() => {
+    if (!statsStarted) return;
+    const DURATION_MS = 1400;
+    const start = performance.now();
+    let raf = 0;
+    /** 缓动：easeOutCubic */
+    const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
+    const tick = (now: number) => {
+      const p = Math.min(1, (now - start) / DURATION_MS);
+      const e = easeOutCubic(p);
+      const next: Record<string, number> = {};
+      statsTargets.forEach((s) => {
+        next[s.key] = Math.round(s.value * e);
+      });
+      setStatValues(next);
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [statsStarted, statsTargets]);
+
+  /* ========================= 升级4-2：FAQ 折叠面板 ========================= */
+  const [openFaq, setOpenFaq] = useState<string | null>(faqs[0]?.q ?? null);
+
   return (
     <div className="pt-24">
       {/* Page Header */}
@@ -737,23 +803,55 @@ export default function About() {
         </div>
       </section>
 
-      {/* Tech Stack */}
-      <section className="py-16 px-6 bg-gradient-to-b from-white to-pink-50">
+      {/* 升级4-1：项目统计数据（滚动到可见时，数字 easeOutCubic 动画） */}
+      <section ref={statsSectionRef} className="py-12 px-6">
+        <div className="max-w-5xl mx-auto">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+            {statsTargets.map((s) => {
+              const Icon = s.icon;
+              return (
+                <div
+                  key={s.key}
+                  className="glass rounded-2xl border border-pink-100 dark:border-white/10 p-5 text-center hover:-translate-y-0.5 transition-transform"
+                >
+                  <div
+                    className={`mx-auto mb-3 w-11 h-11 rounded-xl bg-gradient-to-br ${s.accent} text-white inline-flex items-center justify-center shadow-md`}
+                  >
+                    <Icon size={20} />
+                  </div>
+                  <div className="font-serif text-2xl md:text-3xl font-bold text-brand-dark dark:text-gray-100 tabular-nums">
+                    {statValues[s.key]}
+                    <span className="text-base text-brand-pink ml-0.5">{s.suffix}</span>
+                  </div>
+                  <div className="mt-1 text-xs md:text-sm text-brand-gray dark:text-gray-400">
+                    {s.label}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* Tech Stack（升级4：深色适配 + 悬停 3D 微旋转） */}
+      <section className="py-16 px-6 bg-gradient-to-b from-white to-pink-50 dark:from-[#161616] dark:to-[#181316]">
         <div className="max-w-5xl mx-auto">
           <SectionTitle title="技术栈" subtitle="小白使用以下技术构建" />
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5 md:gap-6">
             {techStack.map((tech) => {
               const Icon = iconMap[tech.icon] || Code;
               return (
                 <div
                   key={tech.name}
-                  className="bg-white rounded-2xl p-6 border border-pink-50 hover:shadow-md transition-shadow text-center"
+                  className="group rounded-2xl p-6 border border-pink-50 dark:border-white/10 hover:shadow-md transition-all duration-300 text-center bg-white dark:bg-white/[0.03] hover:-translate-y-1"
                 >
-                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-pink to-brand-pink-light flex items-center justify-center text-white mx-auto mb-4">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-pink to-brand-pink-light flex items-center justify-center text-white mx-auto mb-4 group-hover:rotate-6 transition-transform">
                     <Icon size={24} />
                   </div>
-                  <h4 className="font-serif text-lg font-bold text-brand-dark mb-1">{tech.name}</h4>
-                  <p className="text-xs text-brand-gray">{tech.description}</p>
+                  <h4 className="font-serif text-lg font-bold text-brand-dark dark:text-gray-100 mb-1">
+                    {tech.name}
+                  </h4>
+                  <p className="text-xs text-brand-gray dark:text-gray-400">{tech.description}</p>
                 </div>
               );
             })}
@@ -797,38 +895,87 @@ export default function About() {
         </div>
       </section>
 
-      {/* Values */}
-      <section className="py-16 px-6 bg-gradient-to-b from-pink-50 to-white">
+      {/* Values（升级4：深色适配） */}
+      <section className="py-16 px-6 bg-gradient-to-b from-pink-50 to-white dark:from-[#181316] dark:to-[#121212]">
         <div className="max-w-5xl mx-auto">
           <SectionTitle title="项目理念" subtitle="我们相信的价值观" />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-white rounded-2xl p-8 text-center border border-pink-50 hover:shadow-md transition-shadow">
+            <div className="rounded-2xl p-8 text-center border border-pink-50 dark:border-white/10 hover:shadow-md transition-shadow bg-white dark:bg-white/[0.03]">
               <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-pink-400 to-rose-400 flex items-center justify-center text-white mx-auto mb-4">
                 <Heart size={28} />
               </div>
-              <h4 className="font-serif text-lg font-bold text-brand-dark mb-2">温暖陪伴</h4>
-              <p className="text-sm text-brand-gray">
+              <h4 className="font-serif text-lg font-bold text-brand-dark dark:text-gray-100 mb-2">
+                温暖陪伴
+              </h4>
+              <p className="text-sm text-brand-gray dark:text-gray-300">
                 小白不仅是一个工具，更是你桌面上的小伙伴，带来温暖和陪伴。
               </p>
             </div>
-            <div className="bg-white rounded-2xl p-8 text-center border border-pink-50 hover:shadow-md transition-shadow">
+            <div className="rounded-2xl p-8 text-center border border-pink-50 dark:border-white/10 hover:shadow-md transition-shadow bg-white dark:bg-white/[0.03]">
               <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-purple-400 to-indigo-400 flex items-center justify-center text-white mx-auto mb-4">
                 <Rocket size={28} />
               </div>
-              <h4 className="font-serif text-lg font-bold text-brand-dark mb-2">持续进化</h4>
-              <p className="text-sm text-brand-gray">
+              <h4 className="font-serif text-lg font-bold text-brand-dark dark:text-gray-100 mb-2">
+                持续进化
+              </h4>
+              <p className="text-sm text-brand-gray dark:text-gray-300">
                 不断迭代更新，听取用户反馈，让小白变得越来越好。
               </p>
             </div>
-            <div className="bg-white rounded-2xl p-8 text-center border border-pink-50 hover:shadow-md transition-shadow">
+            <div className="rounded-2xl p-8 text-center border border-pink-50 dark:border-white/10 hover:shadow-md transition-shadow bg-white dark:bg-white/[0.03]">
               <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-400 flex items-center justify-center text-white mx-auto mb-4">
                 <Shield size={28} />
               </div>
-              <h4 className="font-serif text-lg font-bold text-brand-dark mb-2">开源透明</h4>
-              <p className="text-sm text-brand-gray">
+              <h4 className="font-serif text-lg font-bold text-brand-dark dark:text-gray-100 mb-2">
+                开源透明
+              </h4>
+              <p className="text-sm text-brand-gray dark:text-gray-300">
                 源代码完全公开，安全可审计，欢迎社区参与共建。
               </p>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 升级4-2：FAQ 折叠面板（6 个常见问题，默认展开首条） */}
+      <section id="faq" className="py-16 px-6">
+        <div className="max-w-3xl mx-auto">
+          <SectionTitle
+            title="常见问题 FAQ"
+            subtitle="找不到答案？可以到 GitHub 提 Issue，或通过邮件联系开发者。"
+          />
+          <div className="space-y-3">
+            {faqs.map((f) => {
+              const isOpen = openFaq === f.q;
+              return (
+                <div
+                  key={f.q}
+                  className={`glass rounded-2xl border border-pink-100 dark:border-white/10 overflow-hidden transition ${
+                    isOpen ? "shadow-md" : ""
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setOpenFaq(isOpen ? null : f.q)}
+                    className="w-full flex items-start justify-between gap-4 text-left px-5 py-4 hover:bg-pink-50/50 dark:hover:bg-white/[0.03] transition-colors"
+                  >
+                    <span className="font-semibold text-brand-dark dark:text-gray-100 leading-6 text-sm md:text-base">
+                      {f.q}
+                    </span>
+                    <span className="shrink-0 mt-0.5 text-brand-gray">
+                      {isOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                    </span>
+                  </button>
+                  {isOpen && (
+                    <div className="px-5 pb-5">
+                      <p className="text-sm md:text-[15px] leading-7 text-brand-gray dark:text-gray-300 whitespace-pre-wrap border-t border-pink-50 dark:border-white/5 pt-3">
+                        {f.a}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       </section>

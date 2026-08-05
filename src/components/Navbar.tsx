@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Github,
@@ -13,8 +13,12 @@ import {
   ShieldCheck,
   MessageCircle,
   Users,
+  Sun,
+  Moon,
+  Search,
+  ArrowRight,
 } from "lucide-react";
-import { siteConfig } from "@/data/content";
+import { siteConfig, games, tools, aiTools } from "@/data/content";
 import xiaobaiLogo from "@/assets/xiaobai-logo.gif";
 import {
   getCurrentDisplayName,
@@ -25,6 +29,7 @@ import {
   logout,
   syncCloudPreview,
 } from "@/lib/authClient";
+import { useTheme } from "@/hooks/useTheme";
 
 const navLinks = [
   { to: "/", label: "首页" },
@@ -33,6 +38,47 @@ const navLinks = [
   { to: "/download", label: "下载" },
   { to: "/about", label: "关于" },
 ];
+
+/* ============================================================
+ * 全局搜索数据源（统一支持跳转到：页面路由 / 游戏 / 工具 / AI）
+ * type: page | game | tool | ai
+ * target: 页面链接，game/tool/ai 统一跳转到 /features 带锚点滚动或 /playground/:id
+ * ============================================================ */
+interface SearchItem {
+  type: "page" | "game" | "tool" | "ai";
+  name: string;
+  description?: string;
+  to: string; // 目标路径
+}
+function buildSearchIndex(): SearchItem[] {
+  const pages: SearchItem[] = [
+    { type: "page", name: "首页", description: "小白官网首页与核心亮点", to: "/" },
+    { type: "page", name: "功能详情", description: "所有游戏、工具、AI 功能一览", to: "/features" },
+    { type: "page", name: "社交中心", description: "好友、群聊、私信、点赞", to: "/social" },
+    { type: "page", name: "下载", description: "安装包 / 便携版下载与校验", to: "/download" },
+    { type: "page", name: "关于", description: "版本历史、技术栈、FAQ、社区", to: "/about" },
+    { type: "page", name: "登录 / 注册", description: "邮箱验证码 + 滑块验证", to: "/auth" },
+  ];
+  const fromGames: SearchItem[] = games.map((g) => ({
+    type: "game",
+    name: g.name,
+    description: g.description,
+    to: "/features",
+  }));
+  const fromTools: SearchItem[] = tools.map((t) => ({
+    type: "tool",
+    name: t.name,
+    description: t.description,
+    to: "/features",
+  }));
+  const fromAi: SearchItem[] = aiTools.map((a) => ({
+    type: "ai",
+    name: a.name,
+    description: a.description,
+    to: "/features",
+  }));
+  return [...pages, ...fromGames, ...fromTools, ...fromAi];
+}
 
 /**
  * 顶部导航栏（包含登录/注册入口与登录后菜单）
@@ -45,6 +91,8 @@ export default function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+  /* 主题切换（升级1） */
+  const { isDark, toggleTheme } = useTheme();
 
   // 当前登录状态（每 500ms 轮询一次，因为页面间通过 localStorage 同步）
   const [loggedIn, setLoggedIn] = useState<boolean>(() => isLoggedIn());
@@ -61,6 +109,80 @@ export default function Navbar() {
     type: "success" | "error" | "info";
     msg: string;
   } | null>(null);
+
+  /* ================ 全局搜索（升级2） ================ */
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchKeyword, setSearchKeyword] = useState("");
+  const searchIndex = useMemo(buildSearchIndex, []);
+  /**
+   * 按关键词对搜索项打分，返回前 8 条结果
+   *  - 精确命中 name 前缀权重最高
+   *  - name 部分命中权重次之
+   *  - description 命中最低
+   */
+  const searchResults = useMemo<SearchItem[]>(() => {
+    const kw = searchKeyword.trim().toLowerCase();
+    if (!kw) return searchIndex.slice(0, 8);
+    return searchIndex
+      .map((it) => {
+        let score = 0;
+        const name = it.name.toLowerCase();
+        const desc = (it.description || "").toLowerCase();
+        if (name.startsWith(kw)) score += 100;
+        else if (name.includes(kw)) score += 50;
+        if (desc.includes(kw)) score += 10;
+        if (kw.length >= 2 && name.split(/[\s·\-–—()（）]/).some((p) => p === kw)) score += 80;
+        return { it, score };
+      })
+      .filter((x) => x.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 8)
+      .map((x) => x.it);
+  }, [searchIndex, searchKeyword]);
+  /**
+   * 选中搜索项：直接 navigate 跳转
+   *  - 对 game/tool/ai 额外把关键词带到 hash，便于 features 页滚动定位（简化版：先跳到 /features）
+   */
+  const handlePickSearchItem = (it: SearchItem) => {
+    setSearchOpen(false);
+    setSearchKeyword("");
+    navigate(it.to);
+  };
+  /** 全局快捷键 Ctrl/Cmd + K 打开搜索框 */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSearchOpen((v) => !v);
+      } else if (e.key === "Escape" && searchOpen) {
+        setSearchOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [searchOpen]);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (searchOpen) {
+      // 打开后等一次渲染再聚焦输入框
+      const id = window.setTimeout(() => searchInputRef.current?.focus(), 50);
+      return () => window.clearTimeout(id);
+    }
+  }, [searchOpen]);
+
+  /** 搜索结果条目按类型显示彩色小徽章 */
+  const searchBadge = (type: SearchItem["type"]) => {
+    switch (type) {
+      case "page":
+        return { label: "页面", cls: "bg-sky-50 text-sky-600 border-sky-100 dark:bg-sky-500/10 dark:text-sky-300 dark:border-sky-500/20" };
+      case "game":
+        return { label: "游戏", cls: "bg-pink-50 text-pink-600 border-pink-100 dark:bg-pink-500/10 dark:text-pink-300 dark:border-pink-500/20" };
+      case "tool":
+        return { label: "工具", cls: "bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/20" };
+      case "ai":
+        return { label: "AI", cls: "bg-violet-50 text-violet-600 border-violet-100 dark:bg-violet-500/10 dark:text-violet-300 dark:border-violet-500/20" };
+    }
+  };
 
   /**
    * 监听滚动，切换玻璃态样式
@@ -156,9 +278,73 @@ export default function Navbar() {
         scrolled ? "glass shadow-lg shadow-pink-100/50" : "bg-transparent"
       }`}
     >
+      {/* 全局搜索弹出层（升级2） */}
+      {searchOpen && (
+        <div className="fixed inset-0 z-[60] flex items-start justify-center pt-20 sm:pt-24 px-4">
+          {/* 遮罩 */}
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fade-in"
+            onClick={() => setSearchOpen(false)}
+          />
+          <div className="relative w-full max-w-2xl glass rounded-2xl border border-pink-100 shadow-2xl shadow-pink-200/30 dark:border-white/10 animate-fade-in-up overflow-hidden">
+            <div className="flex items-center gap-3 px-5 py-4 border-b border-pink-100/70 dark:border-white/10">
+              <Search size={18} className="text-brand-pink" />
+              <input
+                ref={searchInputRef}
+                value={searchKeyword}
+                onChange={(e) => setSearchKeyword(e.target.value)}
+                type="text"
+                placeholder="搜索页面 / 游戏 / 工具 / AI 智能助手（Ctrl + K）"
+                className="flex-1 bg-transparent outline-none text-brand-dark dark:text-gray-100 placeholder:text-brand-gray/70 text-base"
+              />
+              <kbd className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-pink-100 bg-white/60 dark:bg-white/5 text-[10px] text-brand-gray dark:text-gray-300">
+                ESC 关闭
+              </kbd>
+            </div>
+            <div className="max-h-[60vh] overflow-y-auto p-2">
+              {searchResults.length === 0 && (
+                <div className="px-4 py-10 text-center text-sm text-brand-gray dark:text-gray-400">
+                  没有找到匹配内容，试试其它关键词～
+                </div>
+              )}
+              {searchResults.map((it, i) => {
+                const badge = searchBadge(it.type);
+                return (
+                  <button
+                    key={`${it.type}-${it.name}-${i}`}
+                    onClick={() => handlePickSearchItem(it)}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-pink-50 dark:hover:bg-white/5 transition text-left group"
+                  >
+                    <span
+                      className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium border ${badge.cls}`}
+                    >
+                      {badge.label}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-semibold text-brand-dark dark:text-gray-100 truncate group-hover:text-brand-pink transition">
+                        {it.name}
+                      </div>
+                      {it.description && (
+                        <div className="text-[12px] text-brand-gray dark:text-gray-400 truncate mt-0.5">
+                          {it.description}
+                        </div>
+                      )}
+                    </div>
+                    <ArrowRight
+                      size={14}
+                      className="text-brand-gray/50 group-hover:text-brand-pink transition opacity-0 group-hover:opacity-100"
+                    />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Toast */}
       {toast && (
-        <div className="absolute left-1/2 -translate-x-1/2 top-20 animate-fade-in-up">
+        <div className="absolute left-1/2 -translate-x-1/2 top-20 animate-fade-in-up z-50">
           <div
             className={`px-4 py-2.5 rounded-xl shadow-lg text-sm backdrop-blur border ${
               toast.type === "success"
@@ -181,7 +367,7 @@ export default function Navbar() {
           </span>
         </Link>
 
-        <div className="hidden md:flex items-center gap-8">
+        <div className="hidden md:flex items-center gap-5 lg:gap-8">
           {navLinks.map((link) => (
             <Link
               key={link.to}
@@ -200,7 +386,31 @@ export default function Navbar() {
           ))}
 
           {/* 认证入口 */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
+            {/* 搜索按钮（升级2） */}
+            <button
+              type="button"
+              onClick={() => setSearchOpen(true)}
+              className="hidden sm:inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/70 border border-pink-100 hover:bg-white hover:border-brand-pink hover:shadow-sm transition text-sm text-brand-gray dark:text-gray-300 dark:bg-white/5 dark:border-white/10"
+              title="全局搜索 (Ctrl + K)"
+            >
+              <Search size={14} />
+              <span className="hidden lg:inline">搜索功能</span>
+              <kbd className="hidden lg:inline-block text-[10px] text-brand-gray/70 dark:text-gray-400 ml-1">
+                Ctrl+K
+              </kbd>
+            </button>
+
+            {/* 主题切换按钮（升级1） */}
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-white/70 border border-pink-100 hover:bg-white hover:border-brand-pink hover:shadow-sm transition dark:bg-white/5 dark:border-white/10"
+              title={isDark ? "切换为浅色主题" : "切换为深色主题"}
+            >
+              {isDark ? <Sun size={15} className="text-amber-400" /> : <Moon size={15} className="text-slate-500" />}
+            </button>
+
             {loggedIn && displayName ? (
               <div className="relative" ref={menuRef}>
                 <button
@@ -319,16 +529,36 @@ export default function Navbar() {
           </div>
         </div>
 
-        <button
-          className="md:hidden p-2 text-brand-dark"
-          onClick={() => setMobileOpen(!mobileOpen)}
-        >
-          {mobileOpen ? <X size={24} /> : <Menu size={24} />}
-        </button>
+        <div className="md:hidden flex items-center gap-2">
+          {/* 移动端搜索快捷按钮 */}
+          <button
+            type="button"
+            onClick={() => setSearchOpen(true)}
+            className="w-9 h-9 rounded-full bg-white/70 border border-pink-100 flex items-center justify-center dark:bg-white/5 dark:border-white/10"
+            title="全局搜索"
+          >
+            <Search size={16} />
+          </button>
+          {/* 移动端主题切换 */}
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="w-9 h-9 rounded-full bg-white/70 border border-pink-100 flex items-center justify-center dark:bg-white/5 dark:border-white/10"
+            title={isDark ? "切换为浅色主题" : "切换为深色主题"}
+          >
+            {isDark ? <Sun size={15} className="text-amber-400" /> : <Moon size={15} className="text-slate-500" />}
+          </button>
+          <button
+            className="p-2 text-brand-dark"
+            onClick={() => setMobileOpen(!mobileOpen)}
+          >
+            {mobileOpen ? <X size={24} /> : <Menu size={24} />}
+          </button>
+        </div>
       </div>
 
       {mobileOpen && (
-        <div className="md:hidden glass border-t border-pink-100">
+        <div className="md:hidden glass border-t border-pink-100 dark:border-white/10">
           <div className="px-6 py-4 flex flex-col gap-4">
             {navLinks.map((link) => (
               <Link
@@ -345,7 +575,7 @@ export default function Navbar() {
             ))}
 
             {/* 移动端认证区 */}
-            <div className="pt-3 border-t border-pink-100 flex flex-col gap-3">
+            <div className="pt-3 border-t border-pink-100 dark:border-white/10 flex flex-col gap-3">
               {loggedIn && displayName ? (
                 <>
                   <div className="flex items-center gap-3">

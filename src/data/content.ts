@@ -133,3 +133,110 @@ export const timeline = [
   { version: "v0.4.43", date: "2026年7月", event: "新增检查更新功能、帮助界面美化、AI文本分析升级、官方网站发布" },
   { version: "v0.5.0", date: "2026年7月", event: "全新登录注册模块、邮箱验证码+滑块验证、会话持久化、云同步入口、托盘菜单动态刷新" },
 ];
+
+/* ================== 下载页补充数据：校验和 / 系统要求详细版 / 更新日志 ================== */
+export interface ChecksumItem {
+  asset: "installer" | "portable";
+  fileName: string;
+  size: string;
+  /** 占位：实际在 GitHub Release 页面附随 sha256sums.txt；用户发布新版本后更新即可 */
+  sha256: string;
+}
+export const releaseChecksums: ChecksumItem[] = [
+  {
+    asset: "installer",
+    fileName: "Smart-Desktop-Pet-White-Setup-0.5.0.exe",
+    size: "约 141 MB",
+    sha256: "（发布新版本时，把 Setup.exe 生成的 SHA256 粘贴到这里）",
+  },
+  {
+    asset: "portable",
+    fileName: "Smart-Desktop-Pet-White-Portable-0.5.0.exe",
+    size: "约 140 MB",
+    sha256: "（发布新版本时，把 Portable.exe 生成的 SHA256 粘贴到这里）",
+  },
+];
+
+export interface SystemReqRow {
+  category: string;
+  minimum: string;
+  recommended: string;
+  icon: "MonitorCog" | "Cpu" | "MemoryStick" | "HardDrive" | "Monitor" | "Globe";
+}
+export const systemRequirements: SystemReqRow[] = [
+  { category: "操作系统", minimum: "Windows 10 1809+ / 64 位", recommended: "Windows 11 22H2+ / 64 位", icon: "MonitorCog" },
+  { category: "处理器", minimum: "双核 1.6 GHz+（支持 SSE2）", recommended: "四核 2.4 GHz+", icon: "Cpu" },
+  { category: "内存", minimum: "2 GB RAM", recommended: "4 GB+ RAM", icon: "MemoryStick" },
+  { category: "存储空间", minimum: "200 MB 可用（安装包 + 运行时）", recommended: "500 MB+ 可用（存放便签、画板、截图等数据）", icon: "HardDrive" },
+  { category: "屏幕分辨率", minimum: "1366 × 768", recommended: "1920 × 1080 及以上", icon: "Monitor" },
+  { category: "网络", minimum: "可选（用于云同步、检查更新、AI 工具）", recommended: "稳定宽带/Wi-Fi，用于云同步和自动更新", icon: "Globe" },
+];
+
+export interface ChangelogEntry {
+  version: string;
+  date: string;
+  highlights: string[];
+}
+export const changelog: ChangelogEntry[] = [
+  {
+    version: "v0.5.0",
+    date: "2026年7月",
+    highlights: [
+      "全新登录/注册模块：邮箱验证码 + 图形码 + 滑块三级验证，注册后自动登录",
+      "新增会话持久化：关闭浏览器/软件后下次自动保持登录状态",
+      "托盘菜单动态刷新：登录/登出/同步操作后菜单立即同步刷新",
+      "官方网站发布：社交中心、管理员控制台、数据同步预览、功能热度榜单",
+    ],
+  },
+  {
+    version: "v0.4.43",
+    date: "2026年7月",
+    highlights: [
+      "新增检查更新：自动检测 GitHub Releases 最新版本并弹框提示",
+      "帮助界面全面美化，带搜索和分章节导航",
+      "AI 文本分析升级：关键词提取、情感倾向、字数统计、可读性评分",
+      "官方网站首版：首页 / 功能详情 / 下载 / 关于 四大页",
+    ],
+  },
+  {
+    version: "v0.4.28",
+    date: "2026年",
+    highlights: [
+      "羊了个羊新增「闯关 + 无尽」双模式，难度曲线更平滑",
+      "系统工具集成：磁盘清理、放大镜、便签、闹钟四大工具",
+      "托盘右键菜单二级分类：游戏 / 工具 / AI 分类查找",
+    ],
+  },
+];
+
+/* 关于页 FAQ（后续折叠面板用） */
+export interface FaqItem {
+  q: string;
+  a: string;
+}
+export const faqs: FaqItem[] = [
+  {
+    q: "小白支持哪些系统？目前只做 Windows 吗？",
+    a: "当前 v0.x 系列仅支持 Windows 10/11 64 位。后续 v1.0 规划阶段会评估 macOS 和 Linux 发行版（Ubuntu/Debian/Arch）的移植可行性，进度请关注 GitHub Releases。",
+  },
+  {
+    q: "小白会不会收集我的个人数据？",
+    a: "桌面端默认在本地运行，所有便签、截图、记事本、画板等数据都保存在本机用户目录（AppData/Roaming）中，不上传任何服务器。云同步（预览版）仅在你主动登录账号并点击「同步数据」时触发，且加密传输。",
+  },
+  {
+    q: "小白为什么报毒？是安全的吗？",
+    a: "小白由 PyInstaller 打包并使用 Inno Setup 制作安装包，由于暂未做 EV 代码签名，部分杀毒软件可能误报。可校验下载页附带的 SHA256 指纹与 GitHub Releases 上提供的 sha256sums.txt 一致后再安装。如果你有顾虑，也可以从源码自行打包。",
+  },
+  {
+    q: "安装版和便携版怎么选？",
+    a: "多数用户推荐「安装版」：会创建开始菜单、桌面快捷方式，并在「应用和功能」里提供一键卸载。「便携版」适合想把小白放到 U 盘或随身硬盘、免安装即用的场景。两者功能一致，数据目录相同。",
+  },
+  {
+    q: "如何卸载小白？会残留数据吗？",
+    a: "安装版：从「设置 - 应用」或开始菜单快捷方式里卸载，卸载程序会清理可执行文件。用户数据（便签、截图、配置、画板等）默认保留，如需彻底删除可手动删除 %AppData%\\Smart-Desktop-Pet-White\\ 目录。便携版直接删除解压目录即可。",
+  },
+  {
+    q: "如何参与贡献？",
+    a: "欢迎 Star、提 Issue、发起 PR。前端官网在 Smart-Desktop-Pet-White 子仓库（React + Vite + Tailwind），桌面端主仓库使用 Python + PyQt5。在 GitHub 上找到对应仓库后，PR 通过 CI 即可合入。",
+  },
+];

@@ -4,6 +4,7 @@ import {
   Sparkles, Gamepad2, Wrench, Layers, Dog, Brain,
   Download, ArrowRight, Cloud, Languages, BookOpen,
   Smile, Quote, FileText, Github, ThumbsUp, Heart, Flame,
+  Users, Zap,
 } from "lucide-react";
 import { useScrollReveal } from "@/hooks/useScrollReveal";
 import SectionTitle from "@/components/SectionTitle";
@@ -139,8 +140,101 @@ export default function Home() {
         </div>
       </section>
 
+      {/* 升级6：浮动快捷入口卡片（位于 Hero 下方，4 张卡片快速跳转游戏/工具/社交/下载） */}
+      <section className="px-6 -mt-10 sm:-mt-14 relative z-20">
+        <div className="max-w-6xl mx-auto grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6">
+          {/* 游戏中心 */}
+          <Link
+            to="/playground"
+            className="group relative bg-white dark:bg-[#1a1418] rounded-3xl border border-pink-100 dark:border-white/10 p-5 md:p-6 shadow-xl shadow-pink-200/30 dark:shadow-black/30 hover:-translate-y-1.5 transition-all duration-300 overflow-hidden"
+          >
+            <span className="absolute -right-6 -top-6 w-24 h-24 rounded-full bg-gradient-to-br from-pink-300/40 to-fuchsia-300/20 blur-xl group-hover:scale-125 transition-transform" />
+            <div className="relative">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-pink-500 to-rose-500 text-white inline-flex items-center justify-center mb-4 shadow-md">
+                <Gamepad2 size={22} />
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="font-serif font-bold text-brand-dark dark:text-gray-100 text-base md:text-lg">
+                  游戏中心
+                </h3>
+                <ArrowRight size={16} className="text-brand-pink opacity-70 group-hover:translate-x-1 transition-transform" />
+              </div>
+              <p className="mt-1 text-xs md:text-sm text-brand-gray dark:text-gray-400">
+                15 款小游戏：羊了个羊、2048、贪吃蛇…
+              </p>
+            </div>
+          </Link>
+
+          {/* 工具集合 */}
+          <Link
+            to="/features"
+            className="group relative bg-white dark:bg-[#1a1418] rounded-3xl border border-pink-100 dark:border-white/10 p-5 md:p-6 shadow-xl shadow-pink-200/30 dark:shadow-black/30 hover:-translate-y-1.5 transition-all duration-300 overflow-hidden"
+          >
+            <span className="absolute -right-6 -top-6 w-24 h-24 rounded-full bg-gradient-to-br from-sky-300/40 to-indigo-300/20 blur-xl group-hover:scale-125 transition-transform" />
+            <div className="relative">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-sky-500 to-indigo-500 text-white inline-flex items-center justify-center mb-4 shadow-md">
+                <Wrench size={22} />
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="font-serif font-bold text-brand-dark dark:text-gray-100 text-base md:text-lg">
+                  工具集合
+                </h3>
+                <ArrowRight size={16} className="text-brand-pink opacity-70 group-hover:translate-x-1 transition-transform" />
+              </div>
+              <p className="mt-1 text-xs md:text-sm text-brand-gray dark:text-gray-400">
+                磁盘清理、放大镜、便签闹钟等生产力工具
+              </p>
+            </div>
+          </Link>
+
+          {/* 社交广场（跳到 about#community，目前约等社区板块） */}
+          <Link
+            to="/about"
+            className="group relative bg-white dark:bg-[#1a1418] rounded-3xl border border-pink-100 dark:border-white/10 p-5 md:p-6 shadow-xl shadow-pink-200/30 dark:shadow-black/30 hover:-translate-y-1.5 transition-all duration-300 overflow-hidden"
+          >
+            <span className="absolute -right-6 -top-6 w-24 h-24 rounded-full bg-gradient-to-br from-emerald-300/40 to-teal-300/20 blur-xl group-hover:scale-125 transition-transform" />
+            <div className="relative">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-500 text-white inline-flex items-center justify-center mb-4 shadow-md">
+                <Users size={22} />
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="font-serif font-bold text-brand-dark dark:text-gray-100 text-base md:text-lg">
+                  社交广场
+                </h3>
+                <ArrowRight size={16} className="text-brand-pink opacity-70 group-hover:translate-x-1 transition-transform" />
+              </div>
+              <p className="mt-1 text-xs md:text-sm text-brand-gray dark:text-gray-400">
+                大家的留言墙、作品分享、社区交流
+              </p>
+            </div>
+          </Link>
+
+          {/* 立即下载 */}
+          <Link
+            to="/download"
+            className="group relative bg-gradient-to-br from-brand-pink to-brand-pink-dark text-white rounded-3xl border border-white/20 p-5 md:p-6 shadow-xl shadow-pink-300/40 hover:-translate-y-1.5 transition-all duration-300 overflow-hidden"
+          >
+            <span className="absolute -right-6 -top-6 w-24 h-24 rounded-full bg-white/20 blur-xl group-hover:scale-125 transition-transform" />
+            <div className="relative">
+              <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-sm inline-flex items-center justify-center mb-4 shadow-md ring-1 ring-white/30">
+                <Download size={22} />
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="font-serif font-bold text-base md:text-lg">立即下载</h3>
+                <div className="flex items-center gap-1 text-xs bg-white/20 rounded-full px-2.5 py-1">
+                  <Zap size={12} /> 新版 v{siteConfig.version}
+                </div>
+              </div>
+              <p className="mt-1 text-xs md:text-sm text-white/85">
+                安装版 / 便携版 · SHA256 校验 · 更新日志
+              </p>
+            </div>
+          </Link>
+        </div>
+      </section>
+
       {/* Stats Section */}
-      <section className="py-20 px-6 bg-brand-cream">
+      <section className="py-20 px-6 bg-brand-cream dark:bg-[#141414]">
         <div className="max-w-6xl mx-auto">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
             {stats.map((stat) => {
