@@ -203,9 +203,19 @@ class AuthSystem:
     
     def register(self, nickname: str, email: str, email_code: str,
                  password: str, confirm_password: str,
-                 captcha_id: str, captcha_input: str) -> tuple[bool, str, Optional[str]]:
+                 captcha_id: str, captcha_input: str,
+                 avatar: str = '') -> tuple[bool, str, Optional[str]]:
         """
         注册新用户（严格按需求校验顺序）
+        Args:
+            nickname: 昵称
+            email: 邮箱
+            email_code: 邮箱验证码
+            password: 密码
+            confirm_password: 确认密码
+            captcha_id: 图形验证码ID
+            captcha_input: 图形验证码输入
+            avatar: 头像 Base64/Data URL 或本地路径（可选）
         Returns: (success, message, user_id)
         """
         # 1. 昵称校验
@@ -239,10 +249,10 @@ class AuthSystem:
         username = valid_email
         if self.user_storage.get_user_by_username(username):
             return False, "该邮箱已被注册", None
-        # 创建用户
+        # 创建用户（附带头像）
         user_id = str(uuid.uuid4())
         password_hash = self.password_manager.hash_password(password)
-        self.user_storage.create_user(user_id, username, valid_email, password_hash, nickname=valid_nick)
+        self.user_storage.create_user(user_id, username, valid_email, password_hash, nickname=valid_nick, avatar=avatar)
         # 分配普通用户角色
         self.permission_manager.assign_role(user_id, Role.USER)
         self.permission_storage.set_user_roles(user_id, [Role.USER])
@@ -361,9 +371,11 @@ class AuthSystem:
         """
         把会话信息持久化到 <user_id>.json，并把 user_id 记录到 profile_index.saved_user_ids，
         同时更新 last_active_user_id；因此多人可以分别记住登录，不会互相覆盖。
+        在会话里保存 nickname / avatar 快照，方便托盘/窗口快速展示。
         """
         try:
             import base64 as _base64_mod
+            import time as _time
 
             # 如果没传 user_id，尝试从 token payload 或 email 反查
             if not user_id:
@@ -377,6 +389,13 @@ class AuthSystem:
                 logger.warning("无法定位 user_id，跳过多会话持久化")
                 return
 
+            # 反查用户表，读取展示名和头像快照（用于切换账号菜单显示）
+            user = self.user_storage.get_user(user_id) if user_id else None
+            if not user:
+                user = self.user_storage.get_user_by_email(email) or self.user_storage.get_user_by_username(email)
+            nickname_snap = (user or {}).get('nickname') or (user or {}).get('username') or email
+            avatar_snap = (user or {}).get('avatar') or ''
+
             payload = self.jwt_manager.verify_token(token) or {}
             exp = payload.get('exp')
             if not exp:
@@ -387,7 +406,15 @@ class AuthSystem:
                         exp = json.loads(_base64_mod.urlsafe_b64decode(payload_b64).decode('utf-8')).get('exp')
                 except Exception:
                     exp = None
-            session = {"email": email, "token": token, "expires_at": exp, "user_id": user_id}
+            session = {
+                "email": email,
+                "token": token,
+                "expires_at": exp,
+                "user_id": user_id,
+                "nickname": nickname_snap,
+                "avatar": avatar_snap,
+                "logged_in_at": int(_time.time()),
+            }
 
             file_path = self._session_file_for(user_id)
             os.makedirs(self._sessions_dir, exist_ok=True)
@@ -738,8 +765,136 @@ class AuthSystem:
         return self.permission_manager.is_admin(self._current_user['user_id'])
     
     def get_current_user(self) -> Optional[Dict]:
-        """获取当前用户"""
-        return self._current_user
+        """获取当前用户（确保含 avatar 字段，旧数据自动补空串）"""
+        u = self._current_user
+        if u and 'avatar' not in u:
+            u['avatar'] = ''
+        return u
+
+    def get_current_avatar(self) -> str:
+        """获取当前头像（Base64/Data URL 或空串）"""
+        u = self.get_current_user()
+        return (u or {}).get('avatar') or ''
+
+    def update_current_user_avatar(self, avatar_data_url_or_path: str) -> tuple[bool, str]:
+        """
+        更新当前登录用户的头像
+        Args:
+            avatar_data_url_or_path: Base64 Data URL、本地文件路径，或空串（清除头像）
+        Returns:
+            (success, message)
+        """
+        if not self._current_user:
+            return False, "请先登录"
+        uid = self._current_user.get('user_id')
+        if not uid:
+            return False, "当前用户缺少 user_id"
+        cleaned = (avatar_data_url_or_path or '').strip()
+        self.user_storage.update_user(uid, avatar=cleaned)
+        # 同步内存里的 current user
+        self._current_user['avatar'] = cleaned
+        # 同步会话文件里的头像快照（切换账号菜单展示）
+        sess_file = self._session_file_for(uid)
+        try:
+            if os.path.exists(sess_file):
+                with open(sess_file, 'r', encoding='utf-8') as f:
+                    sess = json.load(f)
+                sess['avatar'] = cleaned
+                if 'nickname' not in sess or not sess['nickname']:
+                    sess['nickname'] = self.get_current_display_name()
+                with open(sess_file, 'w', encoding='utf-8') as f:
+                    json.dump(sess, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.warning(f"同步会话头像快照失败（可忽略）: {e}")
+        logger.info(f"用户 {uid} 头像已更新")
+        return True, "头像已更新"
+
+    def list_saved_sessions(self) -> list:
+        """
+        列出所有「已记住登录」的账号会话（供切换账号菜单使用）
+        返回按 logged_in_at 倒序：
+        [{"user_id","email","nickname","avatar","logged_in_at","is_active"}, ...]
+        """
+        index = self._read_profile_index()
+        out: list = []
+        active_uid = self._active_user_id or index.get("last_active_user_id")
+        for uid in list(index.get("saved_user_ids") or []):
+            fpath = self._session_file_for(uid)
+            if not os.path.exists(fpath):
+                continue
+            try:
+                with open(fpath, 'r', encoding='utf-8') as f:
+                    sess = json.load(f)
+            except Exception:
+                continue
+            entry = {
+                "user_id": sess.get("user_id") or uid,
+                "email": sess.get("email") or "",
+                "nickname": sess.get("nickname") or "",
+                "avatar": sess.get("avatar") or "",
+                "logged_in_at": sess.get("logged_in_at") or 0,
+                "is_active": (sess.get("user_id") or uid) == active_uid,
+            }
+            # 若会话里没有昵称/头像，尝试从用户表补齐并写回
+            if not entry["nickname"] or not entry["avatar"]:
+                u = self.user_storage.get_user(entry["user_id"]) if entry["user_id"] else None
+                if u:
+                    if not entry["nickname"]:
+                        entry["nickname"] = u.get("nickname") or u.get("username") or entry["email"]
+                        sess["nickname"] = entry["nickname"]
+                    if not entry["avatar"]:
+                        entry["avatar"] = u.get("avatar") or ""
+                        sess["avatar"] = entry["avatar"]
+                    try:
+                        with open(fpath, 'w', encoding='utf-8') as f_:
+                            json.dump(sess, f_, ensure_ascii=False, indent=2)
+                    except Exception:
+                        pass
+            out.append(entry)
+        out.sort(key=lambda it: int(it.get("logged_in_at") or 0), reverse=True)
+        return out
+
+    def switch_profile(self, user_id: str) -> tuple[bool, str]:
+        """
+        切换到另一个「已记住登录」的账号档案（无需重新输入密码）
+        会同步刷新：当前 token / 当前用户 / active_user_id / 状态档案 / 配置档案
+        """
+        if not user_id:
+            return False, "未指定 user_id"
+        if self._active_user_id and self._active_user_id == user_id:
+            return True, "已经是当前账号"
+        fpath = self._session_file_for(user_id)
+        if not os.path.exists(fpath):
+            return False, "该账号会话不存在或已被移除"
+        try:
+            with open(fpath, 'r', encoding='utf-8') as f:
+                sess = json.load(f)
+        except Exception as e:
+            return False, f"读取会话失败：{e}"
+        token = sess.get("token")
+        if not token:
+            return False, "该账号会话已失效，请重新登录"
+        payload = self.jwt_manager.verify_token(token)
+        if not payload:
+            return False, "该账号登录已过期，请重新登录"
+        uid = payload.get("sub") or sess.get("user_id")
+        if not uid:
+            return False, "该账号会话缺少用户标识"
+        user = self.user_storage.get_user(uid)
+        if not user:
+            return False, "该账号不存在或已被删除"
+        # 更新内存态
+        self._current_token = token
+        self._current_user = user
+        self._active_user_id = uid
+        # 更新索引：最近活跃账号
+        index = self._read_profile_index()
+        if uid not in index["saved_user_ids"]:
+            index["saved_user_ids"].append(uid)
+        index["last_active_user_id"] = uid
+        self._write_profile_index(index)
+        logger.info(f"已切换账号 -> user_id={uid}")
+        return True, "切换成功"
     
     def get_current_user_roles(self) -> list:
         """获取当前用户角色"""

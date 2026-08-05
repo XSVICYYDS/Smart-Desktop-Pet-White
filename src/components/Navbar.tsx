@@ -17,6 +17,8 @@ import {
   Moon,
   Search,
   ArrowRight,
+  ImagePlus as ImageIcon,
+  X as XIcon,
 } from "lucide-react";
 import { siteConfig, games, tools, aiTools } from "@/data/content";
 import xiaobaiLogo from "@/assets/xiaobai-logo.gif";
@@ -32,6 +34,9 @@ import {
   getSessionPool,
   switchSession,
   getActiveUserId,
+  getCurrentAvatar,
+  updateCurrentUserAvatar,
+  compressAvatar,
   type SavedSessionEntry,
 } from "@/lib/authClient";
 import { useTheme } from "@/hooks/useTheme";
@@ -121,6 +126,12 @@ export default function Navbar() {
   const [displayName, setDisplayName] = useState<string | null>(() =>
     getCurrentDisplayName()
   );
+  // 头像 dataURL（若有）；空字符串则回落到首字母渐变圆形
+  const [currentAvatar, setCurrentAvatar] = useState<string>(() => getCurrentAvatar());
+  // 更换头像对话框
+  const [avatarDialogOpen, setAvatarDialogOpen] = useState(false);
+  const [avatarPreview, setAvatarPreview] = useState<string>("");
+  const [avatarProcessing, setAvatarProcessing] = useState(false);
 
   // 头像菜单开关（桌面端）
   const [menuOpen, setMenuOpen] = useState(false);
@@ -229,11 +240,54 @@ export default function Navbar() {
     const t = window.setInterval(() => {
       const now = isLoggedIn();
       const name = getCurrentDisplayName();
+      const av = getCurrentAvatar();
       setLoggedIn((prev) => prev !== now || displayName !== name ? now : prev);
       setDisplayName(name);
+      setCurrentAvatar(av);
     }, 500);
     return () => window.clearInterval(t);
   }, [displayName]);
+
+  /**
+   * 打开换头像对话框时，把当前已有头像填到预览里
+   */
+  useEffect(() => {
+    if (avatarDialogOpen) {
+      setAvatarPreview(getCurrentAvatar());
+    } else {
+      // 关闭后清空预览（下次打开再重填，避免残留无效选择）
+      setAvatarPreview("");
+    }
+  }, [avatarDialogOpen]);
+
+  /**
+   * 保存当前预览头像为正式头像（同步到用户表 + 会话池 + 当前会话）
+   */
+  const handleSaveAvatar = () => {
+    const r = updateCurrentUserAvatar(avatarPreview || "");
+    setToast({ type: r.ok ? "success" : "error", msg: r.msg });
+    if (r.ok) {
+      setCurrentAvatar(avatarPreview || "");
+      setAvatarDialogOpen(false);
+    }
+  };
+
+  /**
+   * 在对话框里选图：压缩后填到预览
+   */
+  const handlePickAvatarInDialog = async (file: File) => {
+    setAvatarProcessing(true);
+    try {
+      const r = await compressAvatar(file, 160, 0.88);
+      if (!r.ok || !r.dataURL) {
+        setToast({ type: "error", msg: r.msg ?? "选择头像失败" });
+        return;
+      }
+      setAvatarPreview(r.dataURL);
+    } finally {
+      setAvatarProcessing(false);
+    }
+  };
 
   /**
    * 点击菜单外部时关闭下拉
@@ -475,9 +529,17 @@ export default function Navbar() {
                   onClick={() => setMenuOpen((o) => !o)}
                   className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white shadow-sm border border-pink-100 hover:border-brand-pink hover:shadow-md transition"
                 >
-                  <span className="w-7 h-7 rounded-full bg-gradient-to-br from-brand-pink to-brand-pink-dark text-white text-xs font-bold flex items-center justify-center">
-                    {displayName.slice(0, 1).toUpperCase()}
-                  </span>
+                  {currentAvatar ? (
+                    <img
+                      src={currentAvatar}
+                      alt={displayName ?? "avatar"}
+                      className="w-7 h-7 rounded-full object-cover ring-2 ring-brand-pink/20"
+                    />
+                  ) : (
+                    <span className="w-7 h-7 rounded-full bg-gradient-to-br from-brand-pink to-brand-pink-dark text-white text-xs font-bold flex items-center justify-center">
+                      {displayName.slice(0, 1).toUpperCase()}
+                    </span>
+                  )}
                   <span className="text-sm font-medium text-brand-dark max-w-[120px] truncate">
                     {displayName}
                   </span>
@@ -490,9 +552,17 @@ export default function Navbar() {
                     <div className="px-4 py-3 bg-gradient-to-br from-brand-pink to-brand-pink-dark text-white">
                       <div className="flex items-center gap-3">
                         <div className="relative">
-                          <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-lg font-bold">
-                            {displayName.slice(0, 1).toUpperCase()}
-                          </div>
+                          {currentAvatar ? (
+                            <img
+                              src={currentAvatar}
+                              alt={displayName ?? "avatar"}
+                              className="w-10 h-10 rounded-full object-cover ring-2 ring-white/30"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-lg font-bold">
+                              {displayName.slice(0, 1).toUpperCase()}
+                            </div>
+                          )}
                           {adminBadge && (
                             <span
                               className={`absolute -bottom-1 -right-2 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] bg-gradient-to-r border shadow ${adminBadge.color}`}
@@ -553,9 +623,17 @@ export default function Navbar() {
                                     : "text-brand-dark hover:bg-pink-50"
                                 }`}
                               >
-                                <span className="w-7 h-7 shrink-0 rounded-full bg-gradient-to-br from-brand-pink to-brand-pink-dark text-white text-[11px] font-bold flex items-center justify-center">
-                                  {(it.nickname || it.email || "?").slice(0, 1).toUpperCase()}
-                                </span>
+                                {it.avatar ? (
+                                  <img
+                                    src={it.avatar}
+                                    alt={(it.nickname || it.email || "?") + " avatar"}
+                                    className="w-7 h-7 shrink-0 rounded-full object-cover ring-1 ring-pink-100"
+                                  />
+                                ) : (
+                                  <span className="w-7 h-7 shrink-0 rounded-full bg-gradient-to-br from-brand-pink to-brand-pink-dark text-white text-[11px] font-bold flex items-center justify-center">
+                                    {(it.nickname || it.email || "?").slice(0, 1).toUpperCase()}
+                                  </span>
+                                )}
                                 <div className="min-w-0 flex-1 text-left">
                                   <div className="truncate font-medium flex items-center gap-1.5">
                                     {it.nickname || it.email}
@@ -594,6 +672,16 @@ export default function Navbar() {
                         <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-fuchsia-50 text-fuchsia-700 border border-fuchsia-200">
                           好友 / 群聊
                         </span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setMenuOpen(false);
+                          setAvatarDialogOpen(true);
+                        }}
+                        className="flex items-center gap-2 px-4 py-2.5 text-sm text-brand-dark hover:bg-pink-50 transition border-b border-pink-50"
+                      >
+                        <ImageIcon size={15} className="text-brand-pink" />
+                        更换头像
                       </button>
                       <button
                         onClick={handleSync}
@@ -690,9 +778,17 @@ export default function Navbar() {
                 <>
                   <div className="flex items-center gap-3">
                     <div className="relative">
-                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-brand-pink to-brand-pink-dark text-white text-sm font-bold flex items-center justify-center">
-                        {displayName.slice(0, 1).toUpperCase()}
-                      </div>
+                      {currentAvatar ? (
+                        <img
+                          src={currentAvatar}
+                          alt={displayName ?? "avatar"}
+                          className="w-9 h-9 rounded-full object-cover ring-2 ring-brand-pink/30"
+                        />
+                      ) : (
+                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-brand-pink to-brand-pink-dark text-white text-sm font-bold flex items-center justify-center">
+                          {displayName.slice(0, 1).toUpperCase()}
+                        </div>
+                      )}
                       {adminBadge && (
                         <span
                           className={`absolute -bottom-1 -right-2 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] bg-gradient-to-r border shadow ${adminBadge.color}`}
@@ -742,9 +838,17 @@ export default function Navbar() {
                                 active ? "bg-brand-pink/10 text-brand-pink-dark" : "text-brand-dark hover:bg-pink-50"
                               }`}
                             >
-                              <span className="w-7 h-7 shrink-0 rounded-full bg-gradient-to-br from-brand-pink to-brand-pink-dark text-white text-[11px] font-bold flex items-center justify-center">
-                                {(it.nickname || it.email || "?").slice(0, 1).toUpperCase()}
-                              </span>
+                              {it.avatar ? (
+                                <img
+                                  src={it.avatar}
+                                  alt={(it.nickname || it.email || "?") + " avatar"}
+                                  className="w-7 h-7 shrink-0 rounded-full object-cover ring-1 ring-pink-100"
+                                />
+                              ) : (
+                                <span className="w-7 h-7 shrink-0 rounded-full bg-gradient-to-br from-brand-pink to-brand-pink-dark text-white text-[11px] font-bold flex items-center justify-center">
+                                  {(it.nickname || it.email || "?").slice(0, 1).toUpperCase()}
+                                </span>
+                              )}
                               <div className="min-w-0 flex-1">
                                 <div className="truncate font-medium flex items-center gap-1.5">
                                   {it.nickname || it.email}
@@ -769,6 +873,13 @@ export default function Navbar() {
                     </button>
                   </div>
 
+                  <button
+                    onClick={() => setAvatarDialogOpen(true)}
+                    className="flex items-center justify-center gap-2 py-2 rounded-xl bg-gradient-to-r from-fuchsia-50 to-pink-50 text-brand-pink-dark border border-pink-100 text-sm font-medium"
+                  >
+                    <ImageIcon size={15} />
+                    更换头像
+                  </button>
                   <button
                     onClick={handleSync}
                     className="flex items-center justify-center gap-2 py-2 rounded-xl bg-gradient-to-r from-brand-pink/10 to-brand-pink-light/20 text-brand-pink-dark border border-pink-100 text-sm font-medium"
@@ -803,6 +914,113 @@ export default function Navbar() {
             >
               <Github size={18} /> GitHub
             </a>
+          </div>
+        </div>
+      )}
+
+      {/* 更换头像对话框（Modal） */}
+      {avatarDialogOpen && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center px-4 animate-fade-in">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => setAvatarDialogOpen(false)}
+          />
+          <div className="relative w-full max-w-md glass rounded-2xl border border-pink-100 shadow-2xl shadow-pink-200/30 overflow-hidden animate-fade-in-up">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-pink-100/70 bg-gradient-to-r from-brand-pink/10 to-fuchsia-100/50">
+              <div className="text-sm font-semibold text-brand-dark flex items-center gap-2">
+                <ImageIcon size={16} className="text-brand-pink" />
+                更换头像
+              </div>
+              <button
+                type="button"
+                onClick={() => setAvatarDialogOpen(false)}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-brand-gray hover:text-brand-dark hover:bg-white/70"
+                title="关闭"
+              >
+                <XIcon size={16} />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              {/* 预览大图 */}
+              <div className="flex flex-col items-center gap-3 py-2">
+                <div
+                  className="relative shrink-0"
+                  style={{ width: 128, height: 128 }}
+                >
+                  {avatarPreview ? (
+                    <img
+                      src={avatarPreview}
+                      alt="头像预览"
+                      className="w-full h-full rounded-full object-cover border-4 border-white shadow-lg ring-2 ring-brand-pink/30"
+                    />
+                  ) : (
+                    <div className="w-full h-full rounded-full bg-gradient-to-br from-brand-pink to-brand-pink-dark text-white text-4xl font-bold flex items-center justify-center border-4 border-white shadow-lg ring-2 ring-brand-pink/20">
+                      {(displayName ?? "?").slice(0, 1).toUpperCase()}
+                    </div>
+                  )}
+                  {avatarProcessing && (
+                    <div className="absolute inset-0 rounded-full bg-black/30 text-white text-sm flex items-center justify-center">
+                      处理中…
+                    </div>
+                  )}
+                </div>
+                <div className="text-[11px] text-brand-gray/80">
+                  当前预览 · 选择后会自动裁剪压缩为 160×160 的正方形
+                </div>
+              </div>
+
+              {/* 按钮组 */}
+              <div className="flex flex-wrap gap-2 justify-center">
+                <label className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-brand-pink text-white hover:bg-brand-pink-dark shadow-sm cursor-pointer transition disabled:opacity-60">
+                  <ImageIcon size={15} />
+                  选择图片
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/jpg"
+                    className="hidden"
+                    disabled={avatarProcessing}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) handlePickAvatarInDialog(f);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+                {avatarPreview && (
+                  <button
+                    type="button"
+                    onClick={() => setAvatarPreview("")}
+                    disabled={avatarProcessing}
+                    className="px-4 py-2 rounded-xl text-sm font-medium bg-white text-brand-pink-dark border border-pink-200 hover:bg-pink-50 disabled:opacity-60"
+                  >
+                    清除头像
+                  </button>
+                )}
+              </div>
+
+              <div className="rounded-xl bg-pink-50/50 border border-pink-100 px-3 py-2 text-[11px] text-brand-gray/80 leading-relaxed">
+                提示：头像使用本地浏览器安全存储（Base64 压缩），不会上传到任何服务器；清除后将显示昵称首字母。
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-pink-100/70 bg-white/40">
+              <button
+                type="button"
+                onClick={() => setAvatarDialogOpen(false)}
+                className="px-4 py-2 rounded-xl text-sm text-brand-dark hover:bg-pink-50"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveAvatar}
+                disabled={avatarProcessing}
+                className="px-4 py-2 rounded-xl text-sm font-medium bg-gradient-to-r from-brand-pink to-brand-pink-dark text-white shadow-sm hover:shadow-md disabled:opacity-60"
+              >
+                保存头像
+              </button>
+            </div>
           </div>
         </div>
       )}

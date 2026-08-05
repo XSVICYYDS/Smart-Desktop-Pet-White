@@ -28,6 +28,11 @@ export interface AuthUser {
   password_hash: string;
   created_at: string; // ISO string
   status: "active" | "disabled";
+  /**
+   * 头像：data:image/... base64（零后端依赖、可直接存入 users.json / localStorage），
+   * 未来接入真实 REST 后再切到 URL。空字符串或 undefined 表示用首字母默认头像。
+   */
+  avatar?: string;
   roles?: RoleId[]; // 前端本地角色缓存；真实存储在 LS_ROLES
 }
 
@@ -39,6 +44,10 @@ export interface SessionData {
   expires_at: number; // unix ms
   nickname: string;
   user_id: string;
+  /** 会话内快照：登录/切换账号时带入，用于下拉菜单/导航栏显示头像 */
+  avatar?: string;
+  /** 兼容：会话池里的登录时间戳 */
+  logged_in_at?: number;
 }
 
 export interface EmailCodeRecord {
@@ -243,6 +252,8 @@ export type SavedSessionEntry = {
   nickname: string;
   token: string;
   logged_in_at: number;
+  /** 会话池内缓存的头像（登录时从用户表快照） */
+  avatar?: string;
 };
 
 /**
@@ -460,8 +471,10 @@ export async function register(params: {
   captcha_id: string;
   captcha_input: string;
   skip_captcha_for_test?: boolean;
+  /** 注册时上传的头像（dataURL；空字符串则不用） */
+  avatar?: string;
 }): Promise<{ ok: boolean; msg: string; user_id?: string }> {
-  const { nickname, email, email_code, password, confirm_password, captcha_id, captcha_input, skip_captcha_for_test } = params;
+  const { nickname, email, email_code, password, confirm_password, captcha_id, captcha_input, skip_captcha_for_test, avatar } = params;
 
   // 1. 昵称校验
   const nick = validateNickname(nickname);
@@ -503,6 +516,7 @@ export async function register(params: {
     password_hash: phash,
     created_at: new Date().toISOString(),
     status: "active",
+    avatar: avatar || "",
   };
   users[key] = user;
   _saveUsers(users);
@@ -601,12 +615,109 @@ export async function login(params: {
     nickname: user.nickname,
     user_id: user.user_id,
     logged_in_at: Date.now(),
+    avatar: user.avatar || "",
   } as any;
   setActiveSession(sess as any);
   return { ok: true, msg: "登录成功", need_slider: false, user };
 }
 
 // ================== 会话 / 用户状态（与桌面端 is_logged_in/get_current_display_name/logout 对应） ==================
+
+// ================== 头像上传（零后端依赖：File -> canvas 压缩 -> dataURL base64） ==================
+
+/**
+ * 压缩用户选择的图片为头像 dataURL（方形居中裁剪后缩放到 size x size）。
+ * 不依赖任何第三方，直接在浏览器里压缩，可安全存入 localStorage / users.json。
+ */
+export function compressAvatar(
+  file: File,
+  size = 128,
+  quality = 0.85
+): Promise<{ ok: boolean; msg?: string; dataURL?: string }> {
+  return new Promise((resolve) => {
+    if (!file) return resolve({ ok: false, msg: "请选择图片文件" });
+    if (!file.type.startsWith("image/")) return resolve({ ok: false, msg: "只能上传图片（jpg/png/webp）" });
+    // 单文件 5MB 上限（防止 LS 超配额）
+    if (file.size > 5 * 1024 * 1024) return resolve({ ok: false, msg: "图片太大，请选择小于 5MB 的图片" });
+
+    const reader = new FileReader();
+    reader.onerror = () => resolve({ ok: false, msg: "读取图片失败" });
+    reader.onload = () => {
+      const src = reader.result as string;
+      const img = new Image();
+      img.onerror = () => resolve({ ok: false, msg: "解码图片失败" });
+      img.onload = () => {
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = size;
+          canvas.height = size;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) return resolve({ ok: false, msg: "浏览器不支持 Canvas" });
+
+          // 居中裁剪（Cover）：取较短边的正方形
+          const { width: w, height: h } = img;
+          const side = Math.min(w, h);
+          const sx = (w - side) / 2;
+          const sy = (h - side) / 2;
+          ctx.fillStyle = "#fff";
+          ctx.fillRect(0, 0, size, size);
+          ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
+          const mime =
+            file.type === "image/png" || file.type === "image/webp" ? file.type : "image/jpeg";
+          const dataURL = canvas.toDataURL(mime, quality);
+          // 保底：256KB 上限（避免 base64 过大撑爆 localStorage）
+          if (dataURL.length > 256 * 1024 * 1.34) {
+            return resolve({ ok: false, msg: "压缩后仍然过大，请换小一些的图片" });
+          }
+          resolve({ ok: true, dataURL });
+        } catch (e) {
+          resolve({ ok: false, msg: "处理图片失败" });
+        }
+      };
+      img.src = src;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * 更新当前登录用户的头像（用户表 + 会话池 + 活跃会话三处同步，保证菜单、社交中心都能立即看到）
+ * @param dataURL 头像 dataURL；传 "" 则清除头像，恢复首字母默认
+ */
+export function updateCurrentUserAvatar(dataURL: string): { ok: boolean; msg: string } {
+  const sess = getCurrentSession();
+  if (!sess) return { ok: false, msg: "请先登录" };
+  const users = _getUsers();
+  const user = users[sess.email];
+  if (!user) return { ok: false, msg: "当前用户不存在" };
+  user.avatar = dataURL || "";
+  users[sess.email] = user;
+  _saveUsers(users);
+
+  // 同步会话池中的头像快照（避免切换账号/刷新后仍显示旧头像）
+  const pool = getSessionPool();
+  if (pool[user.user_id]) {
+    pool[user.user_id].avatar = user.avatar;
+    localStorage.setItem(LS_SESSION_POOL, JSON.stringify(pool));
+  }
+  // 同步当前会话文件
+  const merged: SessionData = { ...sess, avatar: user.avatar };
+  localStorage.setItem(LS_SESSION, JSON.stringify(merged));
+
+  return { ok: true, msg: dataURL ? "✅ 头像已更新" : "头像已清除，恢复默认首字母" };
+}
+
+/**
+ * 获取当前登录用户头像（没有返回空字符串，UI 自己渲染首字母 fallback）
+ */
+export function getCurrentAvatar(): string {
+  const s = getCurrentSession();
+  if (!s) return "";
+  if (s.avatar) return s.avatar;
+  // 会话里没有的话再回落到用户表
+  const users = _getUsers();
+  return users[s.email]?.avatar ?? "";
+}
 
 /**
  * 读取当前登录会话（多账号版：优先从多账号会话池读活跃账号；没有再回落老单会话）
@@ -905,6 +1016,7 @@ export async function ensureSeedUsers(): Promise<void> {
         password_hash: await hashPassword(BUILTIN_SUPER_ADMIN.password),
         created_at: new Date().toISOString(),
         status: "active",
+        avatar: "",
       };
       users[u.email] = u;
       changedUsers = true;

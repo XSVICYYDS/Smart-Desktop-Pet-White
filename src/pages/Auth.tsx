@@ -41,6 +41,7 @@ import {
   validatePasswordRules,
   isLoggedIn,
   verifyGraphCaptcha,
+  compressAvatar,
   type GraphCaptcha,
 } from "@/lib/authClient";
 
@@ -65,6 +66,96 @@ function computePasswordStrength(pwd: string): 0 | 1 | 2 | 3 | 4 {
   return n as 0 | 1 | 2 | 3 | 4;
 }
 
+/**
+ * 头像上传组件（Auth / 账户资料卡片共用：圆形预览 + 选图按钮 + 清除按钮
+ * 选图后父组件负责用 compressAvatar() 压缩再赋值给 avatarPreview/avatarDataURL。
+ */
+function AvatarUploader(props: {
+  avatarPreview: string;
+  processing: boolean;
+  onPick: (file: File) => void | Promise<void>;
+  onClear?: () => void;
+  size?: number;
+  hint?: string;
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const { avatarPreview, processing, onPick, onClear, size = 96, hint } = props;
+  const pickTrigger = () => inputRef.current?.click();
+
+  return (
+    <div className="flex items-center gap-4 rounded-2xl border border-pink-100 bg-white/60 backdrop-blur px-4 py-3">
+      {/* 预览 */}
+      <button
+        type="button"
+        onClick={pickTrigger}
+        className="group relative shrink-0"
+        style={{ width: size, height: size }}
+        title="点击选择头像图片"
+      >
+        {avatarPreview ? (
+          <img
+            src={avatarPreview}
+            alt="头像预览"
+            className="w-full h-full rounded-full object-cover border-2 border-brand-pink/30 shadow-sm"
+          />
+        ) : (
+          <span className="flex items-center justify-center w-full h-full rounded-full bg-gradient-to-br from-brand-pink to-brand-pink-dark text-white text-2xl font-bold border-2 border-white shadow-sm">
+            {String.fromCodePoint(0x1f436)}
+          </span>
+        )}
+        {processing && (
+          <span className="absolute inset-0 rounded-full bg-black/30 text-white text-xs flex items-center justify-center">
+            处理中…
+          </span>
+        )}
+        <span className="pointer-events-none absolute inset-0 rounded-full opacity-0 group-hover:opacity-100 transition bg-black/40 text-white text-[11px] flex items-center justify-center">
+          更换头像
+        </span>
+      </button>
+
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-medium text-brand-dark mb-1">
+        选择头像（可选）
+        </div>
+        <div className="text-[11px] text-brand-gray/80 mb-2">
+          {hint ?? "支持 JPG / PNG / WEBP，最大 5MB，自动裁剪为正方形并压缩"}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={pickTrigger}
+            disabled={processing}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-brand-pink text-white hover:bg-brand-pink-dark disabled:opacity-60 shadow-sm border border-brand-pink/20"
+          >
+            选择图片
+          </button>
+          {avatarPreview && onClear && (
+            <button
+              type="button"
+              onClick={onClear}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-white text-brand-pink-dark border border-pink-200 hover:bg-pink-50"
+            >
+              清除头像
+            </button>
+          )}
+        </div>
+      </div>
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/jpg"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) onPick(f);
+          e.target.value = "";
+        }}
+      />
+    </div>
+  );
+}
+
 export default function Auth() {
   const navigate = useNavigate();
   const [mode, setMode] = useState<Mode>("login");
@@ -77,6 +168,9 @@ export default function Auth() {
   // ========== 注册字段 ==========
   const [nickname, setNickname] = useState("");
   const [confirmPwd, setConfirmPwd] = useState("");
+  const [avatarPreview, setAvatarPreview] = useState<string>("");
+  const [avatarDataURL, setAvatarDataURL] = useState<string>("");
+  const [avatarProcessing, setAvatarProcessing] = useState(false);
   const [emailCode, setEmailCode] = useState("");
   const [emailCodeCountdown, setEmailCodeCountdown] = useState(0); // 剩余秒数
   const [emailCodeSent, setEmailCodeSent] = useState<string>(""); // 当前待验证的 6 位验证码（模拟版提示）
@@ -276,6 +370,7 @@ export default function Auth() {
           confirm_password: confirmPwd,
           captcha_id: captchaId,
           captcha_input: captchaInput,
+          avatar: avatarDataURL || undefined,
         });
         if (!res.ok) {
           if (res.msg.includes("图形验证码错误")) {
@@ -289,6 +384,8 @@ export default function Auth() {
           }
           setToast({ type: "error", msg: res.msg });
         } else {
+          setAvatarPreview("");
+          setAvatarDataURL("");
           setToast({
             type: "success",
             msg: "✅ 注册成功！已自动切换到登录界面，请输入邮箱和密码登录。",
@@ -402,20 +499,47 @@ export default function Auth() {
 
           {/* 表单 */}
           <form onSubmit={handleSubmit} className="flex flex-col gap-4 relative">
-            {/* 注册：昵称 */}
+            {/* 注册：昵称 + 头像 */}
             {mode === "register" && (
-              <label className="flex flex-col gap-1.5">
-                <span className="text-xs text-brand-gray flex items-center gap-1">
-                  <User size={13} /> 昵称（2–20 个字符）
-                </span>
-                <input
-                  className={inputBase}
-                  placeholder="例如：小白的铲屎官"
-                  value={nickname}
-                  maxLength={20}
-                  onChange={(e) => setNickname(e.target.value)}
+              <>
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-xs text-brand-gray flex items-center gap-1">
+                    <User size={13} /> 昵称（2–20 个字符）
+                  </span>
+                  <input
+                    className={inputBase}
+                    placeholder="例如：小白的铲屎官"
+                    value={nickname}
+                    maxLength={20}
+                    onChange={(e) => setNickname(e.target.value)}
+                  />
+                </label>
+
+                {/* 头像上传（注册时可先选头像，压缩后作为 avatar 字段随用户一同写入） */}
+                <AvatarUploader
+                  avatarPreview={avatarPreview}
+                  processing={avatarProcessing}
+                  onPick={async (file) => {
+                    setAvatarProcessing(true);
+                    try {
+                      const r = await compressAvatar(file, 160, 0.88);
+                      if (!r.ok || !r.dataURL) {
+                        setToast({ type: "error", msg: r.msg ?? "头像上传失败" });
+                        return;
+                      }
+                      setAvatarPreview(r.dataURL);
+                      setAvatarDataURL(r.dataURL);
+                      setToast({ type: "success", msg: "✅ 头像已选好，提交注册后会与账号一同保存。" });
+                    } finally {
+                      setAvatarProcessing(false);
+                    }
+                  }}
+                  onClear={() => {
+                    setAvatarPreview("");
+                    setAvatarDataURL("");
+                  }}
                 />
-              </label>
+              </>
             )}
 
             {/* 邮箱 */}
