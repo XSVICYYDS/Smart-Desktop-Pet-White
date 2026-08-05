@@ -319,7 +319,7 @@ export const FEATURES: FeatureMeta[] = [
       "选中文件按空格弹出预览，F2 重命名、Delete 丢回收站",
     ],
     tips: ["把常用目录拖到顶部收藏栏，以后一键直达"],
-    actions: { enter: true, play: false, try: true },
+    actions: { enter: true, play: false, try: false }, // 用户指定暂无试用：网站端无法真实访问本地文件系统
     colorScheme: "from-cyan-400 to-sky-600",
     related: "桌面管理器主界面（托盘菜单打开）",
   },
@@ -353,7 +353,7 @@ export const FEATURES: FeatureMeta[] = [
       "点「开始转换」→ 进度条跑完 → 点下载/批量下载",
     ],
     tips: ["大文件 / 大量文件（如 >200MB）建议下载桌面端，支持队列和 GPU 加速"],
-    actions: { enter: true, play: false, try: true },
+    actions: { enter: true, play: false, try: false }, // 用户指定暂无试用：依赖本地 ffmpeg/Office 等组件
     colorScheme: "from-sky-400 to-blue-500",
     related: "格式转换器（托盘 → 工具 → 格式转换）",
   },
@@ -370,7 +370,7 @@ export const FEATURES: FeatureMeta[] = [
       "点工具栏保存 PNG / 复制到剪贴板 / 上传图床",
     ],
     tips: ["桌面端支持 OCR 识别截图文字（需额外安装 Tesseract）"],
-    actions: { enter: true, play: false, try: true },
+    actions: { enter: true, play: false, try: false }, // 用户指定暂无试用：需要系统级截屏权限
     colorScheme: "from-emerald-400 to-teal-600",
     related: "截图工具（Ctrl+Alt+A）",
   },
@@ -387,7 +387,7 @@ export const FEATURES: FeatureMeta[] = [
       "1/2/3/4 快捷切颜色，Esc 退出并清空",
     ],
     tips: ["配合聚光灯（快捷键 L）演示效果更惊艳"],
-    actions: { enter: true, play: false, try: true },
+    actions: { enter: true, play: false, try: false }, // 用户指定暂无试用：需要系统级全局透明层
     colorScheme: "from-yellow-400 to-orange-500",
     related: "屏幕笔工具",
   },
@@ -455,7 +455,7 @@ export const FEATURES: FeatureMeta[] = [
       "点「清理」会弹出二次确认，确认后执行",
     ],
     tips: ["第一次使用时建议先「只扫描不清理」，确认清单再执行；大文件清理单独有高级模式"],
-    actions: { enter: true, play: false, try: true },
+    actions: { enter: true, play: false, try: false }, // 用户指定暂无试用：需要操作真实系统磁盘
     colorScheme: "from-blue-400 to-indigo-600",
     related: "磁盘清理工具",
   },
@@ -472,7 +472,7 @@ export const FEATURES: FeatureMeta[] = [
       "C 切换全屏/透镜/固定区域三种形态",
     ],
     tips: ["桌面端固定区域模式在修像素图时特别好用"],
-    actions: { enter: true, play: false, try: true },
+    actions: { enter: true, play: false, try: false }, // 用户指定暂无试用：需要系统级屏幕像素捕获
     colorScheme: "from-teal-400 to-emerald-600",
     related: "放大镜工具",
   },

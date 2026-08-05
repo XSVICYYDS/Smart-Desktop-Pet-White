@@ -40,7 +40,8 @@ const STORAGE_KEY = "xiaobai_about_chat_v1";
 const MAX_MESSAGES = 2000;
 /** 单条文本消息的字符上限，避免单条炸掉 localStorage */
 const MAX_TEXT_CHARS = 60000;
-/** 单文件大小上限 8MB（base64 膨胀后约 11MB，对 localStorage 安全） */
+/** 单文件大小上限 8MB（base64 膨胀后约 11MB，对 localStora
+ge 安全） */
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
 /** 广播通道名：多标签页实时同步 */
 const CHANNEL_NAME = "xiaobai-about-chat-v1";

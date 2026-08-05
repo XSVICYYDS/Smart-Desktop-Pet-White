@@ -7,6 +7,9 @@ import Download from "@/pages/Download";
 import About from "@/pages/About";
 import Auth from "@/pages/Auth";
 import Playground from "@/pages/Playground";
+import AdminConsole from "@/pages/AdminConsole";
+import Social from "@/pages/Social";
+import Chat from "@/pages/Chat";
 
 export default function App() {
   return (
@@ -20,7 +23,10 @@ export default function App() {
             <Route path="/download" element={<Download />} />
             <Route path="/about" element={<About />} />
             <Route path="/auth" element={<Auth />} />
+            <Route path="/social" element={<Social />} />
+            <Route path="/chat/:conversationId" element={<Chat />} />
             <Route path="/playground/:id" element={<Playground />} />
+            <Route path="/admin" element={<AdminConsole />} />
           </Routes>
         </main>
         <Footer />
