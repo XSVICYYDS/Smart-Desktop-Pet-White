@@ -24,7 +24,29 @@ import {
   isCurrentSuperAdmin,
   logout,
   syncCloudPreview,
+  // 多账号会话池：已记住的账号列表 / 切换会话 / 获取活跃 user_id
+  getSessionPool,
+  switchSession,
+  getActiveUserId,
+  type SavedSessionEntry,
 } from "@/lib/authClient";
+
+/**
+ * 把时间戳格式化成可读文本（切换账号菜单里展示）
+ */
+function formatTime(ts?: number): string {
+  if (!ts) return "—";
+  try {
+    const d = new Date(ts);
+    const mm = (d.getMonth() + 1).toString().padStart(2, "0");
+    const dd = d.getDate().toString().padStart(2, "0");
+    const hh = d.getHours().toString().padStart(2, "0");
+    const mi = d.getMinutes().toString().padStart(2, "0");
+    return `${mm}-${dd} ${hh}:${mi}`;
+  } catch {
+    return "—";
+  }
+}
 
 const navLinks = [
   { to: "/", label: "首页" },
@@ -135,6 +157,42 @@ export default function Navbar() {
     const r = syncCloudPreview();
     setToast({ type: "success", msg: `${r.msg}\n同步时间：${r.syncedAt}` });
     setMenuOpen(false);
+  };
+
+  /**
+   * 已记住登录的账号列表（用于下拉切换）
+   * 随 loggedIn 刷新，保证切账号后立刻同步显示
+   */
+  const savedSessions: SavedSessionEntry[] = (() => {
+    const pool = getSessionPool();
+    return Object.values(pool).sort(
+      (a, b) => (b.logged_in_at ?? 0) - (a.logged_in_at ?? 0)
+    );
+  })();
+  const currentUserId = getActiveUserId();
+
+  /**
+   * 切换到另一个已记住登录的账号（无需重新输入密码）
+   */
+  const handleSwitch = (uid: string) => {
+    if (uid === currentUserId) {
+      setMenuOpen(false);
+      return;
+    }
+    const r = switchSession(uid);
+    setLoggedIn(isLoggedIn());
+    setDisplayName(getCurrentDisplayName());
+    setToast({ type: r.ok ? "success" : "error", msg: r.msg });
+    setMenuOpen(false);
+  };
+
+  /**
+   * 添加另一个账号：直接跳转到 /auth 登录页
+   * 新账号登录成功后会被加入会话池，会话池支持多人同时记住登录状态
+   */
+  const handleAddAccount = () => {
+    setMenuOpen(false);
+    navigate("/auth");
   };
 
   const user = loggedIn ? getCurrentUser() : null;
@@ -262,6 +320,58 @@ export default function Navbar() {
                           </span>
                         </button>
                       )}
+
+                      {/* ===== 多账号：切换已记住的会话 ===== */}
+                      <div className="px-4 py-2 text-[11px] font-semibold text-brand-gray tracking-wider uppercase bg-pink-50/50 border-b border-pink-50">
+                        切换账号 · 已记住 {savedSessions.length} 个
+                      </div>
+                      <div className="max-h-56 overflow-y-auto">
+                        {savedSessions.length === 0 ? (
+                          <div className="px-4 py-3 text-[12px] text-brand-gray">
+                            暂无其它账号。点下方「添加账号」让多人共用。
+                          </div>
+                        ) : (
+                          savedSessions.map((it) => {
+                            const active = it.user_id === currentUserId;
+                            return (
+                              <button
+                                key={it.user_id}
+                                onClick={() => handleSwitch(it.user_id)}
+                                className={`w-full flex items-center gap-3 px-4 py-2 text-sm transition ${
+                                  active
+                                    ? "bg-brand-pink/10 text-brand-pink-dark"
+                                    : "text-brand-dark hover:bg-pink-50"
+                                }`}
+                              >
+                                <span className="w-7 h-7 shrink-0 rounded-full bg-gradient-to-br from-brand-pink to-brand-pink-dark text-white text-[11px] font-bold flex items-center justify-center">
+                                  {(it.nickname || it.email || "?").slice(0, 1).toUpperCase()}
+                                </span>
+                                <div className="min-w-0 flex-1 text-left">
+                                  <div className="truncate font-medium flex items-center gap-1.5">
+                                    {it.nickname || it.email}
+                                    {active && (
+                                      <span className="text-[9px] px-1 py-0.5 rounded bg-brand-pink text-white">
+                                        当前
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-[10px] text-brand-gray truncate">
+                                    {it.email} · 登录 {formatTime(it.logged_in_at)}
+                                  </div>
+                                </div>
+                              </button>
+                            );
+                          })
+                        )}
+                      </div>
+                      <button
+                        onClick={handleAddAccount}
+                        className="flex items-center gap-2 px-4 py-2.5 text-sm text-brand-pink-dark hover:bg-pink-50 transition border-y border-pink-50"
+                      >
+                        <LogIn size={15} />
+                        添加账号（多用户共用本设备）
+                      </button>
+
                       <button
                         onClick={() => {
                           setMenuOpen(false);
@@ -380,6 +490,55 @@ export default function Navbar() {
                       管理员控制台（管理账号/权限/版本）
                     </button>
                   )}
+
+                  {/* 移动端：切换已记住账号 / 添加账号 */}
+                  <div className="mt-1 rounded-2xl border border-pink-100 overflow-hidden bg-white/50">
+                    <div className="px-3 py-1.5 text-[11px] font-semibold text-brand-gray tracking-wider uppercase bg-pink-50/50 border-b border-pink-100">
+                      切换账号 · 已记住 {savedSessions.length} 个
+                    </div>
+                    <div className="max-h-56 overflow-y-auto">
+                      {savedSessions.length === 0 ? (
+                        <div className="px-3 py-2 text-[12px] text-brand-gray text-center">
+                          暂无其它账号。点下方「添加账号」可多人共用。
+                        </div>
+                      ) : (
+                        savedSessions.map((it) => {
+                          const active = it.user_id === currentUserId;
+                          return (
+                            <button
+                              key={it.user_id}
+                              onClick={() => handleSwitch(it.user_id)}
+                              className={`w-full px-3 py-2 text-left text-sm flex items-center gap-3 border-b last:border-b-0 border-pink-50 ${
+                                active ? "bg-brand-pink/10 text-brand-pink-dark" : "text-brand-dark hover:bg-pink-50"
+                              }`}
+                            >
+                              <span className="w-7 h-7 shrink-0 rounded-full bg-gradient-to-br from-brand-pink to-brand-pink-dark text-white text-[11px] font-bold flex items-center justify-center">
+                                {(it.nickname || it.email || "?").slice(0, 1).toUpperCase()}
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <div className="truncate font-medium flex items-center gap-1.5">
+                                  {it.nickname || it.email}
+                                  {active && (
+                                    <span className="text-[9px] px-1 py-0.5 rounded bg-brand-pink text-white">当前</span>
+                                  )}
+                                </div>
+                                <div className="text-[10px] text-brand-gray truncate">
+                                  {it.email} · {formatTime(it.logged_in_at)}
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                    <button
+                      onClick={handleAddAccount}
+                      className="w-full px-3 py-2.5 text-sm flex items-center justify-center gap-2 text-brand-pink-dark border-t border-pink-100 hover:bg-pink-50"
+                    >
+                      <LogIn size={15} /> 添加账号（多人共用）
+                    </button>
+                  </div>
+
                   <button
                     onClick={handleSync}
                     className="flex items-center justify-center gap-2 py-2 rounded-xl bg-gradient-to-r from-brand-pink/10 to-brand-pink-light/20 text-brand-pink-dark border border-pink-100 text-sm font-medium"

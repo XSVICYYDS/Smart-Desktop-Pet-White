@@ -13,11 +13,12 @@ export default {
           pink: '#FF69B4',
           'pink-light': '#FFB6D9',
           'pink-dark': '#E0559B',
-          cream: '#FFF9F5',
-          yellow: '#FFF3E0',
+          // 以下颜色使用 CSS 变量，可在夜间模式下自动切换
+          cream: 'var(--color-brand-cream)',
+          yellow: 'var(--color-brand-yellow)',
           mint: '#A5D6A7',
-          dark: '#2D2D2D',
-          gray: '#666666',
+          dark: 'var(--color-brand-dark)',
+          gray: 'var(--color-brand-gray)',
         },
       },
       fontFamily: {

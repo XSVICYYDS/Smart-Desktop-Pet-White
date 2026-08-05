@@ -84,7 +84,9 @@ export const BUILTIN_SUPER_ADMIN = {
 
 const LS_USERS = "xiaobai.auth.users.v1";
 const LS_ROLES = "xiaobai.auth.user_roles.v1"; // key = user_id, value = RoleId[]
-const LS_SESSION = "xiaobai.auth.session.v1";
+const LS_SESSION = "xiaobai.auth.session.v1"; // 兼容老单会话数据（会迁移进新池）
+const LS_SESSION_POOL = "xiaobai.auth.session_pool.v1"; // Record<user_id, AuthSessionRecord> 多账号会话池
+const LS_ACTIVE_USER_ID = "xiaobai.auth.active_user_id.v1"; // 当前活跃账号 user_id
 const LS_EMAIL_CODES = "xiaobai.auth.email_codes.v1";
 const LS_EMAIL_LAST_SENT = "xiaobai.auth.email_last_sent.v1";
 const LS_GRAPH_CAPTCHA = "xiaobai.auth.graph_captcha.v1";
@@ -231,6 +233,87 @@ function _readJSON<T>(key: string, fallback: T): T {
 
 function _writeJSON(key: string, data: unknown): void {
   localStorage.setItem(key, JSON.stringify(data));
+}
+
+// ================== 多账号会话池（Session Pool）：A 登、B 也能登，互相不覆盖 ==================
+
+export type SavedSessionEntry = {
+  user_id: string;
+  email: string;
+  nickname: string;
+  token: string;
+  logged_in_at: number;
+};
+
+/**
+ * 读取多账号会话池（同时自动把老单会话迁移进来，升级无感）
+ */
+export function getSessionPool(): Record<string, SavedSessionEntry> {
+  const pool = _readJSON<Record<string, SavedSessionEntry>>(LS_SESSION_POOL, {});
+  try {
+    const legacy = localStorage.getItem(LS_SESSION);
+    if (legacy) {
+      const sess = JSON.parse(legacy) as any;
+      if (sess?.user_id && !(sess.user_id in pool)) {
+        pool[sess.user_id] = {
+          user_id: sess.user_id,
+          email: sess.email ?? "",
+          nickname: sess.nickname ?? sess.email ?? "用户",
+          token: sess.token ?? "",
+          logged_in_at: sess.logged_in_at ?? Date.now(),
+        };
+        localStorage.setItem(LS_SESSION_POOL, JSON.stringify(pool));
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return pool;
+}
+
+/**
+ * 获取当前活跃账号的 user_id（未登录则 null）
+ */
+export function getActiveUserId(): string | null {
+  const active = localStorage.getItem(LS_ACTIVE_USER_ID);
+  if (active) {
+    const pool = getSessionPool();
+    if (pool[active]) return active;
+  }
+  // 兼容回落：用老单会话 user_id 当活跃账号
+  try {
+    const legacy = localStorage.getItem(LS_SESSION);
+    if (legacy) {
+      const parsed = JSON.parse(legacy) as any;
+      if (parsed?.user_id) return parsed.user_id;
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+/**
+ * 登录成功后保存会话（加入 pool 并设为活跃，同时保留老单会话便于兼容）
+ */
+export function setActiveSession(entry: SavedSessionEntry): void {
+  if (!entry?.user_id) return;
+  const pool = getSessionPool();
+  pool[entry.user_id] = entry;
+  localStorage.setItem(LS_SESSION_POOL, JSON.stringify(pool));
+  localStorage.setItem(LS_ACTIVE_USER_ID, entry.user_id);
+  localStorage.setItem(LS_SESSION, JSON.stringify(entry));
+}
+
+/**
+ * 切换到另一个已记住登录的账号（无需重新输入密码）
+ */
+export function switchSession(userId: string): { ok: boolean; msg: string } {
+  const pool = getSessionPool();
+  if (!pool[userId]) return { ok: false, msg: "该账号未在此设备保存登录状态" };
+  localStorage.setItem(LS_ACTIVE_USER_ID, userId);
+  localStorage.setItem(LS_SESSION, JSON.stringify(pool[userId]));
+  return { ok: true, msg: `已切换到：${pool[userId].nickname || pool[userId].email}` };
 }
 
 // ================== 邮箱验证码：发送 + 验证（60s 限流、5分钟过期） ==================
@@ -509,6 +592,7 @@ export async function login(params: {
   if (!ok) return { ok: false, msg: "密码错误", need_slider: false };
 
   // 建立会话（与桌面端 AuthSystem._save_session / auto_restore_login 同规格）
+  // 多账号版：同时写入多账号会话池，并设为当前活跃账号（A 登后 B 再登 = 加入池并切到 B）
   const ttlMs = remember_me ? 7 * 24 * 60 * 60 * 1000 : 1 * 24 * 60 * 60 * 1000;
   const sess: SessionData = {
     email: user.email,
@@ -516,17 +600,44 @@ export async function login(params: {
     expires_at: Date.now() + ttlMs,
     nickname: user.nickname,
     user_id: user.user_id,
-  };
-  _writeJSON(LS_SESSION, sess);
+    logged_in_at: Date.now(),
+  } as any;
+  setActiveSession(sess as any);
   return { ok: true, msg: "登录成功", need_slider: false, user };
 }
 
 // ================== 会话 / 用户状态（与桌面端 is_logged_in/get_current_display_name/logout 对应） ==================
 
 /**
- * 读取当前登录会话
+ * 读取当前登录会话（多账号版：优先从多账号会话池读活跃账号；没有再回落老单会话）
+ * 过期会自动从池中清理，避免残留无效条目。
  */
 export function getCurrentSession(): SessionData | null {
+  const activeId = getActiveUserId();
+  if (activeId) {
+    const pool = getSessionPool();
+    const entry = pool[activeId] as any as SessionData | undefined;
+    if (entry) {
+      if (entry.expires_at && Date.now() > entry.expires_at) {
+        delete pool[activeId];
+        localStorage.setItem(LS_SESSION_POOL, JSON.stringify(pool));
+        localStorage.removeItem(LS_ACTIVE_USER_ID);
+        // 尝试清理老单会话同名条目
+        try {
+          const legacy = localStorage.getItem(LS_SESSION);
+          if (legacy) {
+            const p = JSON.parse(legacy) as any;
+            if (p?.user_id === activeId) localStorage.removeItem(LS_SESSION);
+          }
+        } catch {
+          /* ignore */
+        }
+        return null;
+      }
+      return entry;
+    }
+  }
+  // 兼容回落：老单会话
   const s = _readJSON<SessionData | null>(LS_SESSION, null);
   if (!s) return null;
   if (Date.now() > s.expires_at) {
@@ -572,10 +683,30 @@ export function getCurrentUser(): AuthUser | null {
 }
 
 /**
- * 退出登录（清理会话）
+ * 登出当前活跃账号（多账号版：只移除活跃账号会话，其他记住的账号仍可切换回来）
  */
 export function logout(): void {
-  localStorage.removeItem(LS_SESSION);
+  const activeUserId = getActiveUserId();
+  if (!activeUserId) {
+    // 兜底：清理老版单会话 key
+    localStorage.removeItem(LS_SESSION);
+    localStorage.removeItem(LS_ACTIVE_USER_ID);
+    return;
+  }
+  const pool = getSessionPool();
+  delete pool[activeUserId];
+  localStorage.setItem(LS_SESSION_POOL, JSON.stringify(pool));
+  localStorage.removeItem(LS_ACTIVE_USER_ID);
+  // 同时尝试清理老版单会话（仅当老版也存的是同一 user 时）
+  try {
+    const legacy = localStorage.getItem(LS_SESSION);
+    if (legacy) {
+      const parsed = JSON.parse(legacy) as any;
+      if (parsed?.user_id === activeUserId) localStorage.removeItem(LS_SESSION);
+    }
+  } catch {
+    /* ignore */
+  }
 }
 
 /**
