@@ -59,8 +59,17 @@ class AuthSystem:
         self.permission_storage = PermissionStorage(storage_dir=storage_dir)
         self.audit_log_storage = AuditLogStorage(storage_dir=storage_dir)
         
-        # 会话持久化文件
-        self._session_file = os.path.join(storage_dir, 'session_token.json')
+        # 会话持久化：改成多用户会话池（sessions 目录 + profile 索引）
+        #  - 单个会话：sessions/<user_id>.json （每个记住登录的用户独立保存）
+        #  - 会话索引：profile_index.json 记录记住登录的 user_id 列表 + 最近活跃 user_id
+        #  - 兼容老版本：若存在旧的 session_token.json 会被自动迁移到 sessions/
+        self._sessions_dir = os.path.join(storage_dir, 'sessions')
+        self._profile_index_file = os.path.join(storage_dir, 'profile_index.json')
+        self._legacy_session_file = os.path.join(storage_dir, 'session_token.json')
+        os.makedirs(self._sessions_dir, exist_ok=True)
+
+        # 多会话：当前活跃 user_id；其余会话"已记住登录"但不占用当前槽位
+        self._active_user_id: Optional[str] = None
         
         # 安全
         self.csrf_protection = CSRFProtection()
@@ -309,21 +318,64 @@ class AuthSystem:
         # 更新当前用户
         self._current_token = token
         self._current_user = user
-        # 记住登录：写入会话文件
+        # 记住登录：写入该用户独立的会话文件，不再覆盖其它人的会话
         if remember_me:
-            self._save_session(email, token)
+            self._save_session(email, token, user_id=user['user_id'])
         # 日志 + 回调
         self.audit_log_storage.add_log(user['user_id'], 'login', f'用户 {user.get("nickname") or user["username"]} 登录成功')
         if self._on_login_callback:
             self._on_login_callback(user, token)
         return True, "登录成功", token, False
     
-    def _save_session(self, email: str, token: str):
-        """把会话信息持久化到本地 JSON 文件"""
+    def _read_profile_index(self) -> Dict[str, Any]:
+        """读取会话索引（记住登录的 user_id 列表 + 最近活跃 user_id）；不存在则返回空结构"""
         try:
-            import json as _json_mod
-            import os as _os_mod
+            if not os.path.exists(self._profile_index_file):
+                return {"saved_user_ids": [], "last_active_user_id": None}
+            with open(self._profile_index_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            data.setdefault("saved_user_ids", [])
+            data.setdefault("last_active_user_id", None)
+            return data
+        except Exception as e:
+            logger.warning(f"读取会话索引失败，忽略：{e}")
+            return {"saved_user_ids": [], "last_active_user_id": None}
+
+    def _write_profile_index(self, data: Dict[str, Any]) -> None:
+        """写回会话索引（原子性覆盖写）"""
+        try:
+            folder = os.path.dirname(self._profile_index_file)
+            if folder:
+                os.makedirs(folder, exist_ok=True)
+            with open(self._profile_index_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.warning(f"写回会话索引失败: {e}")
+
+    def _session_file_for(self, user_id: str) -> str:
+        """返回某个 user_id 的独立会话文件路径"""
+        safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in user_id) or "unknown"
+        return os.path.join(self._sessions_dir, f"{safe}.json")
+
+    def _save_session(self, email: str, token: str, user_id: Optional[str] = None):
+        """
+        把会话信息持久化到 <user_id>.json，并把 user_id 记录到 profile_index.saved_user_ids，
+        同时更新 last_active_user_id；因此多人可以分别记住登录，不会互相覆盖。
+        """
+        try:
             import base64 as _base64_mod
+
+            # 如果没传 user_id，尝试从 token payload 或 email 反查
+            if not user_id:
+                payload = self.jwt_manager.verify_token(token) or {}
+                user_id = payload.get('sub')
+            if not user_id:
+                found = self.user_storage.get_user_by_email(email) or self.user_storage.get_user_by_username(email)
+                if found:
+                    user_id = found.get('user_id')
+            if not user_id:
+                logger.warning("无法定位 user_id，跳过多会话持久化")
+                return
 
             payload = self.jwt_manager.verify_token(token) or {}
             exp = payload.get('exp')
@@ -332,68 +384,245 @@ class AuthSystem:
                     parts = token.split('.')
                     if len(parts) == 3:
                         payload_b64 = parts[1] + '=' * (-len(parts[1]) % 4)
-                        exp = _json_mod.loads(_base64_mod.urlsafe_b64decode(payload_b64).decode('utf-8')).get('exp')
+                        exp = json.loads(_base64_mod.urlsafe_b64decode(payload_b64).decode('utf-8')).get('exp')
                 except Exception:
                     exp = None
-            session = {"email": email, "token": token, "expires_at": exp}
-            folder = _os_mod.path.dirname(self._session_file)
-            if folder:
-                _os_mod.makedirs(folder, exist_ok=True)
-            with open(self._session_file, 'w', encoding='utf-8') as f:
-                _json_mod.dump(session, f, ensure_ascii=False, indent=2)
-            logger.info(f"会话已持久化到 {self._session_file}")
+            session = {"email": email, "token": token, "expires_at": exp, "user_id": user_id}
+
+            file_path = self._session_file_for(user_id)
+            os.makedirs(self._sessions_dir, exist_ok=True)
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(session, f, ensure_ascii=False, indent=2)
+
+            # 更新索引：加入 saved_user_ids + 标记 last_active
+            index = self._read_profile_index()
+            if user_id not in index["saved_user_ids"]:
+                index["saved_user_ids"].append(user_id)
+            index["last_active_user_id"] = user_id
+            self._write_profile_index(index)
+
+            self._active_user_id = user_id
+            logger.info(f"用户 {user_id} 会话已持久化到 {file_path}（不再影响其他已记住登录的账号）")
         except Exception as e:
-            logger.warning(f"保存会话失败: {e}")
+            logger.warning(f"保存多会话失败: {e}")
+
+    def _migrate_legacy_session_if_needed(self) -> None:
+        """如果存在老的单会话 session_token.json，迁到 sessions/ 下并删除旧文件"""
+        if not os.path.exists(self._legacy_session_file):
+            return
+        try:
+            with open(self._legacy_session_file, 'r', encoding='utf-8') as f:
+                legacy = json.load(f)
+            token = legacy.get('token')
+            email = legacy.get('email')
+            if not token:
+                os.remove(self._legacy_session_file)
+                return
+            # 反查 user_id
+            user_id: Optional[str] = None
+            payload = self.jwt_manager.verify_token(token) or {}
+            if payload.get('sub'):
+                user_id = payload['sub']
+            if not user_id and email:
+                found = self.user_storage.get_user_by_email(email) or self.user_storage.get_user_by_username(email)
+                if found:
+                    user_id = found.get('user_id')
+            if user_id:
+                dst = self._session_file_for(user_id)
+                with open(dst, 'w', encoding='utf-8') as f:
+                    json.dump({**legacy, "user_id": user_id}, f, ensure_ascii=False, indent=2)
+                index = self._read_profile_index()
+                if user_id not in index["saved_user_ids"]:
+                    index["saved_user_ids"].append(user_id)
+                index.setdefault("last_active_user_id", user_id)
+                self._write_profile_index(index)
+                logger.info(f"旧会话迁移完成：{email} -> user_id={user_id}")
+            os.remove(self._legacy_session_file)
+        except Exception as e:
+            logger.warning(f"旧会话迁移异常（忽略）: {e}")
     
-    def auto_restore_login(self) -> bool:
-        """启动时从本地文件恢复登录态"""
-        if not os.path.exists(self._session_file):
+    def auto_restore_login(self, target_user_id: Optional[str] = None) -> bool:
+        """
+        启动时从多会话池恢复登录态：
+        - 若指定 target_user_id（--profile 参数），优先恢复该用户
+        - 否则恢复 last_active_user_id（最近使用过的用户）
+        - 自动迁移老版本单会话文件
+        """
+        self._migrate_legacy_session_if_needed()
+        index = self._read_profile_index()
+
+        # 优先顺序：显式指定 > 最近活跃 > 无会话
+        candidate = target_user_id or index.get("last_active_user_id")
+        if not candidate:
+            return False
+        file_path = self._session_file_for(candidate)
+        if not os.path.exists(file_path):
+            # 无效记录：清理索引
+            saved = [u for u in index.get("saved_user_ids", []) if u != candidate]
+            index["saved_user_ids"] = saved
+            if index.get("last_active_user_id") == candidate:
+                index["last_active_user_id"] = saved[-1] if saved else None
+            self._write_profile_index(index)
             return False
         try:
-            with open(self._session_file, 'r', encoding='utf-8') as f:
+            with open(file_path, 'r', encoding='utf-8') as f:
                 session = json.load(f)
             token = session.get("token")
             if not token:
+                os.remove(file_path)
                 return False
             payload = self.jwt_manager.verify_token(token)
             if not payload:
-                os.remove(self._session_file)
-                logger.info("会话文件中的 token 已过期，已删除")
+                os.remove(file_path)
+                logger.info(f"用户 {candidate} 的 token 已过期，已删除会话文件")
+                # 移除出索引
+                saved = [u for u in index.get("saved_user_ids", []) if u != candidate]
+                index["saved_user_ids"] = saved
+                if index.get("last_active_user_id") == candidate:
+                    index["last_active_user_id"] = saved[-1] if saved else None
+                self._write_profile_index(index)
                 return False
-            user_id = payload.get("sub")
+            user_id = payload.get("sub") or session.get("user_id") or candidate
             user = self.user_storage.get_user(user_id)
             if not user:
-                os.remove(self._session_file)
+                os.remove(file_path)
                 return False
             self._current_token = token
             self._current_user = user
-            logger.info(f"自动恢复登录成功: {user.get('nickname') or user['username']}")
+            self._active_user_id = user_id
+            # 刷新 last_active
+            index["last_active_user_id"] = user_id
+            self._write_profile_index(index)
+            logger.info(f"多会话自动恢复成功: 用户 {user.get('nickname') or user['username']}（user_id={user_id}）")
             return True
         except Exception as e:
-            logger.warning(f"恢复登录异常: {e}")
+            logger.warning(f"多会话恢复登录异常: {e}")
             try:
-                if os.path.exists(self._session_file):
-                    os.remove(self._session_file)
+                if os.path.exists(file_path):
+                    os.remove(file_path)
             except:
                 pass
             return False
-    
-    def logout(self):
-        """登出并清除持久化会话"""
-        if self._current_user:
-            user_id = self._current_user['user_id']
-            username = self._current_user.get('nickname') or self._current_user['username']
-            self.audit_log_storage.add_log(user_id, 'logout', f'用户 {username} 登出')
-        self._current_token = None
-        self._current_user = None
-        # 清理会话文件
+
+    def list_saved_profiles(self) -> List[Dict[str, Any]]:
+        """
+        返回已记住登录的用户档案列表（用于切换用户界面）
+        返回：[{user_id, nickname, email, last_active, is_active}]
+        """
+        self._migrate_legacy_session_if_needed()
+        index = self._read_profile_index()
+        last_active = index.get("last_active_user_id")
+        out: List[Dict[str, Any]] = []
+        for uid in index.get("saved_user_ids", []):
+            user = self.user_storage.get_user(uid)
+            if not user:
+                # 清理无效记录
+                continue
+            # 仅在会话文件存在时才算"已记住登录"
+            if not os.path.exists(self._session_file_for(uid)):
+                continue
+            out.append({
+                "user_id": uid,
+                "nickname": user.get("nickname") or user.get("username") or "用户",
+                "email": user.get("email") or user.get("username") or "",
+                "last_active": last_active == uid,
+                "is_active": self._active_user_id == uid or (self._current_user and self._current_user.get('user_id') == uid),
+            })
+        return out
+
+    def switch_profile(self, user_id: str) -> Tuple[bool, str]:
+        """
+        切换到另一个已记住登录的用户档案（无需重新输入密码）
+        这样 A 登录过、B 也登录过以后，在同一台电脑能一键切换互不影响。
+        """
+        if not user_id:
+            return False, "目标用户为空"
+        if self._current_user and self._current_user.get('user_id') == user_id:
+            return True, "已在该账号下"
+        file_path = self._session_file_for(user_id)
+        if not os.path.exists(file_path):
+            return False, "该账号尚未在本机记住登录，需要先登录一次"
         try:
-            if os.path.exists(self._session_file):
-                os.remove(self._session_file)
+            with open(file_path, 'r', encoding='utf-8') as f:
+                session = json.load(f)
+            token = session.get("token")
+            if not token:
+                return False, "会话文件损坏，请重新登录"
+            payload = self.jwt_manager.verify_token(token)
+            if not payload:
+                os.remove(file_path)
+                index = self._read_profile_index()
+                saved = [u for u in index.get("saved_user_ids", []) if u != user_id]
+                index["saved_user_ids"] = saved
+                self._write_profile_index(index)
+                return False, "该账号的会话已过期，请重新登录"
+            user = self.user_storage.get_user(user_id)
+            if not user:
+                return False, "该账号不存在"
+            # 切换：更新 current + last_active + active_user_id
+            self._current_token = token
+            self._current_user = user
+            self._active_user_id = user_id
+            index = self._read_profile_index()
+            index["last_active_user_id"] = user_id
+            self._write_profile_index(index)
+            self.audit_log_storage.add_log(user_id, 'profile.switch',
+                                           f"切换到账号 {user.get('nickname') or user.get('username')}")
+            if self._on_login_callback:
+                self._on_login_callback(user, token)
+            logger.info(f"已切换到用户档案：{user.get('nickname') or user['username']}（user_id={user_id}）")
+            return True, "切换成功"
         except Exception as e:
-            logger.warning(f"删除会话文件失败: {e}")
-        if self._on_logout_callback:
-            self._on_logout_callback()
+            logger.warning(f"切换档案失败: {e}")
+            return False, f"切换失败：{e}"
+
+    def get_active_profile_id(self) -> Optional[str]:
+        """返回当前活跃 user_id（供 StateManager / Config 切分 profile 目录使用）"""
+        if self._active_user_id:
+            return self._active_user_id
+        if self._current_user:
+            return self._current_user.get('user_id')
+        return None
+
+    def logout_profile(self, user_id: Optional[str] = None) -> None:
+        """
+        登出某个用户档案；不传 user_id 则登出当前活跃用户。
+        其它已记住登录的档案不会被影响。
+        """
+        target = user_id or (self._current_user.get('user_id') if self._current_user else None)
+        index = self._read_profile_index()
+        saved = list(index.get("saved_user_ids", []))
+
+        if target and target in saved:
+            saved.remove(target)
+            index["saved_user_ids"] = saved
+            try:
+                fp = self._session_file_for(target)
+                if os.path.exists(fp):
+                    os.remove(fp)
+            except Exception as e:
+                logger.warning(f"删除会话文件失败 {target}: {e}")
+
+        # 如果删掉的是 last_active，就回填最后一个
+        if index.get("last_active_user_id") == target:
+            index["last_active_user_id"] = saved[-1] if saved else None
+        self._write_profile_index(index)
+
+        # 如果 target == 当前活跃用户 → 重置 current_*
+        if (not user_id) or (self._current_user and self._current_user.get('user_id') == target):
+            if self._current_user:
+                uid = self._current_user['user_id']
+                uname = self._current_user.get('nickname') or self._current_user['username']
+                self.audit_log_storage.add_log(uid, 'logout', f'用户 {uname} 登出')
+            self._current_token = None
+            self._current_user = None
+            self._active_user_id = index.get("last_active_user_id")
+            if self._on_logout_callback:
+                self._on_logout_callback()
+
+    def logout(self):
+        """登出当前活跃用户（不影响其它已记住登录的档案）— 兼容旧调用方式"""
+        self.logout_profile(None)
     
     # ================= 便捷展示方法 =================
     

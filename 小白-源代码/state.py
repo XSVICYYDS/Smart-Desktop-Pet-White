@@ -4,18 +4,24 @@ import platform
 from PyQt5.QtWidgets import QMessageBox
 
 class StateManager:
-    """状态管理类
-    
-    负责管理宠物的状态，包括保存和加载状态
+    """状态管理类（多用户档案隔离版）
+
+    多人共用一台电脑时，每个用户（user_id / profile_id）有独立的 state.json，
+    避免 A 的快乐值、饱食度等被 B 登录后覆盖。
     """
-    def __init__(self, base_dir):
+    DEFAULT_PROFILE = "default"
+
+    def __init__(self, base_dir, profile_id=None):
         """初始化状态管理
-        
+
         Args:
             base_dir: 应用基础目录
+            profile_id: 用户档案 ID（None 时使用 DEFAULT_PROFILE，后续调用 switch_profile 可切换）
         """
         self.base_dir = base_dir
-        self.state_file = self.getStateFilePath()
+        self.profile_id = profile_id or self.DEFAULT_PROFILE
+        self._shared_root_dir = self._getSharedRootDir()
+        self.state_file = self._resolveStateFilePath(self.profile_id)
         self.default_state = {
             "happiness": 80,
             "energy": 80,
@@ -25,28 +31,50 @@ class StateManager:
             "last_hour": -1
         }
         self.state = self.loadState()
-    
-    def getStateFilePath(self):
-        """获取状态文件路径
-        
-        根据操作系统获取合适的状态文件路径
-        
-        Returns:
-            str: 状态文件路径
-        """
+
+    def _safeProfileDirName(self, profile_id: str) -> str:
+        """把 profile_id 转成安全的目录名（user_id / 外部传入均可）"""
+        if not profile_id:
+            return self.DEFAULT_PROFILE
+        return "".join(c if c.isalnum() or c in "-_" else "_" for c in str(profile_id)) or self.DEFAULT_PROFILE
+
+    def _getSharedRootDir(self) -> str:
+        """根据操作系统返回所有 profile 共享的根目录"""
         system = platform.system()
         if system == "Windows":
-            state_dir = os.path.join(os.environ.get("APPDATA", ""), "MalteseDesktopPet")
+            root = os.path.join(os.environ.get("APPDATA", ""), "MalteseDesktopPet")
         elif system == "Darwin":  # macOS
-            state_dir = os.path.join(os.path.expanduser("~"), "Library", "Application Support", "MalteseDesktopPet")
+            root = os.path.join(os.path.expanduser("~"), "Library", "Application Support", "MalteseDesktopPet")
         else:  # Linux
-            state_dir = os.path.join(os.path.expanduser("~"), ".config", "maltese_desktop_pet")
-        
-        # 确保状态目录存在
-        if not os.path.exists(state_dir):
-            os.makedirs(state_dir)
-        
-        return os.path.join(state_dir, "state.json")
+            root = os.path.join(os.path.expanduser("~"), ".config", "maltese_desktop_pet")
+        os.makedirs(root, exist_ok=True)
+        return root
+
+    def _resolveStateFilePath(self, profile_id: str) -> str:
+        """根据 profile_id 生成独立的 state.json 路径：<root>/profiles/<profile>/state.json"""
+        safe = self._safeProfileDirName(profile_id)
+        profile_dir = os.path.join(self._shared_root_dir, "profiles", safe)
+        os.makedirs(profile_dir, exist_ok=True)
+        return os.path.join(profile_dir, "state.json")
+
+    def switch_profile(self, profile_id):
+        """运行时切换到另一个用户档案（A 登了 B 来用，立即加载 B 的状态，不再互相覆盖）"""
+        next_profile = profile_id or self.DEFAULT_PROFILE
+        if self._safeProfileDirName(next_profile) == self._safeProfileDirName(self.profile_id):
+            return
+        self.profile_id = next_profile
+        self.state_file = self._resolveStateFilePath(self.profile_id)
+        self.state = self.loadState()
+        logger_msg = f"[StateManager] 已切换状态档案到 profile={self._safeProfileDirName(self.profile_id)}"
+        try:
+            import logging as _logging
+            _logging.getLogger('MalteseDesktopPet').info(logger_msg)
+        except Exception:
+            pass
+
+    def getStateFilePath(self):
+        """兼容老代码：返回当前 profile 的 state.json 路径"""
+        return self.state_file
     
     def loadState(self):
         """加载状态

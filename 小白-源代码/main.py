@@ -92,34 +92,58 @@ except Exception:
 # from status_tooltip import StatusTooltip
 
 class DesktopPet(QWidget):
-    """桌面宠物主类
-    
-    负责整合各个模块，协调宠物的行为和 UI 显示
+    """桌面宠物主类（多用户档案隔离版）
+
+    支持：
+      1. --profile <user_id>：启动时直接进入指定用户的独立状态/配置目录
+      2. --multi-instance：允许多个小白实例并行运行（每实例各自登录一个账号，互相不影响）
+      3. 登录成功 / 切换档案时，自动把 Config 与 StateManager 切换到对应 profile 目录，
+         从而多人共用一台电脑时，状态、配置、会话完全隔离、不会互相覆盖。
     """
-    def __init__(self, parent=None, **kwargs):
+
+    def __init__(self, parent=None, profile_id=None, **kwargs):
         """初始化桌面宠物
-        
+
         Args:
             parent: 父窗口对象
+            profile_id: 启动时指定的用户档案 ID（优先级大于记住登录的 last_active）
             **kwargs: 其他参数
         """
         super(DesktopPet, self).__init__(parent)
         self.init()
-        
+
         # 初始化 GIF 缓存
         self.gif_cache = {}
-        
-        # 初始化配置和状态管理
-        self.config = Config(BASE_DIR)
-        self.state_manager = StateManager(BASE_DIR)
 
-        # 初始化认证系统 + 自动恢复会话
+        # 认证系统先初始化（配置/状态的 profile_id 可能要依赖登录结果）
         self.auth = get_auth_system() or _FallbackAuth()
+
+        # 尝试恢复登录（指定 profile 优先；否则按 last_active）
+        from typing import Optional
+        initial_profile: Optional[str] = profile_id
         try:
             if hasattr(self.auth, 'auto_restore_login'):
-                self.auth.auto_restore_login()
+                restored = self.auth.auto_restore_login(target_user_id=profile_id)
+                if restored:
+                    active_id = getattr(self.auth, 'get_active_profile_id', lambda: None)()
+                    if active_id:
+                        initial_profile = active_id
         except Exception as e:
             logger.warning(f"会话恢复异常（忽略）: {e}")
+
+        # 初始化配置和状态管理（按当前活跃 profile 隔离到独立目录）
+        self.config = Config(BASE_DIR, profile_id=initial_profile)
+        self.state_manager = StateManager(BASE_DIR, profile_id=initial_profile)
+
+        # 登录 / 切换档案时自动同步切换 State/Config 目录
+        try:
+            if hasattr(self.auth, 'set_callbacks'):
+                self.auth.set_callbacks(
+                    on_login=self._sync_profile_on_login_or_switch,
+                    on_logout=self._sync_profile_on_logout,
+                )
+        except Exception as e:
+            logger.warning(f"注册多档案回调失败（忽略）: {e}")
         
         # 初始化系统集成
         self.system_integration = SystemIntegration()
@@ -190,6 +214,37 @@ class DesktopPet(QWidget):
         # 显示欢迎通知
         # self.showNotification("小白来了", "你好！我是你的桌面宠物小白，很高兴认识你！")
         
+    def _sync_profile_on_login_or_switch(self, user=None, token=None):
+        """登录成功或 switch_profile 时：将 Config 和 StateManager 切到当前 user_id 独立目录"""
+        try:
+            profile_id = None
+            # 优先从 auth.active 取
+            if hasattr(self.auth, 'get_active_profile_id'):
+                profile_id = self.auth.get_active_profile_id()
+            # 再回落到 user 对象
+            if not profile_id and user and isinstance(user, dict):
+                profile_id = user.get('user_id')
+            if profile_id:
+                self.config.switch_profile(profile_id)
+                self.state_manager.switch_profile(profile_id)
+                # 重新加载 UI 上的快乐值 / 能量值 / 死亡状态
+                self.loadState()
+                logger.info(f"[DesktopPet] 登录/切换档案成功：已将 config/state 切换到 profile={profile_id}")
+        except Exception as e:
+            logger.warning(f"[DesktopPet] 同步配置/状态档案失败（忽略）: {e}")
+
+    def _sync_profile_on_logout(self):
+        """登出当前活跃用户：config/state 切回 default 档案（下一个人登录不会看到 A 的值）"""
+        try:
+            self.config.switch_profile(Config.DEFAULT_PROFILE if hasattr(Config, 'DEFAULT_PROFILE') else None)
+            self.state_manager.switch_profile(
+                StateManager.DEFAULT_PROFILE if hasattr(StateManager, 'DEFAULT_PROFILE') else None
+            )
+            self.loadState()
+            logger.info("[DesktopPet] 已登出，config/state 已切回 default 档案")
+        except Exception as e:
+            logger.warning(f"[DesktopPet] 登出后切回 default 档案失败（忽略）: {e}")
+
     def init(self):
         """初始化窗口
         
@@ -199,11 +254,11 @@ class DesktopPet(QWidget):
         self.setAutoFillBackground(False)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.repaint()
-    
+
     def loadState(self):
         """加载保存的状态
-        
-        从状态管理器加载宠物的快乐值、能量值等状态
+
+        从状态管理器加载宠物的快乐值、能量值等状态（已按 profile 隔离）
         注：饱食度已整合到快乐值，好感度已整合到能量值
         """
         # 加载快乐值和能量值
@@ -1492,42 +1547,72 @@ class DesktopPet(QWidget):
         # 恢复待机动画
         self.behavior.checkInitialGif()
 
-def isFirstRun():
-    """检查是否是首次运行
-    
+def _sharedConfigRoot() -> str:
+    """所有 profile 共享的配置根目录（与 Config._getSharedRootDir 保持一致）"""
+    import platform
+    if platform.system() == "Windows":
+        return os.path.join(os.environ.get("APPDATA", ""), "MalteseDesktopPet")
+    if platform.system() == "Darwin":  # macOS
+        return os.path.join(os.path.expanduser("~"), "Library", "Application Support", "MalteseDesktopPet")
+    return os.path.join(os.path.expanduser("~"), ".config", "maltese_desktop_pet")
+
+def isFirstRun(profile_id=None) -> bool:
+    """是否首次运行（多档案版）
+
+    Args:
+        profile_id: 传入时仅判断该 profile 的 config.json 是否存在；否则判断全局或 default。
+
     Returns:
         bool: 是否是首次运行
     """
-    import os
-    import platform
-    
-    # 获取配置目录
-    if platform.system() == "Windows":
-        config_dir = os.path.join(os.environ.get("APPDATA", ""), "MalteseDesktopPet")
-    elif platform.system() == "Darwin":  # macOS
-        config_dir = os.path.join(os.path.expanduser("~"), "Library", "Application Support", "MalteseDesktopPet")
-    else:  # Linux
-        config_dir = os.path.join(os.path.expanduser("~"), ".config", "maltese_desktop_pet")
-    
-    # 检查是否存在配置文件
-    config_file = os.path.join(config_dir, "config.json")
-    return not os.path.exists(config_file)
+    root = _sharedConfigRoot()
+    if profile_id:
+        safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in str(profile_id)) or "default"
+        target = os.path.join(root, "profiles", safe, "config.json")
+        return not os.path.exists(target)
+    global_cfg = os.path.join(root, "config.json")
+    default_cfg = os.path.join(root, "profiles", "default", "config.json")
+    return (not os.path.exists(global_cfg)) and (not os.path.exists(default_cfg))
+
+def _parseCli():
+    """解析命令行参数，返回 (profile_id, multi_instance)"""
+    import argparse
+    parser = argparse.ArgumentParser(
+        description="尚志中学809班徐慎 - 智能桌面宠物小白（多账号档案 / 多实例版）"
+    )
+    parser.add_argument(
+        "--profile",
+        type=str,
+        default=None,
+        help="启动时指定用户档案 ID（user_id），加载该账号独立的会话/状态/配置，多人共用互不干扰",
+    )
+    parser.add_argument(
+        "--multi-instance",
+        action="store_true",
+        help="允许多个小白实例同时运行（当前版本默认允许；该参数为未来兼容保留）",
+    )
+    try:
+        args = parser.parse_args()
+    except SystemExit:
+        # 避免与 Qt 自带的 -style / -platform 等参数冲突
+        return None, True
+    return getattr(args, "profile", None), bool(getattr(args, "multi_instance", True))
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    
-    # 检查是否是首次运行
-    if isFirstRun():
-        # 显示设置向导
-        config = Config(BASE_DIR)
+
+    profile_id, _ = _parseCli()
+
+    # 首次运行判断：如果 CLI 指定了 profile，即便全局用过，也要让该 profile 走向导
+    if isFirstRun(profile_id):
+        # 按 profile 构造 Config，设置向导保存的配置会直接落到该 profile 独立目录
+        config = Config(BASE_DIR, profile_id=profile_id)
         wizard = SetupWizard(config)
         if wizard.exec_() == SetupWizard.Accepted:
-            # 设置向导完成，启动应用
-            pet = DesktopPet()
+            pet = DesktopPet(profile_id=profile_id)
             sys.exit(app.exec_())
     else:
-        # 不是首次运行，直接启动应用
-        pet = DesktopPet()
+        pet = DesktopPet(profile_id=profile_id)
         sys.exit(app.exec_())
 
 
@@ -1549,10 +1634,30 @@ class _FallbackAuth:
         """获取当前用户对象"""
         return None
 
-    def auto_restore_login(self):
+    def auto_restore_login(self, target_user_id=None):
         """恢复会话（空操作）"""
-        pass
+        return False
 
     def logout(self):
         """退出登录（空操作）"""
+        pass
+
+    def logout_profile(self, user_id=None):
+        """按档案退出登录（空操作）"""
+        pass
+
+    def get_active_profile_id(self):
+        """返回当前活跃档案 ID（兜底为 None）"""
+        return None
+
+    def list_saved_profiles(self):
+        """返回已记住登录的档案列表（兜底为空）"""
+        return []
+
+    def switch_profile(self, user_id: str):
+        """切换用户档案（兜底失败）"""
+        return False, "认证模块不可用"
+
+    def set_callbacks(self, on_login=None, on_logout=None, on_permission_change=None):
+        """设置回调（兜底空操作）"""
         pass

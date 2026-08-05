@@ -4,18 +4,24 @@ import platform
 from PyQt5.QtWidgets import QMessageBox
 
 class Config:
-    """配置类
-    
-    负责管理应用的配置项，包括读取和写入配置文件
+    """配置类（多用户档案隔离版）
+
+    多人共用一台电脑时，每个用户（user_id / profile_id）有独立的 config.json，
+    A 的宠物尺寸、窗口透明度、设置不会被 B 的登录覆盖。
     """
-    def __init__(self, base_dir):
+    DEFAULT_PROFILE = "default"
+
+    def __init__(self, base_dir, profile_id=None):
         """初始化配置
-        
+
         Args:
             base_dir: 应用基础目录
+            profile_id: 用户档案 ID（None 时使用 DEFAULT_PROFILE；后续 switch_profile 可切换）
         """
         self.base_dir = base_dir
-        self.config_file = self.getConfigFilePath()
+        self.profile_id = profile_id or self.DEFAULT_PROFILE
+        self._shared_root_dir = self._getSharedRootDir()
+        self.config_file = self._resolveConfigFilePath(self.profile_id)
         self.default_config = {
             "pet_size": {
                 "width": 200,
@@ -89,27 +95,50 @@ class Config:
         }
         self.config = self.loadConfig()
     
-    def getConfigFilePath(self):
-        """获取配置文件路径
-        
-        根据操作系统获取合适的配置文件路径
-        
-        Returns:
-            str: 配置文件路径
-        """
+    def _safeProfileDirName(self, profile_id) -> str:
+        """把 profile_id 转成安全的目录名（user_id / 外部传入均可）"""
+        if not profile_id:
+            return self.DEFAULT_PROFILE
+        return "".join(c if c.isalnum() or c in "-_" else "_" for c in str(profile_id)) or self.DEFAULT_PROFILE
+
+    def _getSharedRootDir(self) -> str:
+        """所有 profile 共用的根目录（与 StateManager 同一目录，保证一致）"""
         system = platform.system()
         if system == "Windows":
-            config_dir = os.path.join(os.environ.get("APPDATA", ""), "MalteseDesktopPet")
+            root = os.path.join(os.environ.get("APPDATA", ""), "MalteseDesktopPet")
         elif system == "Darwin":  # macOS
-            config_dir = os.path.join(os.path.expanduser("~"), "Library", "Application Support", "MalteseDesktopPet")
+            root = os.path.join(os.path.expanduser("~"), "Library", "Application Support", "MalteseDesktopPet")
         else:  # Linux
-            config_dir = os.path.join(os.path.expanduser("~"), ".config", "maltese_desktop_pet")
-        
-        # 确保配置目录存在
-        if not os.path.exists(config_dir):
-            os.makedirs(config_dir)
-        
-        return os.path.join(config_dir, "config.json")
+            root = os.path.join(os.path.expanduser("~"), ".config", "maltese_desktop_pet")
+        os.makedirs(root, exist_ok=True)
+        return root
+
+    def _resolveConfigFilePath(self, profile_id) -> str:
+        """每个 profile 独立的配置文件：<root>/profiles/<profile>/config.json"""
+        safe = self._safeProfileDirName(profile_id)
+        profile_dir = os.path.join(self._shared_root_dir, "profiles", safe)
+        os.makedirs(profile_dir, exist_ok=True)
+        return os.path.join(profile_dir, "config.json")
+
+    def switch_profile(self, profile_id):
+        """运行时切换到另一个用户档案（登录新用户或切换记住登录的账号）"""
+        next_profile = profile_id or self.DEFAULT_PROFILE
+        if self._safeProfileDirName(next_profile) == self._safeProfileDirName(self.profile_id):
+            return
+        self.profile_id = next_profile
+        self.config_file = self._resolveConfigFilePath(self.profile_id)
+        self.config = self.loadConfig()
+        try:
+            import logging as _logging
+            _logging.getLogger('MalteseDesktopPet').info(
+                f"[Config] 已切换配置档案到 profile={self._safeProfileDirName(self.profile_id)}"
+            )
+        except Exception:
+            pass
+
+    def getConfigFilePath(self):
+        """兼容老代码：返回当前 profile 的 config.json 路径"""
+        return self.config_file
     
     def loadConfig(self):
         """加载配置
