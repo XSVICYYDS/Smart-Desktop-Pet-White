@@ -136,24 +136,34 @@ export const timeline = [
 
 /* ================== 下载页补充数据：校验和 / 系统要求详细版 / 更新日志 ================== */
 export interface ChecksumItem {
-  asset: "installer" | "portable";
+  asset: "installer" | "portable" | "macos";
   fileName: string;
   size: string;
   /** 占位：实际在 GitHub Release 页面附随 sha256sums.txt；用户发布新版本后更新即可 */
   sha256: string;
+  /** 点击下载按钮跳转的地址（macOS 没有本地 counter，直接跳 Releases 即可） */
+  href?: string;
 }
 export const releaseChecksums: ChecksumItem[] = [
   {
     asset: "installer",
-    fileName: "Smart-Desktop-Pet-White-Setup-0.5.0.exe",
+    fileName: "Smart-Desktop-Pet-White-Setup-0.6.0.exe",
     size: "约 141 MB",
     sha256: "（发布新版本时，把 Setup.exe 生成的 SHA256 粘贴到这里）",
   },
   {
     asset: "portable",
-    fileName: "Smart-Desktop-Pet-White-Portable-0.5.0.exe",
+    fileName: "Smart-Desktop-Pet-White-Portable-0.6.0.exe",
     size: "约 140 MB",
     sha256: "（发布新版本时，把 Portable.exe 生成的 SHA256 粘贴到这里）",
+  },
+  {
+    asset: "macos",
+    fileName: "智能桌面宠物-小白-0.6.0-macOS.dmg",
+    size: "约 180 MB（含 macOS 版 Qt 框架）",
+    sha256: "（运行 bash scripts/build_macos.sh 后会自动打印并保存为 *.sha256，粘贴到这里）",
+    // GitHub Actions 打 v* Tag 后会自动上传到对应 Release
+    href: siteConfig.githubReleases,
   },
 ];
 
@@ -164,11 +174,16 @@ export interface SystemReqRow {
   icon: "MonitorCog" | "Cpu" | "MemoryStick" | "HardDrive" | "Monitor" | "Globe";
 }
 export const systemRequirements: SystemReqRow[] = [
-  { category: "操作系统", minimum: "Windows 10 1809+ / 64 位", recommended: "Windows 11 22H2+ / 64 位", icon: "MonitorCog" },
-  { category: "处理器", minimum: "双核 1.6 GHz+（支持 SSE2）", recommended: "四核 2.4 GHz+", icon: "Cpu" },
+  {
+    category: "操作系统",
+    minimum: "Windows 10 1809+ (64 位)  ｜  macOS Big Sur 11.0+ (Intel / Apple Silicon)",
+    recommended: "Windows 11 22H2+ (64 位)  ｜  macOS Sonoma 14+ (Apple Silicon 推荐)",
+    icon: "MonitorCog",
+  },
+  { category: "处理器", minimum: "双核 1.6 GHz+（支持 SSE2 / Intel 或 Apple M1 同等级）", recommended: "四核 2.4 GHz+（Intel Core i5 / Apple M1 及以上）", icon: "Cpu" },
   { category: "内存", minimum: "2 GB RAM", recommended: "4 GB+ RAM", icon: "MemoryStick" },
-  { category: "存储空间", minimum: "200 MB 可用（安装包 + 运行时）", recommended: "500 MB+ 可用（存放便签、画板、截图等数据）", icon: "HardDrive" },
-  { category: "屏幕分辨率", minimum: "1366 × 768", recommended: "1920 × 1080 及以上", icon: "Monitor" },
+  { category: "存储空间", minimum: "Windows 200 MB+ 可用 ｜ macOS 250 MB+ 可用（安装包 + 运行时）", recommended: "500 MB+ 可用（存放便签、画板、截图等数据）", icon: "HardDrive" },
+  { category: "屏幕分辨率", minimum: "1366 × 768", recommended: "1920 × 1080 及以上 ｜ MacBook 原生 Retina 分辨率", icon: "Monitor" },
   { category: "网络", minimum: "可选（用于云同步、检查更新、AI 工具）", recommended: "稳定宽带/Wi-Fi，用于云同步和自动更新", icon: "Globe" },
 ];
 

@@ -3,7 +3,7 @@ import {
   Download, CheckCircle2, Copy, Check, ChevronDown, ChevronUp,
   Monitor, Cpu, HardDrive, MonitorCog, Globe,
   Github, ExternalLink, ShieldCheck,
-  FileCheck2, History,
+  FileCheck2, History, Apple, Sparkles,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import SectionTitle from "@/components/SectionTitle";
@@ -112,31 +112,33 @@ export default function DownloadPage() {
 
       {/* Download Options */}
       <section className="py-16 px-6">
-        <div className="max-w-5xl mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="max-w-6xl mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
             {/* Installer */}
-            <div className="glass rounded-3xl p-8 text-center hover:shadow-xl hover:shadow-pink-100/50 transition-all hover:-translate-y-1">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-brand-pink to-brand-pink-dark flex items-center justify-center mx-auto mb-6">
+            <div className="glass rounded-3xl p-8 text-center hover:shadow-xl hover:shadow-pink-100/50 transition-all hover:-translate-y-1 dark:bg-white/[0.04]">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-brand-pink to-brand-pink-dark flex items-center justify-center mx-auto mb-6 shadow-lg shadow-pink-200/40">
                 <img src={installerIcon} alt="安装包图标" className="w-12 h-12 object-contain" />
               </div>
-              <h3 className="font-serif text-2xl font-bold text-brand-dark mb-2">安装包</h3>
-              <p className="text-brand-gray text-sm mb-4">推荐大多数用户使用</p>
-              <div className="bg-pink-50 rounded-lg p-3 mb-6">
-                <code className="text-xs text-brand-dark">Smart-Desktop-Pet-White-Setup-0.5.0.exe</code>
-                <div className="text-xs text-brand-gray mt-1">大小：约 141 MB</div>
+              <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-brand-pink/10 text-brand-pink text-[11px] font-semibold border border-brand-pink/20 mb-2">
+                <Sparkles size={11} /> 推荐
+              </div>
+              <h3 className="font-serif text-2xl font-bold text-brand-dark dark:text-gray-100 mb-2">安装包 · Windows</h3>
+              <p className="text-brand-gray dark:text-gray-400 text-sm mb-4">大多数 Windows 用户推荐使用</p>
+              <div className="bg-pink-50 dark:bg-pink-500/10 rounded-lg p-3 mb-6">
+                <code className="text-xs text-brand-dark dark:text-gray-100 block truncate">Smart-Desktop-Pet-White-Setup-0.6.0.exe</code>
+                <div className="text-xs text-brand-gray dark:text-gray-400 mt-1">大小：约 141 MB</div>
               </div>
               <ul className="text-left space-y-2 mb-6">
-                <li className="flex items-center gap-2 text-sm text-brand-gray">
+                <li className="flex items-center gap-2 text-sm text-brand-gray dark:text-gray-300">
                   <CheckCircle2 size={16} className="text-brand-mint" /> 自动创建快捷方式
                 </li>
-                <li className="flex items-center gap-2 text-sm text-brand-gray">
+                <li className="flex items-center gap-2 text-sm text-brand-gray dark:text-gray-300">
                   <CheckCircle2 size={16} className="text-brand-mint" /> 系统集成安装
                 </li>
-                <li className="flex items-center gap-2 text-sm text-brand-gray">
-                  <CheckCircle2 size={16} className="text-brand-mint" /> 支持卸载
+                <li className="flex items-center gap-2 text-sm text-brand-gray dark:text-gray-300">
+                  <CheckCircle2 size={16} className="text-brand-mint" /> 支持一键卸载
                 </li>
               </ul>
-              {/* 安装包下载计数器 */}
               <div className="mb-4 flex justify-center">
                 <DownloadCounter assetKey="installer" variant="card" />
               </div>
@@ -150,28 +152,27 @@ export default function DownloadPage() {
             </div>
 
             {/* Portable */}
-            <div className="glass rounded-3xl p-8 text-center hover:shadow-xl hover:shadow-pink-100/50 transition-all hover:-translate-y-1">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-400 to-indigo-400 flex items-center justify-center mx-auto mb-6">
+            <div className="glass rounded-3xl p-8 text-center hover:shadow-xl hover:shadow-pink-100/50 transition-all hover:-translate-y-1 dark:bg-white/[0.04]">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-400 to-indigo-400 flex items-center justify-center mx-auto mb-6 shadow-lg shadow-indigo-200/40">
                 <img src={portableIcon} alt="便携版图标" className="w-12 h-12 object-contain" />
               </div>
-              <h3 className="font-serif text-2xl font-bold text-brand-dark mb-2">便携版</h3>
-              <p className="text-brand-gray text-sm mb-4">免安装，即开即用</p>
-              <div className="bg-purple-50 rounded-lg p-3 mb-6">
-                <code className="text-xs text-brand-dark">Smart-Desktop-Pet-White-Portable-0.5.0.exe</code>
-                <div className="text-xs text-brand-gray mt-1">大小：约 140 MB</div>
+              <h3 className="font-serif text-2xl font-bold text-brand-dark dark:text-gray-100 mb-2">便携版 · Windows</h3>
+              <p className="text-brand-gray dark:text-gray-400 text-sm mb-4">U 盘随身带，双击即可用</p>
+              <div className="bg-purple-50 dark:bg-indigo-500/10 rounded-lg p-3 mb-6">
+                <code className="text-xs text-brand-dark dark:text-gray-100 block truncate">Smart-Desktop-Pet-White-Portable-0.6.0.exe</code>
+                <div className="text-xs text-brand-gray dark:text-gray-400 mt-1">大小：约 140 MB</div>
               </div>
               <ul className="text-left space-y-2 mb-6">
-                <li className="flex items-center gap-2 text-sm text-brand-gray">
-                  <CheckCircle2 size={16} className="text-brand-mint" /> 无需安装
+                <li className="flex items-center gap-2 text-sm text-brand-gray dark:text-gray-300">
+                  <CheckCircle2 size={16} className="text-brand-mint" /> 无需安装，无管理员权限要求
                 </li>
-                <li className="flex items-center gap-2 text-sm text-brand-gray">
-                  <CheckCircle2 size={16} className="text-brand-mint" /> 直接运行
+                <li className="flex items-center gap-2 text-sm text-brand-gray dark:text-gray-300">
+                  <CheckCircle2 size={16} className="text-brand-mint" /> 下载完直接运行
                 </li>
-                <li className="flex items-center gap-2 text-sm text-brand-gray">
-                  <CheckCircle2 size={16} className="text-brand-mint" /> 便于携带
+                <li className="flex items-center gap-2 text-sm text-brand-gray dark:text-gray-300">
+                  <CheckCircle2 size={16} className="text-brand-mint" /> 可放到 U 盘 / 移动硬盘使用
                 </li>
               </ul>
-              {/* 便携版下载计数器 */}
               <div className="mb-4 flex justify-center">
                 <DownloadCounter assetKey="portable" variant="card" />
               </div>
@@ -182,6 +183,48 @@ export default function DownloadPage() {
                 href={siteConfig.portableUrl}
                 onClick={() => portableCounter.increment()}
               />
+            </div>
+
+            {/* macOS DMG (新增) */}
+            <div className="glass rounded-3xl p-8 text-center hover:shadow-xl hover:shadow-pink-100/50 transition-all hover:-translate-y-1 dark:bg-white/[0.04] border-2 border-dashed dark:border-white/10 border-slate-200">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-slate-800 via-slate-700 to-slate-900 flex items-center justify-center mx-auto mb-6 shadow-lg shadow-slate-300/40 dark:shadow-black/40 ring-1 ring-white/10">
+                <Apple size={32} className="text-white" />
+              </div>
+              <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-500/10 text-slate-700 dark:text-slate-200 text-[11px] font-semibold border border-slate-300/60 dark:border-white/10 mb-2">
+                <ShieldCheck size={11} /> 支持 Intel + Apple Silicon
+              </div>
+              <h3 className="font-serif text-2xl font-bold text-brand-dark dark:text-gray-100 mb-2">DMG 安装包 · macOS</h3>
+              <p className="text-brand-gray dark:text-gray-400 text-sm mb-4">MacBook / iMac / Mac mini / Mac Studio 通用</p>
+              <div className="bg-slate-50 dark:bg-slate-500/10 rounded-lg p-3 mb-6">
+                <code className="text-xs text-brand-dark dark:text-gray-100 block truncate">
+                  智能桌面宠物-小白-{siteConfig.version}-macOS.dmg
+                </code>
+                <div className="text-xs text-brand-gray dark:text-gray-400 mt-1">大小：约 180 MB</div>
+              </div>
+              <ul className="text-left space-y-2 mb-6">
+                <li className="flex items-center gap-2 text-sm text-brand-gray dark:text-gray-300">
+                  <CheckCircle2 size={16} className="text-brand-mint" /> macOS Big Sur 11.0 及以上
+                </li>
+                <li className="flex items-center gap-2 text-sm text-brand-gray dark:text-gray-300">
+                  <CheckCircle2 size={16} className="text-brand-mint" /> 兼容 M1 / M2 / M3 / M4 全系列
+                </li>
+                <li className="flex items-center gap-2 text-sm text-brand-gray dark:text-gray-300">
+                  <CheckCircle2 size={16} className="text-brand-mint" /> 首次打开：右键 → 打开
+                </li>
+              </ul>
+              <div className="mb-4 flex items-center justify-center gap-1 text-xs text-slate-500 dark:text-gray-400">
+                <Github size={14} />
+                <span>由 GitHub Actions 自动构建发布</span>
+              </div>
+              <a
+                href={`${siteConfig.githubReleases}/latest`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-slate-800 to-slate-900 text-white px-8 py-3.5 text-sm font-medium hover:scale-105 transition-transform shadow-lg shadow-slate-300/40 dark:shadow-black/40 ring-1 ring-white/10"
+              >
+                <Download size={17} />
+                前往 GitHub Releases 下载
+              </a>
             </div>
           </div>
         </div>
@@ -249,18 +292,29 @@ export default function DownloadPage() {
             subtitle="下载后可用 PowerShell 校验文件完整性，避免被篡改"
           />
           <div className="space-y-4">
-            {releaseChecksums.map((it, idx) => (
+            {releaseChecksums.map((it, idx) => {
+              /**
+               * 根据 asset 类型选择图标和渐变配色：
+               *  - installer  → 粉色（Windows 安装版）
+               *  - portable   → 紫色（Windows 便携版）
+               *  - macos      → 深色 Apple 风格
+               */
+              const icon =
+                it.asset === "installer" ? <Monitor size={18} /> :
+                it.asset === "portable"  ? <HardDrive size={18} /> :
+                                           <Apple size={18} />;
+              const gradientCls =
+                it.asset === "installer" ? "bg-gradient-to-br from-brand-pink to-brand-pink-dark text-white" :
+                it.asset === "portable"  ? "bg-gradient-to-br from-purple-400 to-indigo-400 text-white" :
+                                           "bg-gradient-to-br from-slate-800 via-slate-700 to-slate-900 text-white ring-1 ring-white/10";
+              return (
               <div
                 key={it.asset}
                 className="glass rounded-2xl border border-pink-100 dark:border-white/10 p-5 flex flex-col md:flex-row md:items-center gap-4"
               >
-                <div className="flex items-center gap-3 md:w-64 shrink-0">
-                  <span className={`inline-flex items-center justify-center w-10 h-10 rounded-xl ${
-                    it.asset === "installer"
-                      ? "bg-gradient-to-br from-brand-pink to-brand-pink-dark text-white"
-                      : "bg-gradient-to-br from-purple-400 to-indigo-400 text-white"
-                  }`}>
-                    {it.asset === "installer" ? <Monitor size={18} /> : <HardDrive size={18} />}
+                <div className="flex items-center gap-3 md:w-72 shrink-0">
+                  <span className={`inline-flex items-center justify-center w-10 h-10 rounded-xl ${gradientCls}`}>
+                    {icon}
                   </span>
                   <div className="min-w-0">
                     <div className="font-semibold text-brand-dark dark:text-gray-100 truncate">
@@ -288,12 +342,28 @@ export default function DownloadPage() {
                 >
                   {copiedShaIdx === idx ? (<><Check size={14} /> 已复制</>) : (<><Copy size={14} /> 复制</>)}
                 </button>
+                {/* mac 行如果有外站 href，给个直达按钮 */}
+                {it.asset === "macos" && it.href ? (
+                  <a
+                    href={it.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-medium transition bg-slate-800 dark:bg-slate-900 text-white hover:shadow-md"
+                  >
+                    <ExternalLink size={14} /> Releases
+                  </a>
+                ) : null}
               </div>
-            ))}
+            );
+            })}
             <div className="text-xs text-brand-gray dark:text-gray-400 pl-2 leading-6">
-              💡 PowerShell 校验命令（将文件和脚本放同一目录执行）：
+              💡 Windows PowerShell 校验：
               <pre className="mt-2 bg-brand-dark dark:bg-black text-pink-100/90 px-4 py-3 rounded-xl overflow-x-auto">
-{`Get-FileHash .\\Smart-Desktop-Pet-White-Setup-0.5.0.exe -Algorithm SHA256`}
+{`Get-FileHash .\\Smart-Desktop-Pet-White-Setup-0.6.0.exe -Algorithm SHA256`}
+              </pre>
+              🍎 macOS 终端校验：
+              <pre className="mt-2 bg-brand-dark dark:bg-black text-pink-100/90 px-4 py-3 rounded-xl overflow-x-auto">
+{`shasum -a 256 ~/Downloads/智能桌面宠物-小白-0.6.0-macOS.dmg`}
               </pre>
             </div>
           </div>
