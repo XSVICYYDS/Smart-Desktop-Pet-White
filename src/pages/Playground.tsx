@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -9,6 +9,8 @@ import {
   Info,
   ChevronLeft,
   ChevronRight,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import { findFeature, FEATURES, type FeatureMeta } from "../data/playgroundData";
 
@@ -33,6 +35,46 @@ function usePrevNext(currentId: string): { prev: FeatureMeta | null; next: Featu
     prev: idx <= 0 ? null : FEATURES[idx - 1],
     next: idx === -1 || idx >= FEATURES.length - 1 ? null : FEATURES[idx + 1],
   };
+}
+
+/**
+ * 全屏包装组件：右上角带全屏切换按钮，点击将容器元素 requestFullscreen
+ */
+function FullscreenWrapper({ children }: { children: ReactNode }) {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [isFs, setIsFs] = useState(false);
+  useEffect(() => {
+    const h = () => {
+      setIsFs(Boolean(document.fullscreenElement));
+    };
+    document.addEventListener("fullscreenchange", h);
+    return () => document.removeEventListener("fullscreenchange", h);
+  }, []);
+  const toggle = async () => {
+    const el = wrapRef.current;
+    if (!el) return;
+    try {
+      if (!document.fullscreenElement) {
+        await el.requestFullscreen();
+      } else {
+        await document.exitFullscreen();
+      }
+    } catch (e) {
+      void e;
+    }
+  };
+  return (
+    <div className="relative" ref={wrapRef}>
+      <button
+        onClick={toggle}
+        title={isFs ? "退出全屏 (Esc)" : "全屏"}
+        className="absolute top-3 right-3 z-30 w-9 h-9 rounded-full bg-white/90 backdrop-blur border border-slate-200 text-slate-700 hover:shadow-md hover:bg-white transition-all flex items-center justify-center"
+      >
+        {isFs ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+      </button>
+      {children}
+    </div>
+  );
 }
 
 // 顶部导航条
@@ -310,7 +352,8 @@ function Game2048() {
   };
 
   return (
-    <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+    <FullscreenWrapper>
+      <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
       <div className="flex flex-wrap items-center gap-3 mb-5">
         <div className="rounded-2xl bg-slate-50 border border-slate-200 px-4 py-2">
           <div className="text-[11px] font-semibold text-slate-500">得分</div>
@@ -385,14 +428,15 @@ function Game2048() {
           →
         </button>
       </div>
-    </div>
+      </div>
+    </FullscreenWrapper>
   );
 }
 
 // ===================== 贪吃蛇 =====================
 function GameSnake() {
-  const W = 20,
-    H = 15;
+  const W = 28,
+    H = 20;
   const [snake, setSnake] = useState<[number, number][]>([
     [10, 7],
     [9, 7],
@@ -402,7 +446,7 @@ function GameSnake() {
   const [food, setFood] = useState<[number, number]>([15, 7]);
   const [score, setScore] = useState(0);
   const [alive, setAlive] = useState(true);
-  const [speed, setSpeed] = useState(130);
+  const [speed, setSpeed] = useState(180);
 
   const restart = () => {
     setSnake([
@@ -414,7 +458,7 @@ function GameSnake() {
     setFood([15, 7]);
     setScore(0);
     setAlive(true);
-    setSpeed(130);
+    setSpeed(180);
   };
 
   useEffect(() => {
@@ -436,7 +480,7 @@ function GameSnake() {
         const next = [nh, ...s];
         if (nh[0] === food[0] && nh[1] === food[1]) {
           setScore((x) => x + 10);
-          setSpeed((v) => (v > 60 ? v - 4 : v));
+          setSpeed((v) => (v > 100 ? v - 3 : v));
           const empty: [number, number][] = [];
           for (let y = 0; y < H; y++)
             for (let x = 0; x < W; x++)
@@ -464,7 +508,8 @@ function GameSnake() {
   }, [dir]);
 
   return (
-    <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+    <FullscreenWrapper>
+      <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
       <div className="flex flex-wrap items-center gap-3 mb-5">
         <div className="rounded-2xl bg-emerald-50 border border-emerald-200 px-4 py-2">
           <div className="text-[11px] font-semibold text-emerald-700">长度</div>
@@ -484,7 +529,7 @@ function GameSnake() {
       </div>
       <div className="mx-auto max-w-xl rounded-2xl bg-gradient-to-br from-slate-900 to-slate-800 p-3">
         <div
-          className="grid gap-[2px] aspect-[4/3]"
+          className="grid gap-[2px] aspect-[7/5]"
           style={{ gridTemplateColumns: `repeat(${W}, minmax(0,1fr))` }}
         >
           {Array.from({ length: H }).flatMap((_, y) =>
@@ -544,7 +589,8 @@ function GameSnake() {
           游戏结束！得分：{score}，点「重开」继续～
         </div>
       )}
-    </div>
+      </div>
+    </FullscreenWrapper>
   );
 }
 
@@ -590,7 +636,8 @@ function GameTTT() {
     setXTurn(!xTurn);
   };
   return (
-    <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+    <FullscreenWrapper>
+      <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
       <div className="flex flex-wrap items-center gap-3 mb-5">
         <div className="rounded-2xl bg-sky-50 border border-sky-200 px-4 py-2">
           <div className="text-[11px] font-semibold text-sky-600">X 胜</div>
@@ -645,7 +692,8 @@ function GameTTT() {
           {res.win === "D" ? "平局" : `🎉 ${res.win} 获胜！`}
         </div>
       )}
-    </div>
+      </div>
+    </FullscreenWrapper>
   );
 }
 
@@ -1257,7 +1305,8 @@ function GameWhack() {
         : "🐹"
       : "🕳";
   return (
-    <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+    <FullscreenWrapper>
+      <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
       <div className="flex flex-wrap items-center gap-3 mb-5">
         <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-2">
           <div className="text-[11px] font-semibold text-amber-700">分数</div>
@@ -1306,7 +1355,8 @@ function GameWhack() {
           时间到！本局得分：{score}
         </div>
       )}
-    </div>
+      </div>
+    </FullscreenWrapper>
   );
 }
 
@@ -1406,7 +1456,8 @@ function GameMinesweeper() {
   ];
   const flagCount = flags.flat().filter(Boolean).length;
   return (
-    <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+    <FullscreenWrapper>
+      <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
       <div className="flex flex-wrap items-center gap-3 mb-5">
         <div className="rounded-2xl bg-sky-50 border border-sky-200 px-4 py-2">
           <div className="text-[11px] font-semibold text-sky-700">雷数</div>
@@ -1471,7 +1522,8 @@ function GameMinesweeper() {
           </span>
         )}
       </div>
-    </div>
+      </div>
+    </FullscreenWrapper>
   );
 }
 
@@ -1760,7 +1812,8 @@ function GameTetris() {
 
   const nextShape = SHAPES[nextKey][0];
   return (
-    <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+    <FullscreenWrapper>
+      <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
       <div className="flex flex-wrap items-center gap-3 mb-5">
         <div className="rounded-2xl bg-violet-50 border border-violet-200 px-4 py-2">
           <div className="text-[11px] font-semibold text-violet-700">得分</div>
@@ -1826,7 +1879,8 @@ function GameTetris() {
           游戏结束！最终得分 {score}，消 {lines} 行
         </div>
       )}
-    </div>
+      </div>
+    </FullscreenWrapper>
   );
 }
 
@@ -2366,27 +2420,106 @@ function GameGomoku() {
     return false;
   };
 
-  const aiMove = (b: ("B" | "W" | null)[][]) => {
-    // 简易AI：优先在已有棋子周围评分最高的位置落子
+  /**
+   * 评估某方在某位置落子后，4个方向上的棋型得分
+   */
+  const evalPattern = (
+    b: ("B" | "W" | null)[][],
+    r: number,
+    c: number,
+    dr: number,
+    dc: number,
+    p: "B" | "W"
+  ): number => {
+    let count = 1;
+    let leftOpen = false;
+    let rightOpen = false;
+    let leftSkip = false;
+    let rightSkip = false;
+    let i = 1;
+    while (true) {
+      const nr = r - dr * i, nc = c - dc * i;
+      if (nr < 0 || nc < 0 || nr >= SIZE || nc >= SIZE) break;
+      if (b[nr][nc] === p) count++;
+      else if (b[nr][nc] === null) {
+        leftOpen = true;
+        const nr2 = r - dr * (i + 1), nc2 = c - dc * (i + 1);
+        if (nr2 >= 0 && nc2 >= 0 && nr2 < SIZE && nc2 < SIZE && b[nr2][nc2] === p) {
+          leftSkip = true;
+          count++;
+        }
+        break;
+      } else break;
+      i++;
+    }
+    i = 1;
+    while (true) {
+      const nr = r + dr * i, nc = c + dc * i;
+      if (nr < 0 || nc < 0 || nr >= SIZE || nc >= SIZE) break;
+      if (b[nr][nc] === p) count++;
+      else if (b[nr][nc] === null) {
+        rightOpen = true;
+        const nr2 = r + dr * (i + 1), nc2 = c + dc * (i + 1);
+        if (nr2 >= 0 && nc2 >= 0 && nr2 < SIZE && nc2 < SIZE && b[nr2][nc2] === p) {
+          rightSkip = true;
+          count++;
+        }
+        break;
+      } else break;
+      i++;
+    }
+    if (count >= 5) return 10000000;
+    const bothOpen = leftOpen && rightOpen;
+    const oneOpen = leftOpen || rightOpen;
+    if (count === 4) {
+      if (bothOpen && !leftSkip && !rightSkip) return 100000;
+      return 10000;
+    }
+    if (count === 3) {
+      if (bothOpen && !leftSkip && !rightSkip) return 5000;
+      if (oneOpen || leftSkip || rightSkip) return 500;
+      return 0;
+    }
+    if (count === 2) {
+      if (bothOpen && !leftSkip && !rightSkip) return 200;
+      if (oneOpen) return 50;
+      return 0;
+    }
+    if (count === 1 && bothOpen) return 10;
+    return 0;
+  };
+
+  /**
+   * 评估某位置对某方的总得分（4个方向之和）
+   */
+  const scorePos = (b: ("B" | "W" | null)[][], r: number, c: number, p: "B" | "W"): number => {
+    const clone = b.map((x) => x.slice());
+    clone[r][c] = p;
+    const dirs = [[0, 1], [1, 0], [1, 1], [1, -1]];
+    let s = 0;
+    for (const [dr, dc] of dirs) s += evalPattern(clone, r, c, dr, dc, p);
+    return s;
+  };
+
+  const aiMove = (b: ("B" | "W" | null)[][]): [number, number] | null => {
     let best: [number, number] | null = null;
     let bestScore = -1;
+    const hasStone = b.some((row) => row.some((v) => v !== null));
+    if (!hasStone) return [Math.floor(SIZE / 2), Math.floor(SIZE / 2)] as [number, number];
     for (let r = 0; r < SIZE; r++)
       for (let c = 0; c < SIZE; c++) {
         if (b[r][c]) continue;
-        let s = 0;
-        for (let dr = -2; dr <= 2; dr++)
+        let near = false;
+        outer: for (let dr = -2; dr <= 2; dr++)
           for (let dc = -2; dc <= 2; dc++) {
-            const nr = r + dr,
-              nc = c + dc;
+            const nr = r + dr, nc = c + dc;
             if (nr < 0 || nc < 0 || nr >= SIZE || nc >= SIZE) continue;
-            if (b[nr][nc]) s += 5 - Math.max(Math.abs(dr), Math.abs(dc));
+            if (b[nr][nc]) { near = true; break outer; }
           }
-        // 优先堵对方（白方AI下白子，堵黑子连子）
-        const clone = b.map((x) => x.slice());
-        clone[r][c] = "W";
-        if (checkWin(clone, r, c, "W")) s += 10000;
-        clone[r][c] = "B";
-        if (checkWin(clone, r, c, "B")) s += 5000;
+        if (!near) continue;
+        const attack = scorePos(b, r, c, "W") * 1.05;
+        const defend = scorePos(b, r, c, "B") * 1.0;
+        const s = attack + defend;
         if (s > bestScore) {
           bestScore = s;
           best = [r, c];
@@ -2436,7 +2569,8 @@ function GameGomoku() {
   };
 
   return (
-    <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+    <FullscreenWrapper>
+      <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
       <div className="flex flex-wrap items-center gap-3 mb-5">
         <div className="rounded-2xl bg-neutral-50 border border-neutral-200 px-4 py-2">
           <div className="text-[11px] font-semibold text-neutral-600">当前</div>
@@ -2545,7 +2679,8 @@ function GameGomoku() {
           🎉 {winner === "B" ? "黑方" : "白方"}获胜！
         </div>
       )}
-    </div>
+      </div>
+    </FullscreenWrapper>
   );
 }
 
@@ -2628,7 +2763,8 @@ function GameKlotski() {
   }, [selected, pieces, won]);
 
   return (
-    <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+    <FullscreenWrapper>
+      <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
       <div className="flex flex-wrap items-center gap-3 mb-5">
         <div className="rounded-2xl bg-rose-50 border border-rose-200 px-4 py-2">
           <div className="text-[11px] font-semibold text-rose-600">步数</div>
@@ -2716,7 +2852,8 @@ function GameKlotski() {
           🎉 华容道通关！步数 {steps}
         </div>
       )}
-    </div>
+      </div>
+    </FullscreenWrapper>
   );
 }
 
@@ -2858,7 +2995,8 @@ function GamePong() {
 
   const s = stateRef.current;
   return (
-    <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+    <FullscreenWrapper>
+      <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
       <div className="flex flex-wrap items-center gap-3 mb-5">
         <div className="rounded-2xl bg-cyan-50 border border-cyan-200 px-4 py-2">
           <div className="text-[11px] font-semibold text-cyan-600">左方（W/S）</div>
@@ -2904,13 +3042,14 @@ function GamePong() {
       <div className="mt-3 text-center text-xs text-slate-500">
         先得 7 分胜 · 左板 W/S，{mode === "pvp" ? "右板 ↑↓" : "右板由 AI 操作"}
       </div>
-    </div>
+      </div>
+    </FullscreenWrapper>
   );
 }
 
 // ===================== 推箱子 =====================
 /**
- * 推箱子：多关卡，方向键移动小人推箱子到目标点
+ * 推箱子：多关卡，方向键移动小人推箱子到目标点（箱子入目标后消失，目标点可复用）
  */
 function GameSokoban() {
   // # 墙  . 目标  @ 人  $ 箱  * 箱在目标  + 人在目标
@@ -2952,20 +3091,50 @@ function GameSokoban() {
       "   ####  ",
     ],
   ];
-  const [lvl, setLvl] = useState(0);
-  const [grid, setGrid] = useState<string[][]>(() => LEVELS[0].map((r) => r.split("")));
-  const [steps, setSteps] = useState(0);
-  const [history, setHistory] = useState<string[][][]>([]);
 
+  /**
+   * 统计关卡中目标点总数（'.'目标、'*'箱已在目标、'+'人在目标 都算）
+   */
+  const countTargets = (level: string[]): number => {
+    let n = 0;
+    for (const row of level) for (const ch of row) if (ch === "." || ch === "*" || ch === "+") n++;
+    return n;
+  };
+
+  const [lvl, setLvl] = useState(0);
+  const [grid, setGrid] = useState<string[][]>(() => {
+    const initial = LEVELS[0].map((r) => r.split(""));
+    return initial;
+  });
+  const [steps, setSteps] = useState(0);
+  const [completedGoals, setCompletedGoals] = useState(0);
+  const [totalTargets, setTotalTargets] = useState(() => countTargets(LEVELS[0]));
+  const [history, setHistory] = useState<{ grid: string[][]; completedGoals: number }[]>([]);
+
+  /**
+   * 加载关卡 i：解析初始 '*' 为已完成目标，并替换 '*'→'.'
+   */
   const load = (i: number) => {
     setLvl(i);
-    setGrid(LEVELS[i].map((r) => r.split("")));
+    const raw = LEVELS[i];
+    setTotalTargets(countTargets(raw));
+    let initialCompleted = 0;
+    const parsed: string[][] = raw.map((row) =>
+      row.split("").map((ch) => {
+        if (ch === "*") {
+          initialCompleted++;
+          return ".";
+        }
+        return ch;
+      })
+    );
+    setGrid(parsed);
+    setCompletedGoals(initialCompleted);
     setSteps(0);
     setHistory([]);
   };
   const restart = () => load(lvl);
-  const won = (g: string[][]) =>
-    g.every((row) => row.every((ch) => ch !== "$")); // 没有单独的箱子=都在目标上（变为*或.不影响）
+  const won = () => completedGoals >= totalTargets;
 
   const findMan = (g: string[][]) => {
     for (let y = 0; y < g.length; y++)
@@ -2975,37 +3144,40 @@ function GameSokoban() {
   };
 
   const move = (dx: number, dy: number) => {
-    if (won(grid)) return;
+    if (won()) return;
     const g = grid.map((r) => r.slice());
     const man = findMan(g);
     const nx = man.x + dx;
     const ny = man.y + dy;
-    // 越界补空格
     while (ny >= g.length) g.push(Array(nx + 1).fill(" "));
     while (nx >= g[ny].length) g[ny].push(" ");
     const target = g[ny][nx];
-    if (target === "#") return; // 墙
-    const isBox = target === "$" || target === "*";
+    if (target === "#") return;
+    const isBox = target === "$";
+    let addedCompleted = 0;
     if (isBox) {
       const bx = nx + dx;
       const by = ny + dy;
       while (by >= g.length) g.push(Array(bx + 1).fill(" "));
       while (bx >= g[by].length) g[by].push(" ");
       const next = g[by][bx];
-      if (next === "#" || next === "$" || next === "*") return; // 箱子后是墙或另一个箱
-      // 移动箱子
-      g[by][bx] = next === "." ? "*" : "$";
-      // 箱子原位置
-      g[ny][nx] = target === "*" ? "." : " ";
+      if (next === "#" || next === "$") return;
+      if (next === ".") {
+        g[by][bx] = ".";
+        addedCompleted = 1;
+      } else {
+        g[by][bx] = "$";
+      }
+      g[ny][nx] = " ";
     } else if (target !== " " && target !== ".") {
       return;
     }
-    // 移动人
     g[man.y][man.x] = man.onGoal ? "." : " ";
     const curTarget = g[ny][nx];
     g[ny][nx] = curTarget === "." ? "+" : "@";
-    setHistory((h) => [...h, grid]);
+    setHistory((h) => [...h, { grid, completedGoals }]);
     setGrid(g);
+    if (addedCompleted > 0) setCompletedGoals((cg) => cg + addedCompleted);
     setSteps((s) => s + 1);
   };
 
@@ -3013,9 +3185,15 @@ function GameSokoban() {
     if (!history.length) return;
     const prev = history[history.length - 1];
     setHistory(history.slice(0, -1));
-    setGrid(prev);
+    setGrid(prev.grid);
+    setCompletedGoals(prev.completedGoals);
     setSteps((s) => Math.max(0, s - 1));
   };
+
+  useEffect(() => {
+    load(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
@@ -3029,13 +3207,14 @@ function GameSokoban() {
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [grid, history]);
+  }, [grid, history, completedGoals]);
 
   const rows = grid.length;
   const cols = Math.max(...grid.map((r) => r.length));
-  const win = won(grid);
+  const win = won();
   return (
-    <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+    <FullscreenWrapper>
+      <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
       <div className="flex flex-wrap items-center gap-3 mb-5">
         <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-2">
           <div className="text-[11px] font-semibold text-amber-700">关卡</div>
@@ -3046,6 +3225,10 @@ function GameSokoban() {
         <div className="rounded-2xl bg-yellow-50 border border-yellow-200 px-4 py-2">
           <div className="text-[11px] font-semibold text-yellow-700">步数</div>
           <div className="text-xl font-bold text-yellow-800">{steps}</div>
+        </div>
+        <div className="rounded-2xl bg-emerald-50 border border-emerald-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-emerald-700">已完成</div>
+          <div className="text-xl font-bold text-emerald-800">{completedGoals} / {totalTargets}</div>
         </div>
         <div className="ml-auto flex gap-2 flex-wrap">
           <select
@@ -3098,9 +3281,6 @@ function GameSokoban() {
               } else if (ch === "$") {
                 cls += "bg-yellow-600 rounded shadow";
                 inner = "📦";
-              } else if (ch === "*") {
-                cls += "bg-emerald-500 rounded ring-2 ring-emerald-300 shadow";
-                inner = "✅";
               }
               return (
                 <div
@@ -3136,7 +3316,8 @@ function GameSokoban() {
           )}
         </div>
       )}
-    </div>
+      </div>
+    </FullscreenWrapper>
   );
 }
 
@@ -3283,7 +3464,8 @@ function GameSudoku() {
   }, [sel, note, board]);
 
   return (
-    <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+    <FullscreenWrapper>
+      <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
       <div className="flex flex-wrap items-center gap-3 mb-5">
         <div className="rounded-2xl bg-teal-50 border border-teal-200 px-4 py-2">
           <div className="text-[11px] font-semibold text-teal-700">难度</div>
@@ -3379,7 +3561,8 @@ function GameSudoku() {
           🎉 数独通过！
         </div>
       )}
-    </div>
+      </div>
+    </FullscreenWrapper>
   );
 }
 
@@ -3543,7 +3726,8 @@ function GameLianLian() {
   };
 
   return (
-    <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+    <FullscreenWrapper>
+      <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
       <div className="flex flex-wrap items-center gap-3 mb-5">
         <div className="rounded-2xl bg-fuchsia-50 border border-fuchsia-200 px-4 py-2">
           <div className="text-[11px] font-semibold text-fuchsia-600">分数</div>
@@ -3617,7 +3801,8 @@ function GameLianLian() {
           时间到！最终得分 {score}
         </div>
       )}
-    </div>
+      </div>
+    </FullscreenWrapper>
   );
 }
 
@@ -3870,7 +4055,8 @@ function GameTank() {
   const s = stateRef.current;
   const p = s.tanks[0];
   return (
-    <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+    <FullscreenWrapper>
+      <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
       <div className="flex flex-wrap items-center gap-3 mb-5">
         <div className="rounded-2xl bg-lime-50 border border-lime-200 px-4 py-2">
           <div className="text-[11px] font-semibold text-lime-700">分数</div>
@@ -3906,7 +4092,8 @@ function GameTank() {
       <div className="mt-3 text-center text-xs text-slate-500">
         方向键移动，空格射击 · 共 {s.totalEnemy} 辆敌军 · 守住 🦅
       </div>
-    </div>
+      </div>
+    </FullscreenWrapper>
   );
 }
 
@@ -4059,7 +4246,8 @@ function GameMatch3() {
   const lose = !won && moves <= 0;
 
   return (
-    <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+    <FullscreenWrapper>
+      <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
       <div className="flex flex-wrap items-center gap-3 mb-5">
         <div className="rounded-2xl bg-rose-50 border border-rose-200 px-4 py-2">
           <div className="text-[11px] font-semibold text-rose-600">分数</div>
@@ -4124,7 +4312,8 @@ function GameMatch3() {
       <div className="mt-3 text-center text-xs text-slate-500">
         交换相邻糖果形成 3+ 连即可消除，凑出 4/5 连生成特殊糖果威力更强
       </div>
-    </div>
+      </div>
+    </FullscreenWrapper>
   );
 }
 
@@ -4144,6 +4333,8 @@ function GameSheep() {
   const [lose, setLose] = useState(false);
   const [props, setProps] = useState({ undo: 3, shuffle: 3, remove: 2 });
 
+  const posMapRef = useRef<Map<number, [number, number]>>(new Map());
+
   const generate = (lv: number) => {
     const total = LEVEL_CARDS[lv] || 120;
     const kinds = Math.min(EMOJIS.length, 6 + lv);
@@ -4153,39 +4344,41 @@ function GameSheep() {
     while (arr.length < total) arr.push(Math.floor(Math.random() * kinds));
     arr.sort(() => Math.random() - 0.5);
     const list: Card[] = [];
-    // 分层交错布置
     const cols = Math.ceil(Math.sqrt(total / 2));
     const rows = Math.ceil(total / cols);
     let id = 0;
+    const WMAX = WIDTH - 34;
+    const HMAX = HEIGHT - 44;
     for (let it = 0; it < 2; it++) {
       for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
         if (id >= arr.length) break;
-        const px = x * 38 + (it * 14) + (y % 2 === 0 ? 0 : 18) + Math.random() * 14 - 7;
-        const py = y * 40 + (it * 14) + Math.random() * 12 - 6;
+        let px = x * 38 + (it * 14) + (y % 2 === 0 ? 0 : 18) + Math.random() * 14 - 7;
+        let py = y * 40 + (it * 14) + Math.random() * 12 - 6;
+        px = clamp(px, 0, WMAX);
+        py = clamp(py, 0, HMAX);
         list.push({ sym: arr[id], z: it * 1000 + y * cols + x, id: id, visible: true });
-        // 给位置信息附加在 z 旁边？我们用 Map 存坐标
-        posMap.set(id, [px, py]);
+        posMapRef.current.set(id, [px, py]);
         id++;
       }
     }
-    // 继续堆更多层
     while (id < arr.length) {
       const it = Math.floor(id / (cols * rows)) + 2;
       const idx = id % (cols * rows);
       const x = idx % cols;
       const y = Math.floor(idx / cols);
-      const px = x * 38 + (it % 2 * 18) + 8;
-      const py = y * 40 + 6;
+      let px = x * 38 + (it % 2 * 18) + 8;
+      let py = y * 40 + 6;
+      px = clamp(px, 0, WMAX);
+      py = clamp(py, 0, HMAX);
       list.push({ sym: arr[id], z: it * 1000 + y * cols + x, id, visible: true });
-      posMap.set(id, [px, py]);
+      posMapRef.current.set(id, [px, py]);
       id++;
     }
     return list;
   };
-  const posMap = new Map<number, [number, number]>();
 
   const start = (lv: number) => {
-    posMap.clear();
+    posMapRef.current.clear();
     const c = generate(lv);
     setCards(c);
     setSlots(Array(SLOT).fill(null));
@@ -4199,12 +4392,12 @@ function GameSheep() {
 
   // 顶部卡判定
   const topCard = (c: Card, all: Card[]) => {
-    const [cx, cy] = posMap.get(c.id) || [0, 0];
+    const [cx, cy] = posMapRef.current.get(c.id) || [0, 0];
     const W = 34, H = 44;
     for (const o of all) {
       if (o.id === c.id || !o.visible) continue;
       if (o.z <= c.z) continue;
-      const [ox, oy] = posMap.get(o.id) || [0, 0];
+      const [ox, oy] = posMapRef.current.get(o.id) || [0, 0];
       if (!(cx + W <= ox || ox + W <= cx || cy + H <= oy || oy + H <= cy)) return false;
     }
     return true;
@@ -4317,7 +4510,8 @@ function GameSheep() {
   const HEIGHT = 500;
 
   return (
-    <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+    <FullscreenWrapper>
+      <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
       <div className="flex flex-wrap items-center gap-3 mb-5">
         <div className="rounded-2xl bg-pink-50 border border-pink-200 px-4 py-2">
           <div className="text-[11px] font-semibold text-pink-600">关卡</div>
@@ -4362,7 +4556,7 @@ function GameSheep() {
             className="w-full h-full block"
           >
             {cards.sort((a, b) => a.z - b.z).map((c) => {
-              const [x, y] = posMap.get(c.id) || [0, 0];
+              const [x, y] = posMapRef.current.get(c.id) || [0, 0];
               const top = topCard(c, cards);
               return (
                 <foreignObject key={c.id} x={x} y={y} width={34} height={44} style={{ cursor: top ? "pointer" : "default" }}
@@ -4408,7 +4602,8 @@ function GameSheep() {
           💥 槽位已满！试试「撤回」或「移出」，或点重开本关
         </div>
       )}
-    </div>
+      </div>
+    </FullscreenWrapper>
   );
 }
 
