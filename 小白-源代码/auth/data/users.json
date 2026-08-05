@@ -22,5 +22,14 @@
     "password_hash": "97875ebd7222b3440f8f438a274be30c$6e532c37905c8a43aa1a58de841b76699c5438722bc91f35e625bcc5ea6c7e24",
     "created_at": "2026-06-07T12:10:09.620986",
     "status": "active"
+  },
+  "b1da5946-a7b1-4015-9bd3-4a1253d74181": {
+    "user_id": "b1da5946-a7b1-4015-9bd3-4a1253d74181",
+    "username": "XSVICYYDS@outlook.com",
+    "nickname": "XSVICYYDS",
+    "email": "XSVICYYDS@outlook.com",
+    "password_hash": "d1c3487662dd6166e0c862fabe3363ce$1914d6c9a2a0f297db503319323adf27f211ca153f00ce99d4c7e325535ab1dc",
+    "created_at": "2026-08-02T08:28:59.968583",
+    "status": "active"
   }
 }

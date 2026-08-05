@@ -179,14 +179,21 @@ class FeatureDefinitions:
                 name="用户管理",
                 module="管理",
                 operation="manage",
-                description="管理用户账户"
+                description="管理用户账户（创建、禁用、重置密码等）"
             ),
             Permission(
-                permission_id=f"{cls.PREFIX_ADMIN}.permission_config",
+                permission_id=f"{cls.PREFIX_ADMIN}.role_manage",
                 name="权限配置",
                 module="管理",
                 operation="manage",
-                description="配置用户权限"
+                description="分配/撤销用户角色与权限配置"
+            ),
+            Permission(
+                permission_id=f"{cls.PREFIX_ADMIN}.version_manage",
+                name="版本管理",
+                module="管理",
+                operation="manage",
+                description="查看、发布、回滚软件版本并维护发布说明"
             ),
             Permission(
                 permission_id=f"{cls.PREFIX_ADMIN}.system_settings",
@@ -277,6 +284,7 @@ class FeatureDefinitions:
                 f"{cls.PREFIX_MYCENTER}.settings",
                 f"{cls.PREFIX_MYCENTER}.history",
                 f"{cls.PREFIX_ADMIN}.user_manage",
+                f"{cls.PREFIX_ADMIN}.role_manage",
                 f"{cls.PREFIX_ADMIN}.audit_logs",
                 f"{cls.PREFIX_ADMIN}.statistics"
             ],

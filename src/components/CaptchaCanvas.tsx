@@ -25,6 +25,12 @@ interface CaptchaCanvasProps {
   height?: number;
   /** 显示刷新按钮 */
   showRefresh?: boolean;
+  /**
+   * 外部触发刷新的"种子"：每次此值变化就强制重新生成图形验证码
+   * 用于：切换登录/注册 Tab、发送邮箱验证码后、表单提交完成后
+   * （避免 verifyGraphCaptcha 删除记录后继续使用同一个 captchaId 导致"怎么输都错"）
+   */
+  refreshKey?: number;
 }
 
 export default function CaptchaCanvas({
@@ -32,6 +38,7 @@ export default function CaptchaCanvas({
   width = 140,
   height = 44,
   showRefresh = true,
+  refreshKey = 0,
 }: CaptchaCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [captcha, setCaptcha] = useState<GraphCaptcha | null>(null);
@@ -45,10 +52,11 @@ export default function CaptchaCanvas({
     onChange(newCap);
   }, [onChange]);
 
+  // 首次挂载 + refreshKey 变化 → 强制刷新
   useEffect(() => {
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [refreshKey]);
 
   useEffect(() => {
     if (!captcha || !canvasRef.current) return;
