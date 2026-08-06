@@ -2,7 +2,21 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============ 主题 CSS 变量 ============ */
 :root {
+  /* 浅色模式（默认） */
+  --color-brand-cream: #FFF9F5;
+  --color-brand-yellow: #FFF3E0;
+  --color-brand-dark: #2D2D2D;
+  --color-brand-gray: #666666;
+  --color-bg-base: #FFF9F5;
+  --color-text-base: #2D2D2D;
+  --color-scrollbar-track: #FFF0F5;
+  --color-scrollbar-thumb: #FFB6D9;
+  --color-scrollbar-thumb-hover: #FF69B4;
+  --color-glass-bg: rgba(255, 255, 255, 0.7);
+  --color-glass-border: rgba(255, 255, 255, 0.3);
+
   font-family: "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   line-height: 1.6;
   font-weight: 400;
@@ -10,65 +24,29 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  color-scheme: light;
-  /* 浅色主题 Token（被 Tailwind class 引用的组件可以通过 bg-[var(--bg)] 方式写） */
-  --bg-cream: #FFF9F5;
-  --bg-page: #FFF9F5;
-  --bg-card: #ffffff;
-  --bg-glass: rgba(255, 255, 255, 0.7);
-  --bg-glass-border: rgba(255, 255, 255, 0.3);
-  --text-main: #2D2D2D;
-  --text-sub: #666666;
-  --text-mute: #999999;
-  --accent: #FF69B4;
-  --accent-light: #FFB6D9;
-  --accent-dark: #E0559B;
-  --border: rgba(255, 105, 180, 0.12);
-  --shadow-soft: 0 10px 40px -10px rgba(255, 105, 180, 0.2);
 }
 
-/* 深色主题：所有全局色板切换 */
-:root.dark {
-  color-scheme: dark;
-  --bg-cream: #121212;
-  --bg-page: #121212;
-  --bg-card: #1e1e1e;
-  --bg-glass: rgba(24, 24, 24, 0.72);
-  --bg-glass-border: rgba(255, 255, 255, 0.08);
-  --text-main: #F3F4F6;
-  --text-sub: #B0B5BE;
-  --text-mute: #6B7280;
-  --accent: #FF85C1;
-  --accent-light: #FFB6D9;
-  --accent-dark: #E0559B;
-  --border: rgba(255, 133, 193, 0.22);
-  --shadow-soft: 0 10px 40px -10px rgba(0, 0, 0, 0.6);
-  /* 覆盖 tailwind text-brand-dark 等默认类在 dark 下的表现 */
+/* 夜间模式变量覆盖 */
+.dark {
+  --color-brand-cream: #1E1E2E;
+  --color-brand-yellow: #2A2538;
+  --color-brand-dark: #F5F5F5;
+  --color-brand-gray: #B8B8C8;
+  --color-bg-base: #1A1A28;
+  --color-text-base: #F5F5F5;
+  --color-scrollbar-track: #2A2A3A;
+  --color-scrollbar-thumb: #C5789E;
+  --color-scrollbar-thumb-hover: #FF69B4;
+  --color-glass-bg: rgba(30, 30, 46, 0.7);
+  --color-glass-border: rgba(255, 255, 255, 0.1);
 }
 
 body {
   margin: 0;
-  background-color: var(--bg-page);
-  color: var(--text-main);
-  transition: background-color 0.35s ease, color 0.35s ease;
+  background-color: var(--color-bg-base);
+  color: var(--color-text-base);
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
-
-/* 深色模式下：常见浅色覆盖类 */
-.dark .bg-brand-cream { background-color: #121212 !important; }
-.dark .bg-white { background-color: #1e1e1e !important; }
-.dark .bg-pink-50 { background-color: #2a1b25 !important; }
-.dark .bg-pink-100 { background-color: #3a2532 !important; }
-.dark .bg-purple-50 { background-color: #281f35 !important; }
-.dark .bg-gradient-to-b { transition: none; }
-.dark .text-brand-dark { color: #F3F4F6 !important; }
-.dark .text-brand-gray { color: #B0B5BE !important; }
-.dark .glass {
-  background: var(--bg-glass) !important;
-  border-color: var(--bg-glass-border) !important;
-}
-.dark .border-pink-100 { border-color: rgba(255, 133, 193, 0.25) !important; }
-.dark .border-pink-200\/50 { border-color: rgba(255, 133, 193, 0.3) !important; }
-.dark footer.bg-brand-dark { background-color: #0c0c0c !important; }
 
 /* 滚动条样式 */
 ::-webkit-scrollbar {
@@ -76,26 +54,16 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #FFF0F5;
+  background: var(--color-scrollbar-track);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #FFB6D9;
+  background: var(--color-scrollbar-thumb);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #FF69B4;
-}
-
-.dark ::-webkit-scrollbar-track {
-  background: #1f1f1f;
-}
-.dark ::-webkit-scrollbar-thumb {
-  background: #c05d8f;
-}
-.dark ::-webkit-scrollbar-thumb:hover {
-  background: #FF85C1;
+  background: var(--color-scrollbar-thumb-hover);
 }
 
 /* 滚动入场动画基础类 */
@@ -112,14 +80,14 @@ body {
 
 /* 毛玻璃效果 */
 .glass {
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--color-glass-bg);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  border: 1px solid var(--color-glass-border);
 }
 
 .glass-dark {
-  background: rgba(45, 45, 45, 0.8);
+  background: rgba(30, 30, 46, 0.8);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
