@@ -3,6 +3,9 @@ import { useEffect, useState, lazy, Suspense } from "react";
 import { ArrowUp } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import ErrorBoundary from "@/components/ErrorBoundary";
+import PageSkeleton from "@/components/PageSkeleton";
+import OfflineBanner from "@/components/OfflineBanner";
 import { useTheme } from "@/hooks/useTheme";
 
 // 路由懒加载：每个页面拆成独立 chunk，首屏只加载当前路由代码
@@ -15,18 +18,7 @@ const Playground = lazy(() => import("@/pages/Playground"));
 const AdminConsole = lazy(() => import("@/pages/AdminConsole"));
 const Social = lazy(() => import("@/pages/Social"));
 const Chat = lazy(() => import("@/pages/Chat"));
-
-/** 懒加载页面时的全局 fallback（居中加载动画） */
-function PageFallback() {
-  return (
-    <div className="flex items-center justify-center min-h-[60vh]">
-      <div className="flex flex-col items-center gap-3 text-brand-gray">
-        <div className="w-8 h-8 border-3 border-brand-pink/30 border-t-brand-pink rounded-full animate-spin" />
-        <span className="text-sm">加载中…</span>
-      </div>
-    </div>
-  );
-}
+const NotFound = lazy(() => import("@/pages/NotFound"));
 
 /**
  * 全站应用壳：挂载路由、Navbar、Footer、回到顶部浮动按钮、主题初始化钩子
@@ -50,21 +42,28 @@ export default function App() {
   return (
     <Router>
       <div className="min-h-screen flex flex-col bg-brand-cream">
+        <a href="#main-content" className="skip-to-content">
+          跳到主要内容
+        </a>
+        <OfflineBanner />
         <Navbar />
-        <main className="flex-1">
-          <Suspense fallback={<PageFallback />}>
-            <Routes>
-              <Route path="/" element={<Home />} />
-              <Route path="/features" element={<Features />} />
-              <Route path="/download" element={<Download />} />
-              <Route path="/about" element={<About />} />
-              <Route path="/auth" element={<Auth />} />
-              <Route path="/social" element={<Social />} />
-              <Route path="/chat/:conversationId" element={<Chat />} />
-              <Route path="/playground/:id" element={<Playground />} />
-              <Route path="/admin" element={<AdminConsole />} />
-            </Routes>
-          </Suspense>
+        <main id="main-content" className="flex-1">
+          <ErrorBoundary>
+            <Suspense fallback={<PageSkeleton />}>
+              <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/features" element={<Features />} />
+                <Route path="/download" element={<Download />} />
+                <Route path="/about" element={<About />} />
+                <Route path="/auth" element={<Auth />} />
+                <Route path="/social" element={<Social />} />
+                <Route path="/chat/:conversationId" element={<Chat />} />
+                <Route path="/playground/:id" element={<Playground />} />
+                <Route path="/admin" element={<AdminConsole />} />
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </Suspense>
+          </ErrorBoundary>
         </main>
         <Footer />
 

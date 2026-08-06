@@ -30,7 +30,7 @@
 .dark {
   --color-brand-cream: #1E1E2E;
   --color-brand-yellow: #2A2538;
-  --color-brand-dark: #F5F5F5;
+  --color-brand-dark: #773f82;
   --color-brand-gray: #B8B8C8;
   --color-bg-base: #1A1A28;
   --color-text-base: #F5F5F5;
@@ -90,6 +90,45 @@ body {
   background: rgba(30, 30, 46, 0.8);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
+}
+
+/* ============ 无障碍(a11y)增强 ============ */
+
+/* 全局 focus-visible 焦点环：键盘导航时可见，鼠标点击时不显示 */
+*:focus-visible {
+  outline: 2px solid var(--color-brand-pink, #FF69B4);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* skip-to-content 跳转链接：视觉隐藏，Tab 聚焦时显现 */
+.skip-to-content {
+  position: absolute;
+  top: -100px;
+  left: 0;
+  z-index: 9999;
+  padding: 8px 16px;
+  background: #FF69B4;
+  color: #fff;
+  font-size: 14px;
+  border-radius: 0 0 8px 0;
+  text-decoration: none;
+  transition: top 0.2s;
+}
+.skip-to-content:focus {
+  top: 0;
+}
+
+/* prefers-reduced-motion：尊重用户系统设置，关闭动画 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* 渐变文字 */
