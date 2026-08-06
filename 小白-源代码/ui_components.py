@@ -89,6 +89,10 @@ class UIComponents:
             self.base_dir = base_dir
             self.config = config
             self.stats_visible = True
+            # 头像图标缓存：key=(avatar_str, size) → QIcon，避免每次刷新菜单重建
+            self._avatar_icon_cache: dict = {}
+            # 上次会话快照签名，用于判断是否真的需要重建菜单
+            self._last_session_sig: str = ""
             
             # 初始化托盘图标
             self.initTrayIcon()
@@ -212,6 +216,8 @@ class UIComponents:
     def _build_avatar_icon(self, avatar_str: str, fallback_text: str, size: int = 32) -> QIcon:
         """根据头像字符串（Base64 Data URL 或本地路径）生成 QIcon
 
+        带缓存：相同 (avatar_str, size) 只生成一次，后续直接返回缓存的 QIcon。
+
         Args:
             avatar_str: 头像数据，支持 data:image/...;base64,... 或本地文件路径
             fallback_text: 无头像时取首字母生成的文字图标
@@ -219,6 +225,9 @@ class UIComponents:
         Returns:
             QIcon 实例；解析失败时返回基于首字母的纯色图标
         """
+        cache_key = (avatar_str or '', fallback_text or '', size)
+        if cache_key in self._avatar_icon_cache:
+            return self._avatar_icon_cache[cache_key]
         try:
             pix = QPixmap()
             if avatar_str:
@@ -234,11 +243,15 @@ class UIComponents:
                     pix = QPixmap(avatar_str)
             if not pix.isNull():
                 scaled = pix.scaled(size, size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
-                return QIcon(scaled)
+                icon = QIcon(scaled)
+                self._avatar_icon_cache[cache_key] = icon
+                return icon
         except Exception:
             pass
         # fallback：生成首字母纯色圆形图标
-        return self._build_letter_icon(fallback_text, size)
+        icon = self._build_letter_icon(fallback_text, size)
+        self._avatar_icon_cache[cache_key] = icon
+        return icon
 
     def _build_letter_icon(self, text: str, size: int = 32) -> QIcon:
         """生成首字母纯色圆形图标（作为无头像时的兜底）
@@ -271,10 +284,31 @@ class UIComponents:
             return QIcon()
 
     def refresh_tray_menu(self):
-        """刷新托盘菜单（登录/登出后调用）"""
+        """刷新托盘菜单（登录/登出后调用）
+
+        带状态签名校验：如果登录态/头像/昵称/会话列表没变化就跳过重建，
+        避免高频调用时反复 clear+rebuild 造成的不必要开销。
+        """
         if not hasattr(self, 'tray_icon_menu'):
             return
         try:
+            # 计算当前状态签名，若与上次相同则跳过重建
+            auth = getattr(self.parent, 'auth', None)
+            sig_parts = []
+            if auth and hasattr(auth, 'is_logged_in') and auth.is_logged_in():
+                sig_parts.append('1')
+                sig_parts.append(getattr(auth, 'get_current_display_name', lambda: '')())
+                sig_parts.append(getattr(auth, 'get_current_avatar', lambda: '')())
+                if hasattr(auth, 'list_saved_sessions'):
+                    for s in (auth.list_saved_sessions() or []):
+                        sig_parts.append(f"{s.get('user_id','')}|{s.get('avatar','')}|{s.get('is_active','')}")
+            else:
+                sig_parts.append('0')
+            sig = '|'.join(sig_parts)
+            if sig == self._last_session_sig:
+                return  # 状态没变，跳过
+            self._last_session_sig = sig
+
             # 清空并按顺序重建（保持与原顺序一致）
             self.tray_icon_menu.clear()
             self.tray_icon_menu.addAction(self.showing)
