@@ -25,10 +25,12 @@ class UserStorage:
             try:
                 with open(self.users_file, 'r', encoding='utf-8') as f:
                     raw = json.load(f)
-                # 兼容旧数据：没有 nickname 的用户用 username 补齐
+                # 兼容旧数据：没有 nickname 的用户用 username 补齐；确保 avatar 字段存在
                 for uid, u in raw.items():
                     if 'nickname' not in u:
                         u['nickname'] = u.get('username', '用户')
+                    if 'avatar' not in u:
+                        u['avatar'] = ''
                 self._users = raw
             except:
                 pass
@@ -52,7 +54,7 @@ class UserStorage:
                 return user
         return None
     
-    def create_user(self, user_id: str, username: str, email: str, password_hash: str, nickname: str = None) -> Dict:
+    def create_user(self, user_id: str, username: str, email: str, password_hash: str, nickname: str = None, avatar: str = '') -> Dict:
         """
         创建用户
         Args:
@@ -61,6 +63,7 @@ class UserStorage:
             email: 邮箱（唯一标识）
             password_hash: 密码哈希
             nickname: 昵称（展示名），为空时默认取 username
+            avatar: 头像 Base64（Data URL）或本地路径，默认为空串
         """
         display_nick = nickname if nickname else username
         user = {
@@ -70,7 +73,8 @@ class UserStorage:
             'email': email,
             'password_hash': password_hash,
             'created_at': datetime.utcnow().isoformat(),
-            'status': 'active'
+            'status': 'active',
+            'avatar': avatar or ''
         }
         self._users[user_id] = user
         self._save()
