@@ -1,10 +1,11 @@
 import os
 import datetime
+import base64 as _b64
 from PyQt5.QtGui import QIcon, QPixmap, QCursor
 from PyQt5.QtWidgets import (QWidget, QSystemTrayIcon, QMenu, QAction, 
                              QLabel, QProgressBar, QVBoxLayout, QHBoxLayout,
                              QDialog, QDesktopWidget, QMessageBox)
-from PyQt5.QtCore import Qt, QSize, QPoint, QTimer, QUrl
+from PyQt5.QtCore import Qt, QSize, QPoint, QTimer, QUrl, QByteArray, QBuffer
 from PyQt5.QtGui import QDesktopServices
 
 # 导入游戏模块
@@ -142,20 +143,132 @@ class UIComponents:
             QMessageBox.warning(self.parent, "错误", f"初始化托盘图标错误: {e}")
 
     def _populate_login_section(self, menu: QMenu):
-        """向菜单填充登录相关项（根据登录状态）"""
+        """向菜单填充登录相关项（根据登录状态）
+
+        登录后菜单会显示：
+          - 当前用户头像 + 昵称（禁用项，仅展示）
+          - 更换头像 / 清除头像
+          - 切换账号（子菜单，列出已记住登录的账号，每项带头像）
+          - 退出登录
+        """
         try:
             auth = getattr(self.parent, 'auth', None)
             logged_in = auth.is_logged_in() if auth else False
             if not logged_in:
                 menu.addAction(self.login_action)
-            else:
-                nick = auth.get_current_display_name()
-                self.user_welcome_action.setText(f"欢迎, {nick}")
-                self.user_welcome_action.setIcon(QIcon())
-                menu.addAction(self.user_welcome_action)
-                menu.addAction(self.logout_action)
+                return
+
+            nick = auth.get_current_display_name() if hasattr(auth, 'get_current_display_name') else '用户'
+            avatar_str = auth.get_current_avatar() if hasattr(auth, 'get_current_avatar') else ''
+            # 1) 当前用户展示项：头像 + 昵称
+            self.user_welcome_action.setText(f"  {nick}")
+            self.user_welcome_action.setIcon(self._build_avatar_icon(avatar_str, nick, size=32))
+            menu.addAction(self.user_welcome_action)
+
+            # 2) 更换头像 / 清除头像
+            self.change_avatar_action = QAction(u'更换头像', self.parent,
+                                                 triggered=self.parent.openAvatarPicker)
+            menu.addAction(self.change_avatar_action)
+            if avatar_str:
+                self.clear_avatar_action = QAction(u'清除头像', self.parent,
+                                                    triggered=self.parent.clearAvatar)
+                menu.addAction(self.clear_avatar_action)
+
+            # 3) 切换账号子菜单：列出已记住登录的账号
+            sessions = []
+            if hasattr(auth, 'list_saved_sessions'):
+                try:
+                    sessions = auth.list_saved_sessions() or []
+                except Exception:
+                    sessions = []
+            # 只在存在多个已记住账号时才显示切换子菜单
+            switchable = [s for s in sessions if not s.get('is_active')]
+            if switchable:
+                switch_menu = QMenu(u'切换账号', menu)
+                for s in sessions:
+                    s_nick = s.get('nickname') or s.get('email') or '用户'
+                    s_email = s.get('email') or ''
+                    s_avatar = s.get('avatar') or ''
+                    s_uid = s.get('user_id') or ''
+                    is_active = bool(s.get('is_active'))
+                    label = f"{s_nick}" + (f"  ({s_email})" if s_email else "")
+                    if is_active:
+                        label = f"✓ {label}"
+                    act = QAction(label, switch_menu)
+                    act.setIcon(self._build_avatar_icon(s_avatar, s_nick, size=24))
+                    if is_active:
+                        act.setEnabled(False)
+                    else:
+                        # 用默认参数绑定 user_id，避免闭包陷阱
+                        act.triggered.connect(lambda _checked=False, uid=s_uid: self.parent.switchToProfile(uid))
+                    switch_menu.addAction(act)
+                menu.addMenu(switch_menu)
+
+            # 4) 退出登录
+            menu.addAction(self.logout_action)
         except Exception:
             menu.addAction(self.login_action)
+
+    def _build_avatar_icon(self, avatar_str: str, fallback_text: str, size: int = 32) -> QIcon:
+        """根据头像字符串（Base64 Data URL 或本地路径）生成 QIcon
+
+        Args:
+            avatar_str: 头像数据，支持 data:image/...;base64,... 或本地文件路径
+            fallback_text: 无头像时取首字母生成的文字图标
+            size: 图标边长（像素）
+        Returns:
+            QIcon 实例；解析失败时返回基于首字母的纯色图标
+        """
+        try:
+            pix = QPixmap()
+            if avatar_str:
+                if avatar_str.startswith('data:'):
+                    # 解析 base64 Data URL
+                    try:
+                        header, b64data = avatar_str.split(',', 1)
+                        raw = _b64.b64decode(b64data)
+                        pix.loadFromData(QByteArray(raw))
+                    except Exception:
+                        pix = QPixmap()
+                elif os.path.exists(avatar_str):
+                    pix = QPixmap(avatar_str)
+            if not pix.isNull():
+                scaled = pix.scaled(size, size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+                return QIcon(scaled)
+        except Exception:
+            pass
+        # fallback：生成首字母纯色圆形图标
+        return self._build_letter_icon(fallback_text, size)
+
+    def _build_letter_icon(self, text: str, size: int = 32) -> QIcon:
+        """生成首字母纯色圆形图标（作为无头像时的兜底）
+
+        Args:
+            text: 用于提取首字母的文本（昵称/邮箱）
+            size: 图标边长（像素）
+        Returns:
+            QIcon 实例
+        """
+        try:
+            from PyQt5.QtGui import QPainter, QColor, QFont, QBrush, QPen, QPixmap as _QPixmap
+            pix = _QPixmap(size, size)
+            pix.fill(Qt.transparent)
+            p = QPainter(pix)
+            p.setRenderHint(QPainter.Antialiasing, True)
+            # 背景圆
+            p.setBrush(QBrush(QColor(255, 105, 180)))  # brand-pink #FF69B4
+            p.setPen(Qt.NoPen)
+            p.drawEllipse(0, 0, size, size)
+            # 首字母
+            letter = (text or '?').strip()[:1].upper()
+            p.setPen(QPen(QColor(255, 255, 255)))
+            font = QFont("Microsoft YaHei", max(8, size // 2), QFont.Bold)
+            p.setFont(font)
+            p.drawText(pix.rect(), Qt.AlignCenter, letter)
+            p.end()
+            return QIcon(pix)
+        except Exception:
+            return QIcon()
 
     def refresh_tray_menu(self):
         """刷新托盘菜单（登录/登出后调用）"""

@@ -759,6 +759,118 @@ class DesktopPet(QWidget):
             logger.warning(f"云同步入口异常: {e}")
             QMessageBox.warning(self, "云同步", f"打开失败：{e}")
 
+    def openAvatarPicker(self):
+        """打开文件对话框选择头像图片，压缩后保存为当前用户头像
+
+        支持 PNG / JPG / JPEG / WEBP / BMP；选择后自动缩放到 160x160 正方形，
+        以 base64 Data URL 形式写入用户表与会话快照，供托盘/网站端同步显示。
+        """
+        try:
+            if not (self.auth and hasattr(self.auth, 'is_logged_in') and self.auth.is_logged_in()):
+                QMessageBox.information(self, "更换头像", "请先登录后再更换头像。")
+                return
+            from PyQt5.QtWidgets import QFileDialog
+            file_path, _ = QFileDialog.getOpenFileName(
+                self, "选择头像图片", "",
+                "图片文件 (*.png *.jpg *.jpeg *.webp *.bmp);;所有文件 (*)"
+            )
+            if not file_path:
+                return
+            # 读取并压缩图片为 160x160 正方形 Data URL
+            data_url = self._compress_image_to_data_url(file_path, size=160, quality=85)
+            if not data_url:
+                QMessageBox.warning(self, "更换头像", "无法读取该图片，请换一张试试。")
+                return
+            ok, msg = self.auth.update_current_user_avatar(data_url)
+            if hasattr(self.ui, 'refresh_tray_menu'):
+                self.ui.refresh_tray_menu()
+            QMessageBox.information(self, "更换头像", "✅ 头像已更新" if ok else f"更换失败：{msg}")
+        except Exception as e:
+            logger.warning(f"更换头像异常: {e}")
+            QMessageBox.warning(self, "更换头像", f"更换头像失败：{e}")
+
+    def clearAvatar(self):
+        """清除当前用户头像（恢复默认首字母图标）"""
+        try:
+            if not (self.auth and hasattr(self.auth, 'is_logged_in') and self.auth.is_logged_in()):
+                return
+            reply = QMessageBox.question(self, "清除头像",
+                "确定清除当前头像并恢复默认图标吗？",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if reply != QMessageBox.Yes:
+                return
+            ok, msg = self.auth.update_current_user_avatar("")
+            if hasattr(self.ui, 'refresh_tray_menu'):
+                self.ui.refresh_tray_menu()
+            QMessageBox.information(self, "清除头像", "✅ 已恢复默认头像" if ok else f"清除失败：{msg}")
+        except Exception as e:
+            logger.warning(f"清除头像异常: {e}")
+            QMessageBox.warning(self, "清除头像", f"清除失败：{e}")
+
+    def switchToProfile(self, user_id: str):
+        """切换到另一个已记住登录的账号档案
+
+        Args:
+            user_id: 目标用户 ID
+        """
+        try:
+            if not user_id:
+                return
+            if not (self.auth and hasattr(self.auth, 'switch_profile')):
+                QMessageBox.information(self, "切换账号", "认证模块不可用，无法切换。")
+                return
+            ok, msg = self.auth.switch_profile(user_id)
+            if ok:
+                # 同步 config/state 到新 profile 目录
+                self._sync_profile_on_login_or_switch(self.auth.get_current_user() or {})
+                if hasattr(self.ui, 'refresh_tray_menu'):
+                    self.ui.refresh_tray_menu()
+                nick = self.auth.get_current_display_name() if hasattr(self.auth, 'get_current_display_name') else '用户'
+                QMessageBox.information(self, "切换账号", f"✅ 已切换到账号「{nick}」")
+            else:
+                QMessageBox.warning(self, "切换账号", f"切换失败：{msg}")
+        except Exception as e:
+            logger.warning(f"切换账号异常: {e}")
+            QMessageBox.warning(self, "切换账号", f"切换失败：{e}")
+
+    def _compress_image_to_data_url(self, file_path: str, size: int = 160, quality: int = 85) -> str:
+        """把本地图片压缩为正方形 base64 Data URL
+
+        Args:
+            file_path: 图片文件路径
+            size: 目标边长（像素），默认 160
+            quality: JPEG 质量 0-100
+        Returns:
+            data:image/jpeg;base64,... 形式的字符串；失败返回空串
+        """
+        try:
+            from PyQt5.QtGui import QPixmap, QImage
+            from PyQt5.QtCore import Qt, QBuffer, QByteArray
+            import base64 as _b64
+
+            img = QPixmap(file_path)
+            if img.isNull():
+                return ""
+            # 居中裁剪为正方形
+            w = img.width()
+            h = img.height()
+            side = min(w, h)
+            x = (w - side) // 2
+            y = (h - side) // 2
+            cropped = img.copy(x, y, side, side)
+            # 缩放到目标尺寸
+            scaled = cropped.scaled(size, size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+            # 转 JPEG Data URL
+            byte_array = QByteArray()
+            buf = QBuffer(byte_array)
+            buf.open(QBuffer.WriteOnly)
+            scaled.save(buf, "JPEG", quality)
+            b64 = _b64.b64encode(byte_array.data()).decode('ascii')
+            return f"data:image/jpeg;base64,{b64}"
+        except Exception as e:
+            logger.warning(f"压缩头像失败: {e}")
+            return ""
+
     # 互动行为方法（代理到 behavior 对象）
     def stick(self):
         """贴贴行为
@@ -1657,6 +1769,18 @@ class _FallbackAuth:
     def switch_profile(self, user_id: str):
         """切换用户档案（兜底失败）"""
         return False, "认证模块不可用"
+
+    def get_current_avatar(self) -> str:
+        """获取当前头像（兜底为空串）"""
+        return ""
+
+    def update_current_user_avatar(self, avatar_data_url_or_path: str):
+        """更新当前用户头像（兜底失败）"""
+        return False, "认证模块不可用"
+
+    def list_saved_sessions(self) -> list:
+        """返回已记住登录的账号会话列表（兜底为空）"""
+        return []
 
     def set_callbacks(self, on_login=None, on_logout=None, on_permission_change=None):
         """设置回调（兜底空操作）"""
