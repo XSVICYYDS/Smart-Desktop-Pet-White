@@ -234,19 +234,29 @@ export default function Navbar() {
   }, [location]);
 
   /**
-   * 定时刷新登录态（其它页面登出后这里会同步更新）
+   * 登录态同步：优先用 storage 事件实时响应 localStorage 变化（跨标签页 / 同页面的登入登出），
+   * 辅以 3s 低频轮询兜底（防止 storage 事件未覆盖的场景）
    */
   useEffect(() => {
-    const t = window.setInterval(() => {
+    const sync = () => {
       const now = isLoggedIn();
       const name = getCurrentDisplayName();
       const av = getCurrentAvatar();
-      setLoggedIn((prev) => prev !== now || displayName !== name ? now : prev);
-      setDisplayName(name);
-      setCurrentAvatar(av);
-    }, 500);
-    return () => window.clearInterval(t);
-  }, [displayName]);
+      setLoggedIn((prev) => (prev !== now ? now : prev));
+      setDisplayName((prev) => (prev !== name ? name : prev));
+      setCurrentAvatar((prev) => (prev !== av ? av : prev));
+    };
+    // 立即同步一次
+    sync();
+    // storage 事件：跨标签页 / 同页面 localStorage 写入时触发
+    window.addEventListener("storage", sync);
+    // 3s 兜底轮询（比原 500ms 降低 83% CPU 开销）
+    const t = window.setInterval(sync, 3000);
+    return () => {
+      window.removeEventListener("storage", sync);
+      window.clearInterval(t);
+    };
+  }, []);
 
   /**
    * 打开换头像对话框时，把当前已有头像填到预览里

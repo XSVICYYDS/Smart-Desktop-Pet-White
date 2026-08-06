@@ -8,6 +8,16 @@ export default defineConfig({
   base: '/Smart-Desktop-Pet-White/',
   build: {
     sourcemap: 'hidden',
+    rollupOptions: {
+      output: {
+        // 把三方依赖拆成独立 chunk，避免与业务代码混在一起
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          'icons': ['lucide-react'],
+          'state': ['zustand'],
+        },
+      },
+    },
   },
   resolve: {
     alias: {
