@@ -304,6 +304,180 @@ export const FEATURES: FeatureMeta[] = [
   },
 
   // ============================================================
+  // 🎮 新增 10 款游戏
+  // ============================================================
+  {
+    id: "game-aircraft",
+    name: "飞机大战",
+    category: "game",
+    summary: "经典纵向卷轴射击游戏",
+    description:
+      "驾驶战机迎击敌方机群！子弹自动发射，鼠标/键盘控制飞机左右移动，击落敌机得分，被撞或被击中则游戏结束。随分数提升敌机速度加快、出现更强大的敌机。",
+    howTo: [
+      "鼠标移动或 A/D 键 / ←→ 键控制飞机左右移动",
+      "子弹自动发射，击中敌机 +10 分",
+      "避开敌机和子弹，被撞到 = 游戏结束",
+    ],
+    tips: ["优先击落靠近底部的敌机，留出反应空间"],
+    actions: { enter: true, play: true, try: false },
+    colorScheme: "from-blue-500 to-cyan-600",
+    related: "飞机大战小游戏",
+  },
+  {
+    id: "game-breakout",
+    name: "打砖块",
+    category: "game",
+    summary: "经典弹球打砖块游戏",
+    description:
+      "移动底部挡板，让弹球反弹击碎上方所有砖块。砖块分 4 行彩色排列，每行分值不同。球落地 = 游戏结束。清空所有砖块 = 通关。",
+    howTo: [
+      "鼠标移动或 ←→ 键控制挡板左右移动",
+      "球碰到砖块消除并得分，碰到挡板反弹",
+      "球掉到底部 = Game Over",
+    ],
+    tips: ["用挡板边缘接球可以改变反弹角度，灵活控制方向"],
+    actions: { enter: true, play: true, try: false },
+    colorScheme: "from-orange-400 to-red-500",
+    related: "打砖块小游戏",
+  },
+  {
+    id: "game-flappy",
+    name: "Flappy Bird",
+    category: "game",
+    summary: "像素鸟穿越管道",
+    description:
+      "点击屏幕让小鸟跳跃，穿过管道间隙得分。碰触管道或落地 = 游戏结束。简单上手，挑战极限！",
+    howTo: [
+      "点击屏幕或按空格让小鸟向上跳一下",
+      "不操作时小鸟因重力下落",
+      "穿过每对管道得 1 分，碰到管道或落地 = Game Over",
+    ],
+    tips: ["节奏感很重要，提前判断下一个间隙位置"],
+    actions: { enter: true, play: true, try: false },
+    colorScheme: "from-yellow-400 to-green-500",
+    related: "Flappy Bird 小游戏",
+  },
+  {
+    id: "game-snake-arena",
+    name: "贪吃蛇大作战",
+    category: "game",
+    summary: "多 AI 蛇对战，抢食物变长",
+    description:
+      "你控制一条蛇，场上还有 3 条 AI 蛇抢食物！吃到食物变长，撞墙/撞蛇身 = 淘汰。最后的蛇获胜。",
+    howTo: [
+      "方向键控制蛇的方向，不能反向",
+      "吃食物变长 + 得分，撞墙或任何蛇身 = 游戏结束",
+      "AI 蛇会自动追食物，抢得越多越长",
+    ],
+    tips: ["截断 AI 蛇的路线让它撞你的身体是制胜关键"],
+    actions: { enter: true, play: true, try: false },
+    colorScheme: "from-emerald-500 to-teal-600",
+    related: "贪吃蛇大作战小游戏",
+  },
+  {
+    id: "game-pinball",
+    name: "弹球台",
+    category: "game",
+    summary: "弹球碰撞钉子得分",
+    description:
+      "球从顶部下落，经过钉子时随机弹射，底部有挡板防止球落地。碰钉子 +分，球落地 = 游戏结束。",
+    howTo: [
+      "← → 键控制底部两个挡板",
+      "球碰到钉子得 5 分，碰到边墙反弹",
+      "球落地 = Game Over",
+    ],
+    tips: ["预判球的弹射路径，提前到位接球"],
+    actions: { enter: true, play: true, try: false },
+    colorScheme: "from-purple-400 to-indigo-600",
+    related: "弹球台小游戏",
+  },
+  {
+    id: "game-memory",
+    name: "记忆翻牌",
+    category: "game",
+    summary: "翻牌配对记忆游戏",
+    description:
+      "4×4 共 16 张卡片（8 对图案），翻开两张相同则消除。翻完所有卡片即通关，步数越少越好！",
+    howTo: [
+      "点击卡片翻开，每次最多翻 2 张",
+      "两张相同图案 = 消除；不同则翻回去",
+      "消除全部 8 对 = 通关",
+    ],
+    tips: ["记住每次翻开的图案位置是关键"],
+    actions: { enter: true, play: true, try: false },
+    colorScheme: "from-pink-400 to-purple-500",
+    related: "记忆翻牌小游戏",
+  },
+  {
+    id: "game-guess-number",
+    name: "数字猜猜猜",
+    category: "game",
+    summary: "猜数字逻辑游戏",
+    description:
+      "系统生成 1-100 的随机数，你来猜！每次会提示「太大」或「太小」，用最少次数猜中即胜。",
+    howTo: [
+      "输入 1-100 的数字，点提交",
+      "系统提示太大/太小/猜对了",
+      "用最少次数猜中 = 通关",
+    ],
+    tips: ["二分法是最高效策略：先猜 50，再根据提示缩小范围"],
+    actions: { enter: true, play: true, try: false },
+    colorScheme: "from-cyan-400 to-blue-500",
+    related: "数字猜猜猜小游戏",
+  },
+  {
+    id: "game-space-invaders",
+    name: "太空侵略者",
+    category: "game",
+    summary: "经典外星人射击游戏",
+    description:
+      "外星人编队入侵！控制飞船左右移动射击，消灭所有外星人即通关。外星人会集体左右移动并逐排下降，到达底部 = 游戏结束。",
+    howTo: [
+      "← → 键移动，空格射击",
+      "消灭所有外星人 = 通关",
+      "外星人到底部 = Game Over",
+    ],
+    tips: ["优先消灭两侧外星人，减缓整体下降速度"],
+    actions: { enter: true, play: true, try: false },
+    colorScheme: "from-indigo-500 to-purple-700",
+    related: "太空侵略者小游戏",
+  },
+  {
+    id: "game-brick-crush",
+    name: "弹球消砖",
+    category: "game",
+    summary: "物理弹球消除砖块",
+    description:
+      "发射弹球，利用物理碰撞消除上方砖块。每个砖块需要击中多次才能消除，球落地 = 游戏结束。",
+    howTo: [
+      "点击发射球，← → 控制底部挡板",
+      "球碰到砖块消除并得分",
+      "球落地 = Game Over，清空砖块 = 通关",
+    ],
+    tips: ["利用墙壁反弹角度打到角落的砖块"],
+    actions: { enter: true, play: true, try: false },
+    colorScheme: "from-red-400 to-pink-600",
+    related: "弹球消砖小游戏",
+  },
+  {
+    id: "game-frog-cross",
+    name: "青蛙过河",
+    category: "game",
+    summary: "经典青蛙过河游戏",
+    description:
+      "控制青蛙穿过马路和河流到达终点！被车撞或掉进水里 = 游戏结束。安全到达对岸即可通关。",
+    howTo: [
+      "方向键控制青蛙上下左右移动",
+      "避开马路上的汽车，跳到浮木上过河",
+      "到达顶部安全区 = 通关",
+    ],
+    tips: ["浮木会移动，跳上去后要注意别被带出屏幕"],
+    actions: { enter: true, play: true, try: false },
+    colorScheme: "from-green-400 to-lime-600",
+    related: "青蛙过河小游戏",
+  },
+
+  // ============================================================
   // 🛠 12 款工具（与 content.ts tools 列表一一对应）
   // ============================================================
   {
