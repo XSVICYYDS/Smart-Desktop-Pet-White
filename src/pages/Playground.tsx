@@ -5428,6 +5428,1867 @@ function AiDict() {
   );
 }
 
+// ===================== 飞机大战 =====================
+/**
+ * 飞机大战：纵向卷轴射击游戏
+ * 玩家飞机固定在底部，鼠标/键盘控制左右移动，子弹自动向上发射
+ * 敌机从顶部随机出现向下移动，击中 +10 分，被撞即游戏结束
+ * 难度随分数提升（敌机生成更快、速度更快）
+ */
+function GameAircraft() {
+  const W = 480;
+  const H = 600;
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const keysRef = useRef<Record<string, boolean>>({});
+  // 游戏全部可变状态放进 ref，避免每帧触发 React 重渲染
+  const stateRef = useRef({
+    px: W / 2, // 玩家飞机 x 坐标
+    bullets: [] as { x: number; y: number }[],
+    enemies: [] as { x: number; y: number; vy: number; hp: number }[],
+    score: 0,
+    cool: 0, // 开火冷却计数
+    spawn: 0, // 敌机生成计数
+    running: true,
+    over: false,
+  });
+  const [, force] = useState(0);
+
+  // 重置全部状态，开始新一局
+  const restart = () => {
+    const s = stateRef.current;
+    s.px = W / 2;
+    s.bullets = [];
+    s.enemies = [];
+    s.score = 0;
+    s.cool = 0;
+    s.spawn = 0;
+    s.running = true;
+    s.over = false;
+    force((x) => x + 1);
+  };
+
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => (keysRef.current[e.key.toLowerCase()] = true);
+    const up = (e: KeyboardEvent) => (keysRef.current[e.key.toLowerCase()] = false);
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    let raf = 0;
+    const loop = () => {
+      const c = canvasRef.current;
+      if (c) {
+        const ctx = c.getContext("2d")!;
+        const s = stateRef.current;
+        if (s.running && !s.over) {
+          // 输入：左右移动
+          if (keysRef.current["arrowleft"] || keysRef.current["a"]) s.px -= 6;
+          if (keysRef.current["arrowright"] || keysRef.current["d"]) s.px += 6;
+          s.px = clamp(s.px, 20, W - 20);
+          // 自动开火
+          s.cool--;
+          if (s.cool <= 0) {
+            s.bullets.push({ x: s.px, y: H - 60 });
+            s.cool = 8;
+          }
+          // 子弹上移
+          for (const b of s.bullets) b.y -= 8;
+          s.bullets = s.bullets.filter((b) => b.y > -10);
+          // 敌机生成（难度随分数提升）
+          const speedBase = 1.5 + Math.floor(s.score / 50) * 0.5;
+          s.spawn--;
+          if (s.spawn <= 0) {
+            s.enemies.push({
+              x: 20 + Math.random() * (W - 40),
+              y: -20,
+              vy: speedBase + Math.random() * 1.5,
+              hp: 1,
+            });
+            s.spawn = Math.max(20, 60 - Math.floor(s.score / 30) * 4);
+          }
+          // 敌机下移
+          for (const e of s.enemies) e.y += e.vy;
+          // 子弹击中敌机
+          for (const b of s.bullets) {
+            for (const e of s.enemies) {
+              if (e.hp > 0 && Math.abs(b.x - e.x) < 16 && Math.abs(b.y - e.y) < 16) {
+                e.hp = 0;
+                b.y = -100;
+                s.score += 10;
+              }
+            }
+          }
+          s.enemies = s.enemies.filter((e) => e.hp > 0 && e.y < H + 20);
+          // 玩家被撞 -> 游戏结束
+          for (const e of s.enemies) {
+            if (Math.abs(e.x - s.px) < 22 && Math.abs(e.y - (H - 50)) < 22) {
+              s.over = true;
+              s.running = false;
+            }
+          }
+        }
+        // 绘制背景
+        ctx.fillStyle = "#0f172a";
+        ctx.fillRect(0, 0, W, H);
+        // 星空滚动
+        ctx.fillStyle = "rgba(255,255,255,0.5)";
+        for (let i = 0; i < 30; i++) {
+          ctx.fillRect((i * 37) % W, (i * 53 + (Date.now() / 30) % H) % H, 2, 2);
+        }
+        // 玩家飞机（三角形）
+        ctx.fillStyle = "#22d3ee";
+        ctx.beginPath();
+        ctx.moveTo(s.px, H - 60);
+        ctx.lineTo(s.px - 16, H - 36);
+        ctx.lineTo(s.px + 16, H - 36);
+        ctx.closePath();
+        ctx.fill();
+        // 子弹
+        ctx.fillStyle = "#fde047";
+        for (const b of s.bullets) ctx.fillRect(b.x - 2, b.y - 8, 4, 12);
+        // 敌机（倒三角）
+        ctx.fillStyle = "#f472b6";
+        for (const e of s.enemies) {
+          ctx.beginPath();
+          ctx.moveTo(e.x, e.y + 14);
+          ctx.lineTo(e.x - 14, e.y - 10);
+          ctx.lineTo(e.x + 14, e.y - 10);
+          ctx.closePath();
+          ctx.fill();
+        }
+        // 分数
+        ctx.fillStyle = "rgba(255,255,255,0.9)";
+        ctx.font = "bold 20px system-ui";
+        ctx.textAlign = "left";
+        ctx.fillText("得分 " + s.score, 12, 26);
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      cancelAnimationFrame(raf);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 鼠标移动控制飞机
+  const onMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const c = canvasRef.current;
+    if (!c) return;
+    const rect = c.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * W;
+    stateRef.current.px = clamp(x, 20, W - 20);
+  };
+
+  const s = stateRef.current;
+  return (
+    <FullscreenWrapper>
+      <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+        <div className="flex flex-wrap items-center gap-3 mb-5">
+          <div className="rounded-2xl bg-cyan-50 border border-cyan-200 px-4 py-2">
+            <div className="text-[11px] font-semibold text-cyan-600">得分</div>
+            <div className="text-xl font-bold text-cyan-700">{s.score}</div>
+          </div>
+          <button
+            onClick={restart}
+            className="ml-auto rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-semibold px-4 py-2 text-sm shadow-md flex items-center gap-1.5"
+          >
+            <RotateCcw className="w-4 h-4" />
+            重开
+          </button>
+        </div>
+        <div className="mx-auto max-w-[480px]">
+          <canvas
+            ref={canvasRef}
+            width={W}
+            height={H}
+            onMouseMove={onMove}
+            className="w-full rounded-2xl shadow-2xl"
+            style={{ aspectRatio: "4 / 5" }}
+          />
+        </div>
+        {s.over && (
+          <div className="mt-4 text-center text-rose-600 font-semibold">
+            ✈️ 坠机！得分：{s.score}，点「重开」再战
+          </div>
+        )}
+        <div className="mt-3 text-center text-xs text-slate-500">
+          ← → / A D 或鼠标移动控制飞机，自动开火，击落敌机 +10
+        </div>
+      </div>
+    </FullscreenWrapper>
+  );
+}
+
+// ===================== 打砖块 =====================
+/**
+ * 打砖块：底部挡板控制小球反弹，击碎顶部 4 行彩色砖块
+ * 砖块每行分值不同（顶行 50，依次递减到 10）
+ * 球落地 = 游戏结束，清空全部砖块 = 通关
+ */
+function GameBreakout() {
+  const W = 480;
+  const H = 540;
+  const ROWS = 4;
+  const COLS = 10;
+  const BW = 42; // 砖块宽
+  const BH = 18; // 砖块高
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const keysRef = useRef<Record<string, boolean>>({});
+  type Brick = { x: number; y: number; alive: boolean; color: string; score: number };
+  const stateRef = useRef({
+    paddle: W / 2 - 40,
+    bx: W / 2,
+    by: H - 60,
+    bvx: 3,
+    bvy: -3,
+    bricks: [] as Brick[],
+    score: 0,
+    running: true,
+    over: false,
+    won: false,
+  });
+  const [, force] = useState(0);
+
+  // 生成 4 行彩色砖块，顶行分值高
+  const buildBricks = (): Brick[] => {
+    const colors = ["#ef4444", "#f59e0b", "#22c55e", "#3b82f6"];
+    const scores = [50, 30, 20, 10];
+    const arr: Brick[] = [];
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        arr.push({
+          x: c * BW + 30,
+          y: r * BH + 40,
+          alive: true,
+          color: colors[r],
+          score: scores[r],
+        });
+      }
+    }
+    return arr;
+  };
+
+  const restart = () => {
+    const s = stateRef.current;
+    s.paddle = W / 2 - 40;
+    s.bx = W / 2;
+    s.by = H - 60;
+    s.bvx = 3 * (Math.random() < 0.5 ? -1 : 1);
+    s.bvy = -3;
+    s.bricks = buildBricks();
+    s.score = 0;
+    s.running = true;
+    s.over = false;
+    s.won = false;
+    force((x) => x + 1);
+  };
+
+  useEffect(() => {
+    restart();
+    const down = (e: KeyboardEvent) => (keysRef.current[e.key.toLowerCase()] = true);
+    const up = (e: KeyboardEvent) => (keysRef.current[e.key.toLowerCase()] = false);
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    let raf = 0;
+    const loop = () => {
+      const c = canvasRef.current;
+      if (c) {
+        const ctx = c.getContext("2d")!;
+        const s = stateRef.current;
+        if (s.running && !s.over && !s.won) {
+          // 挡板移动
+          if (keysRef.current["arrowleft"] || keysRef.current["a"]) s.paddle -= 6;
+          if (keysRef.current["arrowright"] || keysRef.current["d"]) s.paddle += 6;
+          s.paddle = clamp(s.paddle, 0, W - 80);
+          // 球移动
+          s.bx += s.bvx;
+          s.by += s.bvy;
+          // 墙壁反弹
+          if (s.bx < 8) { s.bx = 8; s.bvx = Math.abs(s.bvx); }
+          if (s.bx > W - 8) { s.bx = W - 8; s.bvx = -Math.abs(s.bvx); }
+          if (s.by < 8) { s.by = 8; s.bvy = Math.abs(s.bvy); }
+          // 挡板反弹（按击中位置改变水平速度）
+          if (s.by > H - 24 && s.by < H - 12 && s.bx > s.paddle && s.bx < s.paddle + 80) {
+            s.bvy = -Math.abs(s.bvy);
+            s.bvx += ((s.bx - (s.paddle + 40)) / 40) * 1.5;
+            s.bvx = clamp(s.bvx, -5, 5);
+          }
+          // 球落地 -> 失败
+          if (s.by > H) {
+            s.over = true;
+            s.running = false;
+          }
+          // 砖块碰撞
+          for (const b of s.bricks) {
+            if (!b.alive) continue;
+            if (s.bx > b.x && s.bx < b.x + BW && s.by > b.y && s.by < b.y + BH) {
+              b.alive = false;
+              s.bvy = -s.bvy;
+              s.score += b.score;
+              break;
+            }
+          }
+          // 全部清除 -> 通关
+          if (s.bricks.every((b) => !b.alive)) {
+            s.won = true;
+            s.running = false;
+          }
+        }
+        // 绘制背景
+        ctx.fillStyle = "#0f172a";
+        ctx.fillRect(0, 0, W, H);
+        // 砖块
+        for (const b of s.bricks) {
+          if (!b.alive) continue;
+          ctx.fillStyle = b.color;
+          ctx.fillRect(b.x, b.y, BW - 2, BH - 2);
+        }
+        // 挡板
+        ctx.fillStyle = "#e2e8f0";
+        ctx.fillRect(s.paddle, H - 20, 80, 10);
+        // 球
+        ctx.fillStyle = "#fde047";
+        ctx.beginPath();
+        ctx.arc(s.bx, s.by, 7, 0, Math.PI * 2);
+        ctx.fill();
+        // 分数
+        ctx.fillStyle = "rgba(255,255,255,0.9)";
+        ctx.font = "bold 18px system-ui";
+        ctx.textAlign = "left";
+        ctx.fillText("得分 " + s.score, 12, 24);
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      cancelAnimationFrame(raf);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 鼠标控制挡板
+  const onMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const c = canvasRef.current;
+    if (!c) return;
+    const rect = c.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * W;
+    stateRef.current.paddle = clamp(x - 40, 0, W - 80);
+  };
+
+  const s = stateRef.current;
+  return (
+    <FullscreenWrapper>
+      <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+        <div className="flex flex-wrap items-center gap-3 mb-5">
+          <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-2">
+            <div className="text-[11px] font-semibold text-amber-600">得分</div>
+            <div className="text-xl font-bold text-amber-700">{s.score}</div>
+          </div>
+          <div className="rounded-2xl bg-rose-50 border border-rose-200 px-4 py-2">
+            <div className="text-[11px] font-semibold text-rose-600">剩余砖块</div>
+            <div className="text-xl font-bold text-rose-700">{s.bricks.filter((b) => b.alive).length}</div>
+          </div>
+          <button
+            onClick={restart}
+            className="ml-auto rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-semibold px-4 py-2 text-sm shadow-md flex items-center gap-1.5"
+          >
+            <RotateCcw className="w-4 h-4" />
+            重开
+          </button>
+        </div>
+        <div className="mx-auto max-w-[480px]">
+          <canvas
+            ref={canvasRef}
+            width={W}
+            height={H}
+            onMouseMove={onMove}
+            className="w-full rounded-2xl shadow-2xl"
+            style={{ aspectRatio: "8 / 9" }}
+          />
+        </div>
+        {s.over && (
+          <div className="mt-4 text-center text-rose-600 font-semibold">
+            球落地！得分：{s.score}，点「重开」再来
+          </div>
+        )}
+        {s.won && (
+          <div className="mt-4 text-center text-emerald-600 font-bold text-lg">
+            🎉 通关！全部砖块已清除，得分：{s.score}
+          </div>
+        )}
+        <div className="mt-3 text-center text-xs text-slate-500">
+          ← → 或鼠标移动控制挡板，顶行 50 分递减至 10 分
+        </div>
+      </div>
+    </FullscreenWrapper>
+  );
+}
+
+// ===================== Flappy Bird =====================
+/**
+ * Flappy Bird：点击/空格让小鸟跳跃对抗重力
+ * 管道从右侧出现，间隙随机，穿过管道 +1 分
+ * 碰到管道或落地/顶 = 游戏结束
+ */
+function GameFlappy() {
+  const W = 420;
+  const H = 560;
+  const GAP = 140; // 管道间隙
+  const PIPE_W = 60;
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const stateRef = useRef({
+    by: H / 2, // 小鸟 y
+    vy: 0,
+    pipes: [] as { x: number; gapY: number; passed: boolean }[],
+    spawn: 0,
+    score: 0,
+    running: true,
+    over: false,
+  });
+  const [, force] = useState(0);
+
+  const restart = () => {
+    const s = stateRef.current;
+    s.by = H / 2;
+    s.vy = 0;
+    s.pipes = [];
+    s.spawn = 0;
+    s.score = 0;
+    s.running = true;
+    s.over = false;
+    force((x) => x + 1);
+  };
+
+  // 跳跃；已结束则重开
+  const flap = () => {
+    const s = stateRef.current;
+    if (s.over) { restart(); return; }
+    s.vy = -7;
+    s.running = true;
+  };
+
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (e.key === " " || e.key === "ArrowUp") { e.preventDefault(); flap(); }
+    };
+    window.addEventListener("keydown", key);
+    let raf = 0;
+    const loop = () => {
+      const c = canvasRef.current;
+      if (c) {
+        const ctx = c.getContext("2d")!;
+        const s = stateRef.current;
+        if (s.running && !s.over) {
+          // 重力下落
+          s.vy += 0.35;
+          s.by += s.vy;
+          // 生成管道
+          s.spawn--;
+          if (s.spawn <= 0) {
+            s.pipes.push({ x: W, gapY: 80 + Math.random() * (H - 160 - GAP), passed: false });
+            s.spawn = 100;
+          }
+          // 管道左移
+          for (const p of s.pipes) p.x -= 2.5;
+          // 计分 + 碰撞判定
+          for (const p of s.pipes) {
+            if (!p.passed && p.x + PIPE_W < 60) {
+              p.passed = true;
+              s.score++;
+            }
+            if (60 + 14 > p.x && 60 - 14 < p.x + PIPE_W) {
+              if (s.by - 14 < p.gapY || s.by + 14 > p.gapY + GAP) s.over = true;
+            }
+          }
+          s.pipes = s.pipes.filter((p) => p.x > -PIPE_W);
+          // 落地或撞顶
+          if (s.by > H - 14 || s.by < 14) s.over = true;
+        }
+        // 绘制天空背景
+        ctx.fillStyle = "#7dd3fc";
+        ctx.fillRect(0, 0, W, H);
+        // 管道
+        ctx.fillStyle = "#22c55e";
+        for (const p of s.pipes) {
+          ctx.fillRect(p.x, 0, PIPE_W, p.gapY);
+          ctx.fillRect(p.x, p.gapY + GAP, PIPE_W, H - p.gapY - GAP);
+        }
+        // 地面
+        ctx.fillStyle = "#ca8a04";
+        ctx.fillRect(0, H - 12, W, 12);
+        // 小鸟
+        ctx.fillStyle = "#fde047";
+        ctx.beginPath();
+        ctx.arc(60, s.by, 14, 0, Math.PI * 2);
+        ctx.fill();
+        // 眼睛
+        ctx.fillStyle = "#000";
+        ctx.beginPath();
+        ctx.arc(66, s.by - 4, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+        // 分数
+        ctx.fillStyle = "#fff";
+        ctx.font = "bold 32px system-ui";
+        ctx.textAlign = "center";
+        ctx.fillText(String(s.score), W / 2, 50);
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => {
+      window.removeEventListener("keydown", key);
+      cancelAnimationFrame(raf);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const s = stateRef.current;
+  return (
+    <FullscreenWrapper>
+      <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+        <div className="flex flex-wrap items-center gap-3 mb-5">
+          <div className="rounded-2xl bg-sky-50 border border-sky-200 px-4 py-2">
+            <div className="text-[11px] font-semibold text-sky-600">得分</div>
+            <div className="text-xl font-bold text-sky-700">{s.score}</div>
+          </div>
+          <button
+            onClick={restart}
+            className="ml-auto rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 text-white font-semibold px-4 py-2 text-sm shadow-md flex items-center gap-1.5"
+          >
+            <RotateCcw className="w-4 h-4" />
+            重开
+          </button>
+        </div>
+        <div className="mx-auto max-w-[420px]">
+          <canvas
+            ref={canvasRef}
+            width={W}
+            height={H}
+            onClick={flap}
+            className="w-full rounded-2xl shadow-2xl cursor-pointer"
+            style={{ aspectRatio: "3 / 4" }}
+          />
+        </div>
+        {s.over && (
+          <div className="mt-4 text-center text-rose-600 font-semibold">
+            撞到了！得分：{s.score}，点击画布或「重开」继续
+          </div>
+        )}
+        <div className="mt-3 text-center text-xs text-slate-500">
+          点击画布或按空格让小鸟跳跃，穿过管道 +1
+        </div>
+      </div>
+    </FullscreenWrapper>
+  );
+}
+
+// ===================== 贪吃蛇大作战 =====================
+/**
+ * 贪吃蛇大作战：玩家蛇 + 3 条 AI 蛇同场竞技
+ * 玩家用方向键控制，AI 蛇简单追踪最近的食物
+ * 吃食物变长，撞墙/撞任意蛇身即淘汰，显示存活蛇数量
+ */
+function GameSnakeArena() {
+  const GW = 36; // 网格宽
+  const GH = 28; // 网格高
+  const CELL = 16; // 每格像素
+  const W = GW * CELL;
+  const H = GH * CELL;
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const dirRef = useRef<[number, number]>([1, 0]);
+  type Seg = { x: number; y: number };
+  type Snake = { body: Seg[]; dir: [number, number]; alive: boolean; isPlayer: boolean; color: string };
+  const stateRef = useRef({
+    snakes: [] as Snake[],
+    foods: [] as Seg[],
+    score: 0,
+    tick: 0,
+    over: false,
+  });
+  const [, force] = useState(0);
+
+  // 创建一条蛇
+  const makeSnake = (x: number, y: number, color: string, isPlayer: boolean): Snake => ({
+    body: [{ x, y }, { x: x - 1, y }, { x: x - 2, y }],
+    dir: [1, 0],
+    alive: true,
+    isPlayer,
+    color,
+  });
+
+  // 在空闲格子中随机生成食物
+  const spawnFood = (snakes: Snake[]): Seg => {
+    const occupied = new Set<string>();
+    for (const sn of snakes) for (const seg of sn.body) occupied.add(seg.x + "," + seg.y);
+    const free: Seg[] = [];
+    for (let y = 0; y < GH; y++)
+      for (let x = 0; x < GW; x++)
+        if (!occupied.has(x + "," + y)) free.push({ x, y });
+    return free.length ? free[Math.floor(Math.random() * free.length)] : { x: 0, y: 0 };
+  };
+
+  const restart = () => {
+    const snakes: Snake[] = [
+      makeSnake(8, 14, "#22d3ee", true),
+      makeSnake(28, 8, "#f472b6", false),
+      makeSnake(28, 20, "#a78bfa", false),
+      makeSnake(16, 22, "#fbbf24", false),
+    ];
+    const foods: Seg[] = [];
+    for (let i = 0; i < 6; i++) foods.push(spawnFood(snakes));
+    dirRef.current = [1, 0];
+    stateRef.current.snakes = snakes;
+    stateRef.current.foods = foods;
+    stateRef.current.score = 0;
+    stateRef.current.tick = 0;
+    stateRef.current.over = false;
+    force((x) => x + 1);
+  };
+
+  useEffect(() => {
+    restart();
+    const key = (e: KeyboardEvent) => {
+      const d = dirRef.current;
+      if (e.key === "ArrowUp" && d[1] !== 1) dirRef.current = [0, -1];
+      if (e.key === "ArrowDown" && d[1] !== -1) dirRef.current = [0, 1];
+      if (e.key === "ArrowLeft" && d[0] !== 1) dirRef.current = [-1, 0];
+      if (e.key === "ArrowRight" && d[0] !== -1) dirRef.current = [1, 0];
+    };
+    window.addEventListener("keydown", key);
+    let raf = 0;
+    const loop = () => {
+      const c = canvasRef.current;
+      if (c) {
+        const ctx = c.getContext("2d")!;
+        const s = stateRef.current;
+        s.tick++;
+        // 每 8 帧走一步
+        if (s.tick % 8 === 0 && !s.over) {
+          // 玩家方向
+          const player = s.snakes.find((sn) => sn.isPlayer);
+          if (player && player.alive) player.dir = dirRef.current;
+          // AI 方向：朝最近食物移动（仅换轴，避免反向自杀）
+          for (const sn of s.snakes) {
+            if (!sn.alive || sn.isPlayer) continue;
+            const head = sn.body[0];
+            let best: Seg | null = null;
+            let bestD = Infinity;
+            for (const f of s.foods) {
+              const d = Math.abs(f.x - head.x) + Math.abs(f.y - head.y);
+              if (d < bestD) { bestD = d; best = f; }
+            }
+            if (best) {
+              const dx = Math.sign(best.x - head.x);
+              const dy = Math.sign(best.y - head.y);
+              if (dx !== 0 && sn.dir[0] === 0) sn.dir = [dx, 0];
+              else if (dy !== 0 && sn.dir[1] === 0) sn.dir = [0, dy];
+            }
+          }
+          // 移动每条蛇
+          for (const sn of s.snakes) {
+            if (!sn.alive) continue;
+            const head = sn.body[0];
+            const nh: Seg = { x: head.x + sn.dir[0], y: head.y + sn.dir[1] };
+            // 撞墙
+            if (nh.x < 0 || nh.x >= GW || nh.y < 0 || nh.y >= GH) { sn.alive = false; continue; }
+            // 撞任意蛇身
+            let hit = false;
+            for (const o of s.snakes) {
+              for (const seg of o.body) {
+                if (seg.x === nh.x && seg.y === nh.y) { hit = true; break; }
+              }
+              if (hit) break;
+            }
+            if (hit) { sn.alive = false; continue; }
+            sn.body.unshift(nh);
+            // 吃食物变长，否则去尾
+            const fi = s.foods.findIndex((f) => f.x === nh.x && f.y === nh.y);
+            if (fi >= 0) {
+              s.foods.splice(fi, 1);
+              s.foods.push(spawnFood(s.snakes));
+              if (sn.isPlayer) s.score += 10;
+            } else {
+              sn.body.pop();
+            }
+          }
+          // 玩家被淘汰 -> 结束
+          if (player && !player.alive) s.over = true;
+        }
+        // 绘制背景
+        ctx.fillStyle = "#0f172a";
+        ctx.fillRect(0, 0, W, H);
+        // 食物
+        ctx.fillStyle = "#f87171";
+        for (const f of s.foods) {
+          ctx.beginPath();
+          ctx.arc(f.x * CELL + CELL / 2, f.y * CELL + CELL / 2, CELL / 2 - 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        // 蛇身
+        for (const sn of s.snakes) {
+          if (!sn.alive) continue;
+          ctx.fillStyle = sn.color;
+          for (const seg of sn.body) ctx.fillRect(seg.x * CELL + 1, seg.y * CELL + 1, CELL - 2, CELL - 2);
+          // 头部高亮
+          const h = sn.body[0];
+          ctx.fillStyle = "#fff";
+          ctx.fillRect(h.x * CELL + 4, h.y * CELL + 4, 3, 3);
+        }
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => {
+      window.removeEventListener("keydown", key);
+      cancelAnimationFrame(raf);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const s = stateRef.current;
+  const aliveCount = s.snakes.filter((sn) => sn.alive).length;
+  return (
+    <FullscreenWrapper>
+      <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+        <div className="flex flex-wrap items-center gap-3 mb-5">
+          <div className="rounded-2xl bg-cyan-50 border border-cyan-200 px-4 py-2">
+            <div className="text-[11px] font-semibold text-cyan-600">玩家得分</div>
+            <div className="text-xl font-bold text-cyan-700">{s.score}</div>
+          </div>
+          <div className="rounded-2xl bg-emerald-50 border border-emerald-200 px-4 py-2">
+            <div className="text-[11px] font-semibold text-emerald-600">存活蛇数</div>
+            <div className="text-xl font-bold text-emerald-700">{aliveCount}</div>
+          </div>
+          <button
+            onClick={restart}
+            className="ml-auto rounded-xl bg-gradient-to-r from-emerald-500 to-green-600 text-white font-semibold px-4 py-2 text-sm shadow-md flex items-center gap-1.5"
+          >
+            <RotateCcw className="w-4 h-4" />
+            重开
+          </button>
+        </div>
+        <div className="mx-auto max-w-[640px]">
+          <canvas
+            ref={canvasRef}
+            width={W}
+            height={H}
+            className="w-full rounded-2xl shadow-2xl"
+            style={{ aspectRatio: `${GW} / ${GH}` }}
+          />
+        </div>
+        {s.over && (
+          <div className="mt-4 text-center text-rose-600 font-semibold">
+            你的蛇被淘汰！得分：{s.score}，存活 {aliveCount} 条，点「重开」再战
+          </div>
+        )}
+        <div className="mt-3 text-center text-xs text-slate-500">
+          方向键控制玩家蛇，吃红色食物变长，撞墙撞身即淘汰
+        </div>
+      </div>
+    </FullscreenWrapper>
+  );
+}
+
+// ===================== 弹球台 =====================
+/**
+ * 弹球台：球从顶部下落，经过钉子随机弹射
+ * 底部左右两个挡板（← → 键控制），按下时把球弹起
+ * 碰钉子 +5 分，球从中间缝隙落地 = 游戏结束
+ */
+function GamePinball() {
+  const W = 420;
+  const H = 560;
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const keysRef = useRef<Record<string, boolean>>({});
+  type Peg = { x: number; y: number; hit: boolean };
+  const stateRef = useRef({
+    bx: W / 2,
+    by: 40,
+    bvx: 1.5,
+    bvy: 0,
+    pegs: [] as Peg[],
+    flipperL: 0, // 左挡板抬起量 0~1
+    flipperR: 0, // 右挡板抬起量 0~1
+    score: 0,
+    running: true,
+    over: false,
+  });
+  const [, force] = useState(0);
+
+  // 生成钉子阵列（交错排布）
+  const buildPegs = (): Peg[] => {
+    const pegs: Peg[] = [];
+    const rows = 6;
+    for (let r = 0; r < rows; r++) {
+      const cols = r % 2 === 0 ? 5 : 4;
+      const offsetX = r % 2 === 0 ? 50 : 90;
+      for (let c = 0; c < cols; c++) {
+        pegs.push({ x: offsetX + c * 70, y: 120 + r * 56, hit: false });
+      }
+    }
+    return pegs;
+  };
+
+  const restart = () => {
+    const s = stateRef.current;
+    s.bx = W / 2;
+    s.by = 40;
+    s.bvx = (Math.random() - 0.5) * 3;
+    s.bvy = 0;
+    s.pegs = buildPegs();
+    s.flipperL = 0;
+    s.flipperR = 0;
+    s.score = 0;
+    s.running = true;
+    s.over = false;
+    force((x) => x + 1);
+  };
+
+  useEffect(() => {
+    restart();
+    const down = (e: KeyboardEvent) => (keysRef.current[e.key.toLowerCase()] = true);
+    const up = (e: KeyboardEvent) => (keysRef.current[e.key.toLowerCase()] = false);
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    // 挡板枢轴与末端坐标
+    const leftPivot = { x: 120, y: H - 40 };
+    const rightPivot = { x: 300, y: H - 40 };
+    let raf = 0;
+    const loop = () => {
+      const c = canvasRef.current;
+      if (c) {
+        const ctx = c.getContext("2d")!;
+        const s = stateRef.current;
+        // 挡板动画（按下抬起，松开回落）
+        if (keysRef.current["arrowleft"] || keysRef.current["a"]) s.flipperL = Math.min(1, s.flipperL + 0.2);
+        else s.flipperL = Math.max(0, s.flipperL - 0.15);
+        if (keysRef.current["arrowright"] || keysRef.current["d"]) s.flipperR = Math.min(1, s.flipperR + 0.2);
+        else s.flipperR = Math.max(0, s.flipperR - 0.15);
+        const leftEnd = { x: 180, y: leftPivot.y - s.flipperL * 24 };
+        const rightEnd = { x: 240, y: rightPivot.y - s.flipperR * 24 };
+        if (s.running && !s.over) {
+          // 重力
+          s.bvy += 0.18;
+          s.bx += s.bvx;
+          s.by += s.bvy;
+          // 左右墙壁
+          if (s.bx < 10) { s.bx = 10; s.bvx = Math.abs(s.bvx); }
+          if (s.bx > W - 10) { s.bx = W - 10; s.bvx = -Math.abs(s.bvx); }
+          // 钉子碰撞（反射 + 随机扰动）
+          for (const p of s.pegs) {
+            const dx = s.bx - p.x;
+            const dy = s.by - p.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < 14) {
+              const nx = dx / (dist || 1);
+              const ny = dy / (dist || 1);
+              const dot = s.bvx * nx + s.bvy * ny;
+              s.bvx -= 2 * dot * nx;
+              s.bvy -= 2 * dot * ny;
+              s.bx = p.x + nx * 14;
+              s.by = p.y + ny * 14;
+              s.bvx += (Math.random() - 0.5) * 0.6;
+              if (!p.hit) { p.hit = true; s.score += 5; }
+            }
+          }
+          // 挡板弹球：按下时把球向上弹飞
+          if (s.by > H - 58 && s.by < H - 30 && s.bvy > 0) {
+            if (s.bx > 116 && s.bx < 184 && s.flipperL > 0.3) {
+              s.bvy = -Math.abs(s.bvy) - 5 - s.flipperL * 3;
+              s.bvx -= 1.5;
+            }
+            if (s.bx > 236 && s.bx < 304 && s.flipperR > 0.3) {
+              s.bvy = -Math.abs(s.bvy) - 5 - s.flipperR * 3;
+              s.bvx += 1.5;
+            }
+          }
+          // 球从底部缝隙落地 -> 结束
+          if (s.by > H) {
+            s.over = true;
+            s.running = false;
+          }
+        }
+        // 绘制背景
+        ctx.fillStyle = "#1e293b";
+        ctx.fillRect(0, 0, W, H);
+        // 钉子
+        for (const p of s.pegs) {
+          ctx.fillStyle = p.hit ? "#64748b" : "#fbbf24";
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        // 挡板
+        ctx.strokeStyle = "#22d3ee";
+        ctx.lineWidth = 6;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(leftPivot.x, leftPivot.y);
+        ctx.lineTo(leftEnd.x, leftEnd.y);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(rightPivot.x, rightPivot.y);
+        ctx.lineTo(rightEnd.x, rightEnd.y);
+        ctx.stroke();
+        // 球
+        ctx.fillStyle = "#fde047";
+        ctx.beginPath();
+        ctx.arc(s.bx, s.by, 8, 0, Math.PI * 2);
+        ctx.fill();
+        // 分数
+        ctx.fillStyle = "rgba(255,255,255,0.9)";
+        ctx.font = "bold 18px system-ui";
+        ctx.textAlign = "left";
+        ctx.fillText("得分 " + s.score, 12, 24);
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      cancelAnimationFrame(raf);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const s = stateRef.current;
+  return (
+    <FullscreenWrapper>
+      <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+        <div className="flex flex-wrap items-center gap-3 mb-5">
+          <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-2">
+            <div className="text-[11px] font-semibold text-amber-600">得分</div>
+            <div className="text-xl font-bold text-amber-700">{s.score}</div>
+          </div>
+          <button
+            onClick={restart}
+            className="ml-auto rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-semibold px-4 py-2 text-sm shadow-md flex items-center gap-1.5"
+          >
+            <RotateCcw className="w-4 h-4" />
+            重开
+          </button>
+        </div>
+        <div className="mx-auto max-w-[420px]">
+          <canvas
+            ref={canvasRef}
+            width={W}
+            height={H}
+            className="w-full rounded-2xl shadow-2xl"
+            style={{ aspectRatio: "3 / 4" }}
+          />
+        </div>
+        {s.over && (
+          <div className="mt-4 text-center text-rose-600 font-semibold">
+            球落地！得分：{s.score}，点「重开」再来
+          </div>
+        )}
+        <div className="mt-3 text-center text-xs text-slate-500">
+          ← / → 键控制左右挡板，碰钉子 +5，球落地结束
+        </div>
+      </div>
+    </FullscreenWrapper>
+  );
+}
+
+// ===================== 记忆翻牌 =====================
+// 4×4 共 16 张卡片（8 对 emoji），翻两张相同则消除，全部配对即通关，统计步数
+function GameMemory() {
+  // 8 种动物图案，每种 2 张，共 16 张卡片
+  const ICONS = ["🐶", "🐱", "🐰", "🐯", "🦁", "🐼", "🐨", "🐸"];
+  type Card = { id: number; icon: string; flipped: boolean; matched: boolean };
+
+  // 生成洗牌后的卡组
+  const buildDeck = (): Card[] => {
+    const pairs = [...ICONS, ...ICONS];
+    for (let i = pairs.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pairs[i], pairs[j]] = [pairs[j], pairs[i]];
+    }
+    return pairs.map((icon, id) => ({ id, icon, flipped: false, matched: false }));
+  };
+
+  const [cards, setCards] = useState<Card[]>(buildDeck);
+  const [openIds, setOpenIds] = useState<number[]>([]); // 当前翻开但未配对的卡片索引
+  const [steps, setSteps] = useState(0);
+  const [lock, setLock] = useState(false); // 翻回去的动画期间禁止点击
+  const [won, setWon] = useState(false);
+
+  // 重开：重新洗牌并重置状态
+  const restart = () => {
+    setCards(buildDeck());
+    setOpenIds([]);
+    setSteps(0);
+    setLock(false);
+    setWon(false);
+  };
+
+  // 翻开一张卡片
+  const flip = (idx: number) => {
+    if (lock || won) return;
+    const card = cards[idx];
+    if (card.flipped || card.matched) return;
+    const newCards = cards.map((c, i) => (i === idx ? { ...c, flipped: true } : c));
+    const newOpen = [...openIds, idx];
+    setCards(newCards);
+    setOpenIds(newOpen);
+    // 翻满两张则判定配对
+    if (newOpen.length === 2) {
+      setSteps((s) => s + 1);
+      setLock(true);
+      const [a, b] = newOpen;
+      if (newCards[a].icon === newCards[b].icon) {
+        // 配对成功，保持翻开
+        setTimeout(() => {
+          setCards((cs) => cs.map((c, i) => (i === a || i === b ? { ...c, matched: true } : c)));
+          setOpenIds([]);
+          setLock(false);
+        }, 400);
+      } else {
+        // 配对失败，1 秒后翻回
+        setTimeout(() => {
+          setCards((cs) => cs.map((c, i) => (i === a || i === b ? { ...c, flipped: false } : c)));
+          setOpenIds([]);
+          setLock(false);
+        }, 1000);
+      }
+    }
+  };
+
+  // 全部配对即通关
+  useEffect(() => {
+    if (cards.length > 0 && cards.every((c) => c.matched)) {
+      setWon(true);
+    }
+  }, [cards]);
+
+  return (
+    <FullscreenWrapper>
+      <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+        <div className="flex flex-wrap items-center gap-3 mb-5">
+          <div className="rounded-2xl bg-fuchsia-50 border border-fuchsia-200 px-4 py-2">
+            <div className="text-[11px] font-semibold text-fuchsia-600">步数</div>
+            <div className="text-xl font-bold text-fuchsia-700">{steps}</div>
+          </div>
+          <button
+            onClick={restart}
+            className="ml-auto rounded-xl bg-gradient-to-r from-fuchsia-500 to-purple-600 text-white font-semibold px-4 py-2 text-sm shadow-md flex items-center gap-1.5"
+          >
+            <RotateCcw className="w-4 h-4" />
+            重开
+          </button>
+        </div>
+        {/* 4×4 卡片网格，带 3D 翻转动画 */}
+        <div
+          className="mx-auto max-w-[420px] grid gap-3"
+          style={{ gridTemplateColumns: "repeat(4, minmax(0,1fr))" }}
+        >
+          {cards.map((c, idx) => {
+            const show = c.flipped || c.matched;
+            return (
+              <button
+                key={c.id}
+                onClick={() => flip(idx)}
+                className="relative aspect-square rounded-2xl [transform-style:preserve-3d] transition-transform duration-500"
+                style={{ transform: show ? "rotateY(0deg)" : "rotateY(180deg)" }}
+              >
+                {/* 正面：图案 */}
+                <span
+                  className="absolute inset-0 flex items-center justify-center text-4xl rounded-2xl [backface-visibility:hidden]"
+                  style={{
+                    background: c.matched
+                      ? "linear-gradient(135deg,#bbf7d0,#86efac)"
+                      : "linear-gradient(135deg,#fef9c3,#fde68a)",
+                  }}
+                >
+                  {c.icon}
+                </span>
+                {/* 背面：问号 */}
+                <span
+                  className="absolute inset-0 flex items-center justify-center text-4xl rounded-2xl [backface-visibility:hidden] [transform:rotateY(180deg)] text-white"
+                  style={{ background: "linear-gradient(135deg,#8b5cf6,#6366f1)" }}
+                >
+                  ❓
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        {won && (
+          <div className="mt-4 text-center text-emerald-600 font-semibold">
+            🎉 通关！用 {steps} 步翻完所有卡片
+          </div>
+        )}
+        <div className="mt-3 text-center text-xs text-slate-500">
+          点击卡片翻面，找到 8 对相同图案
+        </div>
+      </div>
+    </FullscreenWrapper>
+  );
+}
+
+// ===================== 数字猜猜猜 =====================
+// 1-100 随机数，输入并提交，提示太大/太小/对了，显示历史记录与次数
+function GameGuessNumber() {
+  const [target, setTarget] = useState(() => Math.floor(Math.random() * 100) + 1);
+  const [input, setInput] = useState("");
+  const [history, setHistory] = useState<{ guess: number; hint: "大" | "小" | "对" }[]>([]);
+  const [won, setWon] = useState(false);
+
+  // 重开：重新生成目标数并清空历史
+  const restart = () => {
+    setTarget(Math.floor(Math.random() * 100) + 1);
+    setInput("");
+    setHistory([]);
+    setWon(false);
+  };
+
+  // 提交一次猜测
+  const submit = () => {
+    if (won) return;
+    const n = parseInt(input, 10);
+    if (Number.isNaN(n) || n < 1 || n > 100) return;
+    const hint: "大" | "小" | "对" = n > target ? "大" : n < target ? "小" : "对";
+    setHistory((h) => [{ guess: n, hint }, ...h]);
+    setInput("");
+    if (hint === "对") setWon(true);
+  };
+
+  return (
+    <FullscreenWrapper>
+      <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+        <div className="flex flex-wrap items-center gap-3 mb-5">
+          <div className="rounded-2xl bg-sky-50 border border-sky-200 px-4 py-2">
+            <div className="text-[11px] font-semibold text-sky-600">已猜次数</div>
+            <div className="text-xl font-bold text-sky-700">{history.length}</div>
+          </div>
+          <button
+            onClick={restart}
+            className="ml-auto rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 text-white font-semibold px-4 py-2 text-sm shadow-md flex items-center gap-1.5"
+          >
+            <RotateCcw className="w-4 h-4" />
+            重开
+          </button>
+        </div>
+        <div className="mx-auto max-w-md">
+          <p className="text-center text-slate-600 mb-4">
+            我心里想了一个 1～100 之间的数字，来猜猜看吧！
+          </p>
+          <div className="flex gap-2">
+            <input
+              type="number"
+              min={1}
+              max={100}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && submit()}
+              disabled={won}
+              placeholder="输入 1-100"
+              className="flex-1 rounded-xl border border-slate-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-sky-400"
+            />
+            <button
+              onClick={submit}
+              disabled={won}
+              className="rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 text-white font-semibold px-5 py-2 shadow-md disabled:opacity-50"
+            >
+              猜！
+            </button>
+          </div>
+          {/* 最近一次提示 */}
+          {history.length > 0 && !won && (
+            <div className="mt-4 text-center text-lg font-bold text-amber-600">
+              {history[0].hint === "大" ? "太大了！往小猜" : "太小了！往大猜"}
+            </div>
+          )}
+          {won && (
+            <div className="mt-4 text-center text-emerald-600 font-bold">
+              🎉 猜对了！就是 {target}，你用了 {history.length} 次
+            </div>
+          )}
+          {/* 历史记录 */}
+          {history.length > 0 && (
+            <div className="mt-6">
+              <div className="text-xs font-semibold text-slate-500 mb-2">历史记录</div>
+              <div className="flex flex-wrap gap-2">
+                {history.map((h, i) => (
+                  <span
+                    key={i}
+                    className={`rounded-lg px-3 py-1 text-sm font-medium ${
+                      h.hint === "对"
+                        ? "bg-emerald-100 text-emerald-700"
+                        : h.hint === "大"
+                        ? "bg-rose-100 text-rose-700"
+                        : "bg-sky-100 text-sky-700"
+                    }`}
+                  >
+                    {h.guess}（{h.hint}）
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </FullscreenWrapper>
+  );
+}
+
+// ===================== 太空侵略者 =====================
+// Canvas 实现，玩家底部移动射击，5×8 外星人编队左右移动碰边下移，到底则失败
+function GameSpaceInvaders() {
+  const W = 480;
+  const H = 560;
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const keysRef = useRef<Record<string, boolean>>({});
+  const fireCdRef = useRef(0);
+  type Bullet = { x: number; y: number; vy: number; from: "player" | "alien" };
+  type Alien = { x: number; y: number; alive: boolean };
+  const stateRef = useRef({
+    px: W / 2, // 玩家飞船 x
+    bullets: [] as Bullet[],
+    aliens: [] as Alien[],
+    dir: 1, // 外星人整体方向 1=右 -1=左
+    alienCooldown: 0, // 外星人移动计时
+    score: 0,
+    over: false,
+    win: false,
+  });
+  const [, force] = useState(0);
+
+  // 生成 5 行 × 8 列外星人编队
+  const buildAliens = (): Alien[] => {
+    const list: Alien[] = [];
+    for (let r = 0; r < 5; r++) {
+      for (let c = 0; c < 8; c++) {
+        list.push({ x: 40 + c * 44, y: 50 + r * 34, alive: true });
+      }
+    }
+    return list;
+  };
+
+  // 重开：重置飞船、外星人、子弹与分数
+  const restart = () => {
+    const s = stateRef.current;
+    s.px = W / 2;
+    s.bullets = [];
+    s.aliens = buildAliens();
+    s.dir = 1;
+    s.alienCooldown = 0;
+    s.score = 0;
+    s.over = false;
+    s.win = false;
+    fireCdRef.current = 0;
+    force((x) => x + 1);
+  };
+
+  useEffect(() => {
+    restart();
+    const down = (e: KeyboardEvent) => {
+      const k = e.key.toLowerCase();
+      keysRef.current[k] = true;
+      // 阻止方向键与空格的页面滚动
+      if (["arrowleft", "arrowright", "arrowup", "arrowdown", " "].includes(k)) {
+        e.preventDefault();
+      }
+    };
+    const up = (e: KeyboardEvent) => (keysRef.current[e.key.toLowerCase()] = false);
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    let raf = 0;
+    const loop = () => {
+      const c = canvasRef.current;
+      if (c) {
+        const ctx = c.getContext("2d")!;
+        const s = stateRef.current;
+        if (!s.over && !s.win) {
+          // 玩家左右移动
+          if (keysRef.current["arrowleft"] || keysRef.current["a"]) s.px = clamp(s.px - 4, 20, W - 20);
+          if (keysRef.current["arrowright"] || keysRef.current["d"]) s.px = clamp(s.px + 4, 20, W - 20);
+          // 玩家射击（带冷却）
+          fireCdRef.current = Math.max(0, fireCdRef.current - 1);
+          if (
+            (keysRef.current[" "] || keysRef.current["w"] || keysRef.current["arrowup"]) &&
+            fireCdRef.current === 0
+          ) {
+            s.bullets.push({ x: s.px, y: H - 40, vy: -7, from: "player" });
+            fireCdRef.current = 18;
+          }
+          // 外星人整体移动（按计时步进）
+          s.alienCooldown--;
+          if (s.alienCooldown <= 0) {
+            s.alienCooldown = 30;
+            // 检测是否触碰边缘
+            let edge = false;
+            for (const a of s.aliens) {
+              if (!a.alive) continue;
+              if (s.dir > 0 && a.x > W - 50) { edge = true; break; }
+              if (s.dir < 0 && a.x < 30) { edge = true; break; }
+            }
+            if (edge) {
+              s.dir *= -1;
+              for (const a of s.aliens) if (a.alive) a.y += 18;
+            } else {
+              for (const a of s.aliens) if (a.alive) a.x += s.dir * 8;
+            }
+          }
+          // 外星人随机射击
+          if (Math.random() < 0.03) {
+            const alive = s.aliens.filter((a) => a.alive);
+            if (alive.length > 0) {
+              const a = alive[Math.floor(Math.random() * alive.length)];
+              s.bullets.push({ x: a.x, y: a.y + 10, vy: 4, from: "alien" });
+            }
+          }
+          // 子弹移动 + 碰撞判定
+          const keep: Bullet[] = [];
+          for (const b of s.bullets) {
+            b.y += b.vy;
+            if (b.y < 0 || b.y > H) continue;
+            if (b.from === "player") {
+              let hit = false;
+              for (const a of s.aliens) {
+                if (!a.alive) continue;
+                if (Math.abs(b.x - a.x) < 16 && Math.abs(b.y - a.y) < 12) {
+                  a.alive = false;
+                  s.score += 10;
+                  hit = true;
+                  break;
+                }
+              }
+              if (!hit) keep.push(b);
+            } else {
+              // 外星子弹击中玩家则失败
+              if (Math.abs(b.x - s.px) < 18 && Math.abs(b.y - (H - 30)) < 12) {
+                s.over = true;
+              } else {
+                keep.push(b);
+              }
+            }
+          }
+          s.bullets = keep;
+          // 外星人触底 = 失败
+          for (const a of s.aliens) {
+            if (a.alive && a.y > H - 60) { s.over = true; break; }
+          }
+          // 全部消灭 = 胜利
+          if (s.aliens.every((a) => !a.alive)) s.win = true;
+        }
+        // 绘制背景
+        ctx.fillStyle = "#0f172a";
+        ctx.fillRect(0, 0, W, H);
+        // 星空背景
+        ctx.fillStyle = "#334155";
+        for (let i = 0; i < 30; i++) {
+          ctx.fillRect((i * 37) % W, (i * 53 + ((Date.now() / 30) | 0)) % H, 1, 1);
+        }
+        // 外星人
+        for (const a of s.aliens) {
+          if (!a.alive) continue;
+          ctx.fillStyle = "#22d3ee";
+          ctx.fillRect(a.x - 14, a.y - 10, 28, 20);
+          ctx.fillStyle = "#0e7490";
+          ctx.fillRect(a.x - 8, a.y - 6, 5, 5);
+          ctx.fillRect(a.x + 3, a.y - 6, 5, 5);
+        }
+        // 玩家飞船（三角形）
+        ctx.fillStyle = "#fde047";
+        ctx.beginPath();
+        ctx.moveTo(s.px, H - 40);
+        ctx.lineTo(s.px - 16, H - 22);
+        ctx.lineTo(s.px + 16, H - 22);
+        ctx.closePath();
+        ctx.fill();
+        // 子弹
+        for (const b of s.bullets) {
+          ctx.fillStyle = b.from === "player" ? "#f87171" : "#a78bfa";
+          ctx.fillRect(b.x - 2, b.y - 6, 4, 12);
+        }
+        // 分数
+        ctx.fillStyle = "#fff";
+        ctx.font = "bold 18px system-ui";
+        ctx.textAlign = "left";
+        ctx.fillText("得分 " + s.score, 12, 24);
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      cancelAnimationFrame(raf);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const s = stateRef.current;
+  return (
+    <FullscreenWrapper>
+      <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+        <div className="flex flex-wrap items-center gap-3 mb-5">
+          <div className="rounded-2xl bg-cyan-50 border border-cyan-200 px-4 py-2">
+            <div className="text-[11px] font-semibold text-cyan-600">得分</div>
+            <div className="text-xl font-bold text-cyan-700">{s.score}</div>
+          </div>
+          <button
+            onClick={restart}
+            className="ml-auto rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-semibold px-4 py-2 text-sm shadow-md flex items-center gap-1.5"
+          >
+            <RotateCcw className="w-4 h-4" />
+            重开
+          </button>
+        </div>
+        <div className="mx-auto max-w-[480px]">
+          <canvas
+            ref={canvasRef}
+            width={W}
+            height={H}
+            className="w-full rounded-2xl shadow-2xl bg-slate-900"
+            style={{ aspectRatio: "6 / 7" }}
+          />
+        </div>
+        {s.over && (
+          <div className="mt-4 text-center text-rose-600 font-semibold">
+            飞船被击毁！得分：{s.score}，点「重开」再战
+          </div>
+        )}
+        {s.win && (
+          <div className="mt-4 text-center text-emerald-600 font-semibold">
+            🎉 全部消灭！得分：{s.score}
+          </div>
+        )}
+        <div className="mt-3 text-center text-xs text-slate-500">
+          ← / → 移动，空格射击，消灭全部外星人
+        </div>
+      </div>
+    </FullscreenWrapper>
+  );
+}
+
+// ===================== 弹球消砖 =====================
+// Canvas 实现，6×10 砖块每个 2 点血量（击中变色），挡板控球，球落地则结束
+function GameBrickCrush() {
+  const W = 480;
+  const H = 560;
+  const BW = 42; // 砖块宽
+  const BH = 16; // 砖块高
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const keysRef = useRef<Record<string, boolean>>({});
+  type Brick = { x: number; y: number; hp: number };
+  const stateRef = useRef({
+    bx: W / 2, // 球 x
+    by: H - 80, // 球 y
+    bvx: 3, // 球水平速度
+    bvy: -3, // 球垂直速度
+    px: W / 2, // 挡板 x
+    bricks: [] as Brick[],
+    score: 0,
+    over: false,
+    win: false,
+  });
+  const [, force] = useState(0);
+
+  // 生成 6 行 × 10 列砖块，每个 2 点血量
+  const buildBricks = (): Brick[] => {
+    const list: Brick[] = [];
+    const cols = 10;
+    const rows = 6;
+    const padX = 30;
+    const padY = 50;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        list.push({ x: padX + c * BW, y: padY + r * BH, hp: 2 });
+      }
+    }
+    return list;
+  };
+
+  // 重开：重置球、挡板、砖块与分数
+  const restart = () => {
+    const s = stateRef.current;
+    s.bx = W / 2;
+    s.by = H - 80;
+    s.bvx = 3 * (Math.random() > 0.5 ? 1 : -1);
+    s.bvy = -3;
+    s.px = W / 2;
+    s.bricks = buildBricks();
+    s.score = 0;
+    s.over = false;
+    s.win = false;
+    force((x) => x + 1);
+  };
+
+  useEffect(() => {
+    restart();
+    const down = (e: KeyboardEvent) => {
+      keysRef.current[e.key.toLowerCase()] = true;
+      if (["arrowleft", "arrowright"].includes(e.key.toLowerCase())) e.preventDefault();
+    };
+    const up = (e: KeyboardEvent) => (keysRef.current[e.key.toLowerCase()] = false);
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    let raf = 0;
+    const loop = () => {
+      const c = canvasRef.current;
+      if (c) {
+        const ctx = c.getContext("2d")!;
+        const s = stateRef.current;
+        if (!s.over && !s.win) {
+          // 挡板移动
+          if (keysRef.current["arrowleft"] || keysRef.current["a"]) s.px = clamp(s.px - 6, 50, W - 50);
+          if (keysRef.current["arrowright"] || keysRef.current["d"]) s.px = clamp(s.px + 6, 50, W - 50);
+          // 球移动
+          s.bx += s.bvx;
+          s.by += s.bvy;
+          // 左右墙壁反弹
+          if (s.bx < 8) { s.bx = 8; s.bvx = Math.abs(s.bvx); }
+          if (s.bx > W - 8) { s.bx = W - 8; s.bvx = -Math.abs(s.bvx); }
+          // 顶部反弹
+          if (s.by < 8) { s.by = 8; s.bvy = Math.abs(s.bvy); }
+          // 挡板碰撞，按击中位置改变水平速度
+          if (s.by > H - 30 && s.by < H - 20 && s.bvy > 0 && Math.abs(s.bx - s.px) < 50) {
+            s.bvy = -Math.abs(s.bvy);
+            s.bvx = (s.bx - s.px) / 8;
+          }
+          // 砖块碰撞
+          for (const b of s.bricks) {
+            if (b.hp <= 0) continue;
+            if (s.bx > b.x && s.bx < b.x + BW && s.by > b.y && s.by < b.y + BH) {
+              // 根据上一帧位置判断碰撞方向
+              const prevBy = s.by - s.bvy;
+              if (prevBy <= b.y || prevBy >= b.y + BH) s.bvy = -s.bvy;
+              else s.bvx = -s.bvx;
+              b.hp--;
+              s.score += b.hp === 0 ? 10 : 3;
+              break;
+            }
+          }
+          // 球落地 = 结束
+          if (s.by > H) s.over = true;
+          // 全部消除 = 胜利
+          if (s.bricks.every((b) => b.hp <= 0)) s.win = true;
+        }
+        // 绘制背景
+        ctx.fillStyle = "#1e1b4b";
+        ctx.fillRect(0, 0, W, H);
+        // 砖块：hp=2 蓝色，hp=1 受损橙色
+        for (const b of s.bricks) {
+          if (b.hp <= 0) continue;
+          ctx.fillStyle = b.hp === 2 ? "#60a5fa" : "#fb923c";
+          ctx.fillRect(b.x + 1, b.y + 1, BW - 2, BH - 2);
+          ctx.strokeStyle = "rgba(255,255,255,0.3)";
+          ctx.strokeRect(b.x + 1, b.y + 1, BW - 2, BH - 2);
+        }
+        // 挡板
+        ctx.fillStyle = "#fde047";
+        ctx.fillRect(s.px - 50, H - 24, 100, 10);
+        // 球
+        ctx.fillStyle = "#fff";
+        ctx.beginPath();
+        ctx.arc(s.bx, s.by, 7, 0, Math.PI * 2);
+        ctx.fill();
+        // 分数
+        ctx.fillStyle = "rgba(255,255,255,0.9)";
+        ctx.font = "bold 18px system-ui";
+        ctx.textAlign = "left";
+        ctx.fillText("得分 " + s.score, 12, 24);
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      cancelAnimationFrame(raf);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const s = stateRef.current;
+  return (
+    <FullscreenWrapper>
+      <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+        <div className="flex flex-wrap items-center gap-3 mb-5">
+          <div className="rounded-2xl bg-blue-50 border border-blue-200 px-4 py-2">
+            <div className="text-[11px] font-semibold text-blue-600">得分</div>
+            <div className="text-xl font-bold text-blue-700">{s.score}</div>
+          </div>
+          <button
+            onClick={restart}
+            className="ml-auto rounded-xl bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-semibold px-4 py-2 text-sm shadow-md flex items-center gap-1.5"
+          >
+            <RotateCcw className="w-4 h-4" />
+            重开
+          </button>
+        </div>
+        <div className="mx-auto max-w-[480px]">
+          <canvas
+            ref={canvasRef}
+            width={W}
+            height={H}
+            className="w-full rounded-2xl shadow-2xl"
+            style={{ aspectRatio: "6 / 7" }}
+          />
+        </div>
+        {s.over && (
+          <div className="mt-4 text-center text-rose-600 font-semibold">
+            球落地了！得分：{s.score}，点「重开」再来
+          </div>
+        )}
+        {s.win && (
+          <div className="mt-4 text-center text-emerald-600 font-semibold">
+            🎉 全部消砖完成！得分：{s.score}
+          </div>
+        )}
+        <div className="mt-3 text-center text-xs text-slate-500">
+          ← / → 控制挡板，砖块需击中 2 次才能消除
+        </div>
+      </div>
+    </FullscreenWrapper>
+  );
+}
+
+// ===================== 青蛙过河 =====================
+// Canvas 实现，青蛙从底部穿越 3 马路 + 3 河道到达顶部，踩浮木随其移动
+function GameFrogCross() {
+  const W = 480;
+  const H = 560;
+  const CELL = 40; // 每格高度 / 跳跃距离
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const keysRef = useRef<Record<string, boolean>>({});
+  type Item = { x: number; w: number; speed: number };
+  type Lane = { y: number; type: "road" | "river"; items: Item[] };
+  const stateRef = useRef({
+    fx: Math.floor(W / 2 / CELL) * CELL, // 青蛙 x
+    fy: H - 30, // 青蛙 y
+    lanes: [] as Lane[],
+    over: false,
+    win: false,
+    overMsg: "",
+    jumpCd: 0, // 跳跃冷却
+  });
+  const [, force] = useState(0);
+
+  // 生成 3 条河道 + 3 条马路，含浮木与车辆
+  const buildLanes = (): Lane[] => {
+    const lanes: Lane[] = [];
+    // 3 条河道（上方）
+    for (let i = 0; i < 3; i++) {
+      const y = 80 + i * CELL; // 80, 120, 160
+      const dir = i % 2 === 0 ? 1 : -1;
+      const items: Item[] = [];
+      for (let k = 0; k < 3; k++) {
+        items.push({ x: k * 180, w: 90, speed: dir * (1.2 + i * 0.3) });
+      }
+      lanes.push({ y, type: "river", items });
+    }
+    // 3 条马路（下方）
+    for (let i = 0; i < 3; i++) {
+      const y = 240 + i * CELL; // 240, 280, 320
+      const dir = i % 2 === 0 ? -1 : 1;
+      const items: Item[] = [];
+      for (let k = 0; k < 4; k++) {
+        items.push({ x: k * 140, w: 50, speed: dir * (2 + i * 0.5) });
+      }
+      lanes.push({ y, type: "road", items });
+    }
+    return lanes;
+  };
+
+  // 重开：重置青蛙位置与车道
+  const restart = () => {
+    const s = stateRef.current;
+    s.fx = Math.floor(W / 2 / CELL) * CELL;
+    s.fy = H - 30;
+    s.lanes = buildLanes();
+    s.over = false;
+    s.win = false;
+    s.overMsg = "";
+    s.jumpCd = 0;
+    force((x) => x + 1);
+  };
+
+  useEffect(() => {
+    restart();
+    const down = (e: KeyboardEvent) => {
+      const k = e.key.toLowerCase();
+      keysRef.current[k] = true;
+      if (["arrowleft", "arrowright", "arrowup", "arrowdown"].includes(k)) e.preventDefault();
+    };
+    const up = (e: KeyboardEvent) => (keysRef.current[e.key.toLowerCase()] = false);
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    let raf = 0;
+    const loop = () => {
+      const c = canvasRef.current;
+      if (c) {
+        const ctx = c.getContext("2d")!;
+        const s = stateRef.current;
+        if (!s.over && !s.win) {
+          // 青蛙跳跃（带冷却，按格移动）
+          s.jumpCd = Math.max(0, s.jumpCd - 1);
+          if (s.jumpCd === 0) {
+            let moved = false;
+            if (keysRef.current["arrowup"] || keysRef.current["w"]) {
+              s.fy -= CELL;
+              moved = true;
+            } else if (keysRef.current["arrowdown"] || keysRef.current["s"]) {
+              if (s.fy < H - 30) { s.fy += CELL; moved = true; }
+            } else if (keysRef.current["arrowleft"] || keysRef.current["a"]) {
+              s.fx = clamp(s.fx - CELL, CELL / 2, W - CELL / 2);
+              moved = true;
+            } else if (keysRef.current["arrowright"] || keysRef.current["d"]) {
+              s.fx = clamp(s.fx + CELL, CELL / 2, W - CELL / 2);
+              moved = true;
+            }
+            if (moved) s.jumpCd = 8;
+          }
+          // 移动所有浮木与车辆，循环出界
+          for (const lane of s.lanes) {
+            for (const it of lane.items) {
+              it.x += it.speed;
+              if (it.speed > 0 && it.x > W + 20) it.x = -it.w - 20;
+              if (it.speed < 0 && it.x < -it.w - 20) it.x = W + 20;
+            }
+          }
+          // 判断青蛙所在车道：河道须踩浮木，马路须躲车
+          for (const lane of s.lanes) {
+            if (Math.abs(s.fy - lane.y) > CELL / 2) continue;
+            if (lane.type === "river") {
+              let onLog = false;
+              for (const it of lane.items) {
+                if (s.fx >= it.x - 10 && s.fx <= it.x + it.w + 10) {
+                  onLog = true;
+                  s.fx += it.speed; // 站在浮木上跟随移动
+                  break;
+                }
+              }
+              if (!onLog) {
+                s.over = true;
+                s.overMsg = "掉进水里了！";
+              }
+            } else if (lane.type === "road") {
+              for (const it of lane.items) {
+                if (s.fx >= it.x - 10 && s.fx <= it.x + it.w + 10) {
+                  s.over = true;
+                  s.overMsg = "被车撞了！";
+                  break;
+                }
+              }
+            }
+          }
+          // 被浮木带出边界 = 落水
+          if (s.fx < 0 || s.fx > W) {
+            s.over = true;
+            s.overMsg = "掉进水里了！";
+          }
+          // 到达顶部 = 通关
+          if (s.fy < 60) s.win = true;
+        }
+        // 绘制草地背景
+        ctx.fillStyle = "#064e3b";
+        ctx.fillRect(0, 0, W, H);
+        // 河道
+        for (const lane of s.lanes) {
+          if (lane.type === "river") {
+            ctx.fillStyle = "#1e3a8a";
+            ctx.fillRect(0, lane.y - 16, W, CELL);
+          }
+        }
+        // 马路
+        for (const lane of s.lanes) {
+          if (lane.type === "road") {
+            ctx.fillStyle = "#334155";
+            ctx.fillRect(0, lane.y - 16, W, CELL);
+          }
+        }
+        // 浮木与车辆
+        for (const lane of s.lanes) {
+          for (const it of lane.items) {
+            if (lane.type === "river") {
+              ctx.fillStyle = "#92400e";
+              ctx.fillRect(it.x, lane.y - 10, it.w, 20);
+            } else {
+              ctx.fillStyle = "#ef4444";
+              ctx.fillRect(it.x, lane.y - 12, it.w, 24);
+              ctx.fillStyle = "#1e293b";
+              ctx.fillRect(it.x + 5, lane.y - 8, it.w - 10, 16);
+            }
+          }
+        }
+        // 终点线
+        ctx.fillStyle = "#fbbf24";
+        ctx.fillRect(0, 40, W, 4);
+        // 青蛙
+        ctx.fillStyle = "#84cc16";
+        ctx.beginPath();
+        ctx.arc(s.fx, s.fy, 14, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#1a2e05";
+        ctx.beginPath();
+        ctx.arc(s.fx - 5, s.fy - 3, 3, 0, Math.PI * 2);
+        ctx.arc(s.fx + 5, s.fy - 3, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      cancelAnimationFrame(raf);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const s = stateRef.current;
+  return (
+    <FullscreenWrapper>
+      <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+        <div className="flex flex-wrap items-center gap-3 mb-5">
+          <div className="rounded-2xl bg-lime-50 border border-lime-200 px-4 py-2">
+            <div className="text-[11px] font-semibold text-lime-600">状态</div>
+            <div className="text-xl font-bold text-lime-700">
+              {s.over ? "失败" : s.win ? "通关" : "前进中"}
+            </div>
+          </div>
+          <button
+            onClick={restart}
+            className="ml-auto rounded-xl bg-gradient-to-r from-lime-500 to-green-600 text-white font-semibold px-4 py-2 text-sm shadow-md flex items-center gap-1.5"
+          >
+            <RotateCcw className="w-4 h-4" />
+            重开
+          </button>
+        </div>
+        <div className="mx-auto max-w-[480px]">
+          <canvas
+            ref={canvasRef}
+            width={W}
+            height={H}
+            className="w-full rounded-2xl shadow-2xl"
+            style={{ aspectRatio: "6 / 7" }}
+          />
+        </div>
+        {s.over && (
+          <div className="mt-4 text-center text-rose-600 font-semibold">
+            {s.overMsg}点「重开」再来
+          </div>
+        )}
+        {s.win && (
+          <div className="mt-4 text-center text-emerald-600 font-semibold">
+            🎉 成功过河！
+          </div>
+        )}
+        <div className="mt-3 text-center text-xs text-slate-500">
+          方向键控制青蛙，过马路躲车，过河道踩浮木
+        </div>
+      </div>
+    </FullscreenWrapper>
+  );
+}
+
 // ===================== 主分发页 =====================
 export default function Playground() {
   const { id } = useParams();
@@ -5491,6 +7352,28 @@ export default function Playground() {
       case "game-match3":
         return <GameMatch3 />;
 
+      // ===== 新增 10 款游戏 =====
+      case "game-aircraft":
+        return <GameAircraft />;
+      case "game-breakout":
+        return <GameBreakout />;
+      case "game-flappy":
+        return <GameFlappy />;
+      case "game-snake-arena":
+        return <GameSnakeArena />;
+      case "game-pinball":
+        return <GamePinball />;
+      case "game-memory":
+        return <GameMemory />;
+      case "game-guess-number":
+        return <GameGuessNumber />;
+      case "game-space-invaders":
+        return <GameSpaceInvaders />;
+      case "game-brick-crush":
+        return <GameBrickCrush />;
+      case "game-frog-cross":
+        return <GameFrogCross />;
+
       // ===== 实用工具（6 款暂无试用的走 default=NotAvailable：桌面管理器/文件转换/截屏/屏笔/磁盘清理/放大镜）=====
       case "tool-calculator":
         return <ToolCalculator />;
@@ -5540,6 +7423,16 @@ export default function Playground() {
     "game-sudoku",
     "game-tank",
     "game-match3",
+    "game-aircraft",
+    "game-breakout",
+    "game-flappy",
+    "game-snake-arena",
+    "game-pinball",
+    "game-memory",
+    "game-guess-number",
+    "game-space-invaders",
+    "game-brick-crush",
+    "game-frog-cross",
   ].includes(meta.id);
 
   return (

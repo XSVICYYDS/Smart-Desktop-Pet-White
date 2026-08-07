@@ -89,6 +89,16 @@ export const games = [
   { name: "井字棋", description: "经典三连棋游戏", icon: "Grid", featured: false },
   { name: "打地鼠", description: "反应速度测试游戏", icon: "Hammer", featured: false },
   { name: "消消乐", description: "三消益智游戏", icon: "Candy", featured: false },
+  { name: "飞机大战", description: "经典纵向卷轴射击游戏", icon: "Plane", featured: true },
+  { name: "打砖块", description: "经典弹球打砖块游戏", icon: "Square", featured: false },
+  { name: "Flappy Bird", description: "像素鸟穿越管道", icon: "Bird", featured: true },
+  { name: "贪吃蛇大作战", description: "多AI蛇对战，抢食物变长", icon: "Worm", featured: false },
+  { name: "弹球台", description: "弹球碰撞钉子得分", icon: "CircleDot", featured: false },
+  { name: "记忆翻牌", description: "翻牌配对记忆游戏", icon: "Layers", featured: false },
+  { name: "数字猜猜猜", description: "猜数字逻辑游戏", icon: "Hash", featured: false },
+  { name: "太空侵略者", description: "经典外星人射击游戏", icon: "Rocket", featured: true },
+  { name: "弹球消砖", description: "物理弹球消除砖块", icon: "Circle", featured: false },
+  { name: "青蛙过河", description: "经典青蛙过河游戏", icon: "Frog", featured: false },
 ];
 
 export const tools = [
