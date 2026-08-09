@@ -77,6 +77,326 @@ function FullscreenWrapper({ children }: { children: ReactNode }) {
   );
 }
 
+// ============================================================
+// 🎨 游戏体验通用工具（所有游戏共享）
+// ============================================================
+
+/** localStorage key 前缀（与 authClient 不冲突） */
+const PG_LS_PREFIX = "pg_high_";
+
+/**
+ * 读取某游戏的最高分
+ * @param gameId 游戏 ID（如 "game-aircraft"）
+ * @returns 最高分，没记录返回 0
+ */
+function getHighScore(gameId: string): number {
+  try {
+    const raw = localStorage.getItem(PG_LS_PREFIX + gameId);
+    return raw ? Math.max(0, parseInt(raw, 10) || 0) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * 如果当前分 > 最高分，写入 localStorage 并返回 true（有新纪录）
+ */
+function updateHighScore(gameId: string, score: number): boolean {
+  try {
+    const cur = getHighScore(gameId);
+    if (score > cur) {
+      localStorage.setItem(PG_LS_PREFIX + gameId, String(score));
+      return true;
+    }
+  } catch {
+    /* ignore */
+  }
+  return false;
+}
+
+/**
+ * 通用粒子：圆形，用于爆炸/得分特效
+ */
+interface Particle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number; // 剩余寿命（帧）
+  maxLife: number;
+  color: string;
+  size: number;
+}
+
+/** 粒子管理：每帧 step() 更新+绘制 */
+function createParticleSystem() {
+  const list: Particle[] = [];
+  return {
+    list,
+    /** 产生 n 个爆炸粒子 */
+    burst(
+      x: number,
+      y: number,
+      count: number,
+      colors: string[],
+      speed = 4,
+      life = 28
+    ) {
+      for (let i = 0; i < count; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const s = speed * (0.3 + Math.random() * 0.9);
+        list.push({
+          x,
+          y,
+          vx: Math.cos(a) * s,
+          vy: Math.sin(a) * s,
+          life,
+          maxLife: life,
+          color: colors[(Math.random() * colors.length) | 0],
+          size: 2 + Math.random() * 3,
+        });
+      }
+    },
+    /** 更新并绘制所有粒子 */
+    step(ctx: CanvasRenderingContext2D, gravity = 0.12) {
+      for (let i = list.length - 1; i >= 0; i--) {
+        const p = list[i];
+        p.vy += gravity;
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life--;
+        if (p.life <= 0) {
+          list.splice(i, 1);
+          continue;
+        }
+        const alpha = Math.max(0, p.life / p.maxLife);
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    },
+    clear() {
+      list.length = 0;
+    },
+  };
+}
+
+/**
+ * 浮动文字（+10、连击、新纪录等）
+ */
+interface FloatText {
+  x: number;
+  y: number;
+  vy: number;
+  life: number;
+  maxLife: number;
+  text: string;
+  color: string;
+  size: number;
+}
+function createFloatTextSystem() {
+  const list: FloatText[] = [];
+  return {
+    list,
+    spawn(
+      x: number,
+      y: number,
+      text: string,
+      color = "#f59e0b",
+      size = 16,
+      life = 48
+    ) {
+      list.push({
+        x,
+        y,
+        vy: -1.4,
+        life,
+        maxLife: life,
+        text,
+        color,
+        size,
+      });
+    },
+    step(ctx: CanvasRenderingContext2D) {
+      for (let i = list.length - 1; i >= 0; i--) {
+        const f = list[i];
+        f.y += f.vy;
+        f.vy *= 0.97;
+        f.life--;
+        if (f.life <= 0) {
+          list.splice(i, 1);
+          continue;
+        }
+        const alpha = Math.max(0, f.life / f.maxLife);
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = f.color;
+        ctx.font = `bold ${f.size}px system-ui`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(f.text, f.x, f.y);
+      }
+      ctx.globalAlpha = 1;
+    },
+    clear() {
+      list.length = 0;
+    },
+  };
+}
+
+/**
+ * 把鼠标/触摸事件换算成 Canvas 逻辑坐标（考虑 CSS 缩放后的 clientRect）
+ */
+function canvasLogicalPoint(
+  canvas: HTMLCanvasElement,
+  clientX: number,
+  clientY: number,
+  W: number,
+  H: number
+) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: ((clientX - rect.left) / rect.width) * W,
+    y: ((clientY - rect.top) / rect.height) * H,
+  };
+}
+
+/**
+ * 游戏说明条：一行图标+操作说明，放在 Canvas 上方
+ */
+function GameHintBar({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 mb-4 text-[12px] md:text-[13px] text-slate-500">
+      {children}
+    </div>
+  );
+}
+/** 单个操作说明：图标文字一行 */
+function Hint({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 border border-slate-200 px-2.5 py-0.5">
+      {children}
+    </span>
+  );
+}
+/** 键位样式 */
+function Key({ k }: { k: string }) {
+  return (
+    <kbd className="inline-flex items-center justify-center min-w-[22px] h-5 px-1.5 rounded border border-slate-300 bg-white text-[10px] font-semibold text-slate-700 shadow-[inset_0_-1px_0_rgba(0,0,0,0.08)]">
+      {k}
+    </kbd>
+  );
+}
+
+/**
+ * 暂停按钮：放在 Canvas 右上角的小按钮（与全屏按钮不冲突）
+ */
+function PauseButton({
+  paused,
+  toggle,
+}: {
+  paused: boolean;
+  toggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      title={paused ? "继续" : "暂停"}
+      className="absolute top-3 right-14 z-30 w-9 h-9 rounded-full bg-white/90 backdrop-blur border border-slate-200 text-slate-700 hover:shadow-md hover:bg-white transition-all flex items-center justify-center"
+    >
+      {paused ? (
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+          <path d="M8 5v14l11-7z" />
+        </svg>
+      ) : (
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+          <path d="M6 5h4v14H6zm8 0h4v14h-4z" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
+/**
+ * 游戏结束/胜利 浮层：居中显示结果 + 最高分 + 新纪录印章 + 重开按钮
+ */
+function GameResultOverlay({
+  title,
+  success,
+  stats,
+  highLabel,
+  highScore,
+  newRecord,
+  onRestart,
+  primaryColor = "from-cyan-500 to-blue-600",
+}: {
+  title: string;
+  success?: boolean;
+  stats: { label: string; value: string | number }[];
+  highLabel: string;
+  highScore: number;
+  newRecord?: boolean;
+  onRestart: () => void;
+  primaryColor?: string;
+}) {
+  return (
+    <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/40 backdrop-blur-sm rounded-2xl animate-[fadeIn_0.2s_ease-out]">
+      <div className="w-[86%] max-w-sm bg-white rounded-3xl border border-white shadow-2xl p-6 text-center relative overflow-hidden">
+        {/* 顶部彩色色带 */}
+        <div
+          className={`absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${primaryColor}`}
+        />
+        {/* 新纪录印章 */}
+        {newRecord && (
+          <div className="absolute top-3 right-3 rotate-12 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 text-white text-[10px] font-bold px-2.5 py-1 shadow-lg">
+            🏆 新纪录
+          </div>
+        )}
+        {/* 标题 */}
+        <div className="mt-2 mb-4">
+          <div className="text-2xl mb-1">{success ? "🎉" : "💀"}</div>
+          <div className="text-lg font-bold text-slate-800">{title}</div>
+        </div>
+        {/* 统计卡片网格 */}
+        <div className="grid grid-cols-2 gap-2 mb-5">
+          {stats.map((s) => (
+            <div
+              key={s.label}
+              className="rounded-xl bg-slate-50 border border-slate-100 py-2.5"
+            >
+              <div className="text-[10px] font-semibold text-slate-500">
+                {s.label}
+              </div>
+              <div className="text-base font-bold text-slate-800">
+                {s.value}
+              </div>
+            </div>
+          ))}
+          <div className="col-span-2 rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 py-2.5">
+            <div className="text-[10px] font-semibold text-amber-600">
+              {highLabel}
+            </div>
+            <div className="text-base font-bold text-amber-700">
+              {highScore.toLocaleString()}
+            </div>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onRestart}
+          className={`w-full inline-flex items-center justify-center gap-2 py-2.5 rounded-xl bg-gradient-to-r ${primaryColor} text-white font-semibold shadow-md hover:shadow-lg active:translate-y-[1px] transition-all`}
+        >
+          <RotateCcw className="w-4 h-4" />
+          再来一局
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // 顶部导航条
 function PlaygroundHeader({
   meta,
@@ -204,12 +524,13 @@ function Game2048() {
   const SIZE = 4;
   const [grid, setGrid] = useState<number[][]>([]);
   const [score, setScore] = useState(0);
-  const [best, setBest] = useState<number>(() => {
-    const v = Number(localStorage.getItem("pg_2048_best") || 0);
-    return Number.isFinite(v) ? v : 0;
-  });
+  const [best, setBest] = useState<number>(() => getHighScore("game-2048"));
   const [over, setOver] = useState(false);
   const [won, setWon] = useState(false);
+  const [showResult, setShowResult] = useState(false);
+  const [newRecord, setNewRecord] = useState(false);
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
+  const resultTriggered = useRef(false);
 
   const initGrid = () => {
     const g = Array.from({ length: SIZE }, () => Array(SIZE).fill(0));
@@ -231,11 +552,30 @@ function Game2048() {
     setScore(0);
     setOver(false);
     setWon(false);
+    setShowResult(false);
+    setNewRecord(false);
+    resultTriggered.current = false;
   };
   useEffect(() => {
     restart();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const finishGame = (finalScore: number) => {
+    if (resultTriggered.current) return;
+    resultTriggered.current = true;
+    const nr = updateHighScore("game-2048", finalScore);
+    setBest(getHighScore("game-2048"));
+    setNewRecord(nr);
+    setTimeout(() => setShowResult(true), 300);
+  };
+
+  useEffect(() => {
+    if ((over || won) && !resultTriggered.current) {
+      finishGame(score);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [over, won]);
 
   const slideRow = (row: number[]) => {
     const arr = row.filter((v) => v);
@@ -257,10 +597,7 @@ function Game2048() {
     const g = grid.map((r) => r.slice());
     const before = JSON.stringify(g);
     let gain = 0;
-    const rot = dir === "up" || dir === "left";
-    const flip = dir === "down" || dir === "right";
     const access = (i: number, j: number): [number, number] => {
-      // 统一按行处理：先把方向都 rotate 成 "left"
       if (dir === "left") return [i, j];
       if (dir === "right") return [i, SIZE - 1 - j];
       if (dir === "up") return [j, i];
@@ -285,31 +622,15 @@ function Game2048() {
       setGrid(g);
       const ns = score + gain;
       setScore(ns);
-      if (ns > best) {
-        setBest(ns);
-        localStorage.setItem("pg_2048_best", String(ns));
-      }
-      // 判断是否还能移动
       let canMove = false;
       for (let r = 0; r < SIZE && !canMove; r++)
         for (let c = 0; c < SIZE; c++) {
-          if (!g[r][c]) {
-            canMove = true;
-            break;
-          }
-          if (c + 1 < SIZE && g[r][c] === g[r][c + 1]) {
-            canMove = true;
-            break;
-          }
-          if (r + 1 < SIZE && g[r][c] === g[r + 1][c]) {
-            canMove = true;
-            break;
-          }
+          if (!g[r][c]) { canMove = true; break; }
+          if (c + 1 < SIZE && g[r][c] === g[r][c + 1]) { canMove = true; break; }
+          if (r + 1 < SIZE && g[r][c] === g[r + 1][c]) { canMove = true; break; }
         }
       if (!canMove) setOver(true);
     }
-    void rot;
-    void flip;
   };
 
   useEffect(() => {
@@ -351,6 +672,9 @@ function Game2048() {
     );
   };
 
+  // 计算最大块
+  const maxTile = grid.length ? Math.max(...grid.flat()) : 0;
+
   return (
     <FullscreenWrapper>
       <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
@@ -363,67 +687,94 @@ function Game2048() {
           <div className="text-[11px] font-semibold text-amber-600">最佳</div>
           <div className="text-xl font-bold text-amber-700">{best}</div>
         </div>
-        <div className="ml-auto text-sm text-slate-500">
-          方向键 / 下方按钮移动
+        <div className="rounded-2xl bg-orange-50 border border-orange-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-orange-600">最大块</div>
+          <div className="text-xl font-bold text-orange-700">{maxTile || "-"}</div>
         </div>
         <button
           onClick={restart}
-          className="rounded-xl bg-gradient-to-r from-pink-500 to-rose-500 text-white font-semibold shadow-md hover:shadow-lg px-4 py-2 text-sm flex items-center gap-1.5"
+          className="ml-auto rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-semibold shadow-md hover:shadow-lg px-4 py-2 text-sm flex items-center gap-1.5"
         >
           <RotateCcw className="w-4 h-4" />
           新游戏
         </button>
       </div>
 
+      <GameHintBar>
+        <Hint>⬆️ 方向键 <Key k="↑" /><Key k="↓" /><Key k="←" /><Key k="→" /> 合并方块</Hint>
+        <Hint>📱 滑动棋盘或按下方按钮</Hint>
+        <Hint>🎯 合成 2048 即获胜</Hint>
+      </GameHintBar>
+
       <div className="relative mx-auto max-w-sm">
-        <div className="rounded-2xl bg-gradient-to-br from-pink-100 to-rose-100 p-3 grid grid-cols-4 gap-3 shadow-inner">
-          {grid.flat().map((v, i) => (
-            <div key={i}>{tile(v)}</div>
-          ))}
-        </div>
-        {(over || won) && (
-          <div className="absolute inset-0 rounded-2xl bg-black/55 backdrop-blur-sm flex items-center justify-center">
-            <div className="rounded-2xl bg-white p-6 text-center shadow-2xl max-w-xs">
-              <h3 className="text-2xl font-bold text-slate-800">
-                {won ? "🎉 你合成了 2048！" : "游戏结束"}
-              </h3>
-              <p className="mt-2 text-slate-600">得分：{score}</p>
-              <button
-                onClick={restart}
-                className="mt-4 rounded-xl bg-gradient-to-r from-pink-500 to-rose-500 text-white font-semibold shadow px-5 py-2"
-              >
-                再来一局
-              </button>
-            </div>
+        <div className="relative">
+          <div
+            className="rounded-2xl bg-gradient-to-br from-amber-100 to-orange-100 p-3 grid grid-cols-4 gap-3 shadow-inner touch-none"
+            onTouchStart={(e) => {
+              const t = e.touches[0];
+              touchStart.current = { x: t.clientX, y: t.clientY };
+            }}
+            onTouchEnd={(e) => {
+              const s = touchStart.current;
+              if (!s) return;
+              const t = e.changedTouches[0];
+              const dx = t.clientX - s.x;
+              const dy = t.clientY - s.y;
+              if (Math.abs(dx) < 24 && Math.abs(dy) < 24) return;
+              if (Math.abs(dx) > Math.abs(dy)) {
+                move(dx > 0 ? "right" : "left");
+              } else {
+                move(dy > 0 ? "down" : "up");
+              }
+              touchStart.current = null;
+            }}
+          >
+            {grid.flat().map((v, i) => (
+              <div key={i}>{tile(v)}</div>
+            ))}
           </div>
-        )}
+          {showResult && (
+            <GameResultOverlay
+              title={won ? "合成 2048，太棒了！" : "无法移动，游戏结束"}
+              success={won}
+              stats={[
+                { label: "本局得分", value: score },
+                { label: "最大方块", value: maxTile || 0 },
+              ]}
+              highLabel="历史最高分"
+              highScore={best}
+              newRecord={newRecord}
+              onRestart={restart}
+              primaryColor="from-amber-500 to-orange-600"
+            />
+          )}
+        </div>
       </div>
 
-      {/* 触控按钮（手机也能玩）*/}
       <div className="mt-5 grid grid-cols-3 gap-2 max-w-[240px] mx-auto">
         <div />
         <button
           onClick={() => move("up")}
-          className="rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 font-bold"
+          className="rounded-xl bg-amber-100 hover:bg-amber-200 active:bg-amber-300 text-amber-800 py-3 font-bold transition-all"
         >
           ↑
         </button>
         <div />
         <button
           onClick={() => move("left")}
-          className="rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 font-bold"
+          className="rounded-xl bg-amber-100 hover:bg-amber-200 active:bg-amber-300 text-amber-800 py-3 font-bold transition-all"
         >
           ←
         </button>
         <button
           onClick={() => move("down")}
-          className="rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 font-bold"
+          className="rounded-xl bg-amber-100 hover:bg-amber-200 active:bg-amber-300 text-amber-800 py-3 font-bold transition-all"
         >
           ↓
         </button>
         <button
           onClick={() => move("right")}
-          className="rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 font-bold"
+          className="rounded-xl bg-amber-100 hover:bg-amber-200 active:bg-amber-300 text-amber-800 py-3 font-bold transition-all"
         >
           →
         </button>
@@ -435,160 +786,340 @@ function Game2048() {
 
 // ===================== 贪吃蛇 =====================
 function GameSnake() {
-  const W = 28,
-    H = 20;
-  const [snake, setSnake] = useState<[number, number][]>([
-    [10, 7],
-    [9, 7],
-    [8, 7],
-  ]);
-  const [dir, setDir] = useState<[number, number]>([1, 0]);
-  const [food, setFood] = useState<[number, number]>([15, 7]);
-  const [score, setScore] = useState(0);
-  const [alive, setAlive] = useState(true);
-  const [speed, setSpeed] = useState(180);
+  const COLS = 28, ROWS = 20;
+  const CW = 24, CH = 24;
+  const W = COLS * CW, H = ROWS * CH;
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
+  const particles = useMemo(() => createParticleSystem(), []);
+  const floats = useMemo(() => createFloatTextSystem(), []);
+
+  type Dir = [number, number];
+  type Food = { x: number; y: number; bonus: boolean };
+  const stateRef = useRef({
+    snake: [[10, 7], [9, 7], [8, 7]] as [number, number][],
+    dir: [1, 0] as Dir,
+    nextDir: [1, 0] as Dir,
+    food: { x: 15, y: 7, bonus: false } as Food,
+    score: 0,
+    alive: true,
+    paused: false,
+    shake: 0,
+    tickCd: 0,
+    tickPer: 9,
+    highScore: 0,
+    newRecord: false,
+  });
+  const [paused, setPaused] = useState(false);
+  const [uiScore, setUiScore] = useState(0);
+  const [showResult, setShowResult] = useState(false);
+  const [highScore, setHighScore] = useState(0);
+  const [newRecord, setNewRecord] = useState(false);
+
+  const spawnFood = () => {
+    const s = stateRef.current;
+    const empty: [number, number][] = [];
+    for (let y = 0; y < ROWS; y++) {
+      for (let x = 0; x < COLS; x++) {
+        if (!s.snake.some((p) => p[0] === x && p[1] === y)) empty.push([x, y]);
+      }
+    }
+    const [fx, fy] = empty[Math.floor(Math.random() * empty.length)];
+    const bonus = Math.random() < 0.12;
+    s.food = { x: fx, y: fy, bonus };
+  };
+
+  const changeDir = (nd: Dir) => {
+    const s = stateRef.current;
+    const cur = s.dir;
+    if (cur[0] + nd[0] === 0 && cur[1] + nd[1] === 0) return;
+    s.nextDir = nd;
+  };
+
+  const togglePause = () => {
+    const s = stateRef.current;
+    if (!s.alive) return;
+    s.paused = !s.paused;
+    setPaused(s.paused);
+  };
 
   const restart = () => {
-    setSnake([
-      [10, 7],
-      [9, 7],
-      [8, 7],
-    ]);
-    setDir([1, 0]);
-    setFood([15, 7]);
-    setScore(0);
-    setAlive(true);
-    setSpeed(180);
+    const s = stateRef.current;
+    s.snake = [[10, 7], [9, 7], [8, 7]];
+    s.dir = [1, 0];
+    s.nextDir = [1, 0];
+    s.score = 0;
+    s.alive = true;
+    s.paused = false;
+    s.shake = 0;
+    s.tickCd = 0;
+    s.tickPer = 9;
+    s.newRecord = false;
+    spawnFood();
+    particles.clear();
+    floats.clear();
+    setPaused(false);
+    setUiScore(0);
+    setShowResult(false);
+    setHighScore(getHighScore("game-snake"));
+    setNewRecord(false);
+  };
+
+  const die = () => {
+    const s = stateRef.current;
+    if (!s.alive) return;
+    s.alive = false;
+    s.shake = 8;
+    const nr = updateHighScore("game-snake", s.score);
+    s.newRecord = nr;
+    setHighScore(getHighScore("game-snake"));
+    setNewRecord(nr);
+    setTimeout(() => setShowResult(true), 450);
   };
 
   useEffect(() => {
-    if (!alive) return;
-    const id = setInterval(() => {
-      setSnake((s) => {
-        const head = s[0];
-        const nh: [number, number] = [head[0] + dir[0], head[1] + dir[1]];
-        if (
-          nh[0] < 0 ||
-          nh[0] >= W ||
-          nh[1] < 0 ||
-          nh[1] >= H ||
-          s.some((p) => p[0] === nh[0] && p[1] === nh[1])
-        ) {
-          setAlive(false);
-          return s;
-        }
-        const next = [nh, ...s];
-        if (nh[0] === food[0] && nh[1] === food[1]) {
-          setScore((x) => x + 10);
-          setSpeed((v) => (v > 100 ? v - 3 : v));
-          const empty: [number, number][] = [];
-          for (let y = 0; y < H; y++)
-            for (let x = 0; x < W; x++)
-              if (!next.some((p) => p[0] === x && p[1] === y)) empty.push([x, y]);
-          setFood(empty[Math.floor(Math.random() * empty.length)]);
-          return next;
-        }
-        next.pop();
-        return next;
-      });
-    }, speed);
-    return () => clearInterval(id);
-  }, [dir, alive, speed, food]);
-
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => {
+    restart();
+    const down = (e: KeyboardEvent) => {
       const k = e.key;
-      if (k === "ArrowUp" && dir[1] !== 1) setDir([0, -1]);
-      if (k === "ArrowDown" && dir[1] !== -1) setDir([0, 1]);
-      if (k === "ArrowLeft" && dir[0] !== 1) setDir([-1, 0]);
-      if (k === "ArrowRight" && dir[0] !== -1) setDir([1, 0]);
+      if (k === "ArrowUp" || k === "w" || k === "W") { changeDir([0, -1]); e.preventDefault(); }
+      if (k === "ArrowDown" || k === "s" || k === "S") { changeDir([0, 1]); e.preventDefault(); }
+      if (k === "ArrowLeft" || k === "a" || k === "A") { changeDir([-1, 0]); e.preventDefault(); }
+      if (k === "ArrowRight" || k === "d" || k === "D") { changeDir([1, 0]); e.preventDefault(); }
+      if (k === "p" || k === "P" || k === " ") { togglePause(); e.preventDefault(); }
     };
-    window.addEventListener("keydown", h);
-    return () => window.removeEventListener("keydown", h);
-  }, [dir]);
+    window.addEventListener("keydown", down);
+    let raf = 0;
+    const loop = () => {
+      const c = canvasRef.current;
+      if (c) {
+        const ctx = c.getContext("2d")!;
+        const s = stateRef.current;
 
+        if (!s.paused && s.alive) {
+          s.tickCd++;
+          if (s.tickCd >= s.tickPer) {
+            s.tickCd = 0;
+            s.dir = s.nextDir;
+            const head = s.snake[0];
+            const nh: [number, number] = [head[0] + s.dir[0], head[1] + s.dir[1]];
+            if (nh[0] < 0 || nh[0] >= COLS || nh[1] < 0 || nh[1] >= ROWS || s.snake.some((p) => p[0] === nh[0] && p[1] === nh[1])) {
+              die();
+            } else {
+              const next = [nh, ...s.snake];
+              const fx = s.food.x, fy = s.food.y;
+              const fcx = fx * CW + CW / 2, fcy = fy * CH + CH / 2;
+              if (nh[0] === fx && nh[1] === fy) {
+                if (s.food.bonus) {
+                  s.score += 50;
+                  particles.burst(fcx, fcy, 18, ["#f97316", "#fb923c", "#fdba74", "#fbbf24"], 5, 32);
+                  floats.spawn(fcx, fcy, "+50", "#f97316", 24, 56);
+                } else {
+                  s.score += 10;
+                  particles.burst(fcx, fcy, 10, ["#fbbf24", "#f59e0b", "#fde68a", "#34d399"], 4, 28);
+                  floats.spawn(fcx, fcy, "+10", "#fbbf24", 16, 48);
+                }
+                if (s.tickPer > 4) s.tickPer = Math.max(4, s.tickPer - 1);
+                s.snake = next;
+                spawnFood();
+                setUiScore(s.score);
+              } else {
+                next.pop();
+                s.snake = next;
+              }
+            }
+          }
+        }
+
+        const shaked = s.shake > 0;
+        if (shaked) {
+          ctx.save();
+          ctx.translate((Math.random() - 0.5) * s.shake * 2, (Math.random() - 0.5) * s.shake * 2);
+          s.shake--;
+        }
+
+        ctx.fillStyle = "#0f172a";
+        ctx.fillRect(0, 0, W, H);
+
+        ctx.strokeStyle = "rgba(148,163,184,0.07)";
+        ctx.lineWidth = 1;
+        for (let x = 1; x < COLS; x++) {
+          ctx.beginPath(); ctx.moveTo(x * CW, 0); ctx.lineTo(x * CW, H); ctx.stroke();
+        }
+        for (let y = 1; y < ROWS; y++) {
+          ctx.beginPath(); ctx.moveTo(0, y * CH); ctx.lineTo(W, y * CH); ctx.stroke();
+        }
+
+        for (let i = s.snake.length - 1; i >= 0; i--) {
+          const [sx, sy] = s.snake[i];
+          const px = sx * CW, py = sy * CH;
+          if (i === 0) {
+            ctx.fillStyle = "#6ee7b7";
+            ctx.fillRect(px + 2, py + 2, CW - 4, CH - 4);
+            ctx.fillStyle = "rgba(0,0,0,0.25)";
+            ctx.fillRect(px + 5, py + 5, CW - 10, CH - 10);
+            ctx.fillStyle = "#fff";
+            const dx = s.dir[0], dy = s.dir[1];
+            const eye1x = px + CW / 2 + dx * 3 - dy * 4 - 1;
+            const eye1y = py + CH / 2 + dy * 3 + dx * 4 - 1;
+            const eye2x = px + CW / 2 + dx * 3 + dy * 4 - 1;
+            const eye2y = py + CH / 2 + dy * 3 - dx * 4 - 1;
+            ctx.beginPath(); ctx.arc(eye1x, eye1y, 2, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(eye2x, eye2y, 2, 0, Math.PI * 2); ctx.fill();
+          } else {
+            const t = i / s.snake.length;
+            ctx.fillStyle = `rgb(${Math.round(16 + t * 40)}, ${Math.round(185 + (1 - t) * 30)}, ${Math.round(129 + (1 - t) * 20)})`;
+            ctx.fillRect(px + 3, py + 3, CW - 6, CH - 6);
+          }
+        }
+
+        const { x: fdx, y: fdy, bonus: fdbonus } = s.food;
+        const fcpx = fdx * CW + CW / 2, fcpy = fdy * CH + CH / 2;
+        if (fdbonus) {
+          const pulse = 1 + Math.sin(Date.now() / 120) * 0.12;
+          ctx.fillStyle = "#f97316";
+          ctx.beginPath(); ctx.arc(fcpx, fcpy, CW / 2 - 3, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = "#fed7aa";
+          ctx.beginPath(); ctx.arc(fcpx, fcpy, (CW / 2 - 7) * pulse, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = "#fff7ed";
+          ctx.beginPath(); ctx.arc(fcpx - 2, fcpy - 2, 2, 0, Math.PI * 2); ctx.fill();
+        } else {
+          ctx.fillStyle = "#f43f5e";
+          ctx.beginPath(); ctx.arc(fcpx, fcpy, CW / 2 - 4, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = "#fecdd3";
+          ctx.beginPath(); ctx.arc(fcpx - 2, fcpy - 2, 2, 0, Math.PI * 2); ctx.fill();
+        }
+
+        particles.step(ctx, 0.08);
+        floats.step(ctx);
+
+        if (shaked) {
+          ctx.restore();
+        }
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => {
+      window.removeEventListener("keydown", down);
+      cancelAnimationFrame(raf);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const s = stateRef.current;
   return (
     <FullscreenWrapper>
       <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
-      <div className="flex flex-wrap items-center gap-3 mb-5">
-        <div className="rounded-2xl bg-emerald-50 border border-emerald-200 px-4 py-2">
-          <div className="text-[11px] font-semibold text-emerald-700">长度</div>
-          <div className="text-xl font-bold text-emerald-800">{snake.length}</div>
+        <div className="flex flex-wrap items-center gap-3 mb-5">
+          <div className="rounded-2xl bg-emerald-50 border border-emerald-200 px-4 py-2">
+            <div className="text-[11px] font-semibold text-emerald-700">长度</div>
+            <div className="text-xl font-bold text-emerald-800">{s.snake.length}</div>
+          </div>
+          <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-2">
+            <div className="text-[11px] font-semibold text-amber-600">得分</div>
+            <div className="text-xl font-bold text-amber-700">{uiScore}</div>
+          </div>
+          <div className="rounded-2xl bg-pink-50 border border-pink-200 px-4 py-2">
+            <div className="text-[11px] font-semibold text-pink-600">最高分</div>
+            <div className="text-xl font-bold text-pink-700">{highScore}</div>
+          </div>
+          <button
+            onClick={restart}
+            className="ml-auto rounded-xl bg-gradient-to-r from-emerald-500 to-green-600 text-white font-semibold shadow-md hover:shadow-lg px-4 py-2 text-sm flex items-center gap-1.5"
+          >
+            <RotateCcw className="w-4 h-4" />
+            重开
+          </button>
         </div>
-        <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-2">
-          <div className="text-[11px] font-semibold text-amber-600">得分</div>
-          <div className="text-xl font-bold text-amber-700">{score}</div>
+
+        <GameHintBar>
+          <Hint>🎮 方向键 / WASD <Key k="↑" /><Key k="↓" /><Key k="←" /><Key k="→" /> 移动</Hint>
+          <Hint>⏸️ <Key k="P" /> / 空格 暂停</Hint>
+          <Hint>📱 滑动屏幕或按下方按键</Hint>
+        </GameHintBar>
+
+        <div className="mx-auto max-w-xl relative">
+          <div className="relative rounded-2xl bg-gradient-to-br from-slate-900 to-slate-800 p-2 shadow-2xl overflow-hidden">
+            <canvas
+              ref={canvasRef}
+              width={W}
+              height={H}
+              className="w-full rounded-xl block"
+              style={{ aspectRatio: `${COLS}/${ROWS}`, imageRendering: "pixelated" }}
+              onTouchStart={(e) => {
+                const t = e.touches[0];
+                const p = canvasLogicalPoint(canvasRef.current!, t.clientX, t.clientY, W, H);
+                touchStart.current = p;
+              }}
+              onTouchEnd={(e) => {
+                const start = touchStart.current;
+                if (!start) return;
+                const t = e.changedTouches[0];
+                const end = canvasLogicalPoint(canvasRef.current!, t.clientX, t.clientY, W, H);
+                const dx = end.x - start.x, dy = end.y - start.y;
+                if (Math.abs(dx) < 20 && Math.abs(dy) < 20) return;
+                if (Math.abs(dx) > Math.abs(dy)) {
+                  changeDir(dx > 0 ? [1, 0] : [-1, 0]);
+                } else {
+                  changeDir(dy > 0 ? [0, 1] : [0, -1]);
+                }
+                touchStart.current = null;
+              }}
+            />
+            <PauseButton paused={paused} toggle={togglePause} />
+            {paused && s.alive && (
+              <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm rounded-xl">
+                <div className="text-white text-2xl font-bold flex items-center gap-3">
+                  <Play className="w-7 h-7" /> 已暂停
+                </div>
+              </div>
+            )}
+            {showResult && (
+              <GameResultOverlay
+                title={s.alive ? "挑战中" : "游戏结束"}
+                success={false}
+                stats={[
+                  { label: "本局得分", value: s.score },
+                  { label: "蛇身长度", value: s.snake.length },
+                ]}
+                highLabel="最高分"
+                highScore={highScore}
+                newRecord={newRecord}
+                onRestart={restart}
+                primaryColor="from-emerald-500 to-green-600"
+              />
+            )}
+          </div>
         </div>
-        <button
-          onClick={restart}
-          className="ml-auto rounded-xl bg-gradient-to-r from-emerald-500 to-green-600 text-white font-semibold shadow-md hover:shadow-lg px-4 py-2 text-sm flex items-center gap-1.5"
-        >
-          <RotateCcw className="w-4 h-4" />
-          重开
-        </button>
-      </div>
-      <div className="mx-auto max-w-xl rounded-2xl bg-gradient-to-br from-slate-900 to-slate-800 p-3">
-        <div
-          className="grid gap-[2px] aspect-[7/5]"
-          style={{ gridTemplateColumns: `repeat(${W}, minmax(0,1fr))` }}
-        >
-          {Array.from({ length: H }).flatMap((_, y) =>
-            Array.from({ length: W }).map((__, x) => {
-              const isHead = snake[0][0] === x && snake[0][1] === y;
-              const isBody = !isHead && snake.some((p) => p[0] === x && p[1] === y);
-              const isFood = food[0] === x && food[1] === y;
-              return (
-                <div
-                  key={`${x}-${y}`}
-                  className={`rounded-sm ${
-                    isHead
-                      ? "bg-emerald-300 shadow-[inset_0_0_6px_rgba(0,0,0,0.3)]"
-                      : isBody
-                      ? "bg-emerald-400"
-                      : isFood
-                      ? "bg-rose-400 rounded-full"
-                      : "bg-slate-900/60"
-                  }`}
-                />
-              );
-            })
-          )}
+
+        <div className="mt-5 grid grid-cols-3 gap-2 max-w-[240px] mx-auto select-none">
+          <div />
+          <button
+            onClick={() => changeDir([0, -1])}
+            className="rounded-xl bg-emerald-100 hover:bg-emerald-200 active:bg-emerald-300 text-emerald-700 py-3 font-bold text-lg transition-all"
+          >
+            ↑
+          </button>
+          <div />
+          <button
+            onClick={() => changeDir([-1, 0])}
+            className="rounded-xl bg-emerald-100 hover:bg-emerald-200 active:bg-emerald-300 text-emerald-700 py-3 font-bold text-lg transition-all"
+          >
+            ←
+          </button>
+          <button
+            onClick={() => changeDir([0, 1])}
+            className="rounded-xl bg-emerald-100 hover:bg-emerald-200 active:bg-emerald-300 text-emerald-700 py-3 font-bold text-lg transition-all"
+          >
+            ↓
+          </button>
+          <button
+            onClick={() => changeDir([1, 0])}
+            className="rounded-xl bg-emerald-100 hover:bg-emerald-200 active:bg-emerald-300 text-emerald-700 py-3 font-bold text-lg transition-all"
+          >
+            →
+          </button>
         </div>
-      </div>
-      {/* 移动端方向键 */}
-      <div className="mt-5 grid grid-cols-3 gap-2 max-w-[240px] mx-auto">
-        <div />
-        <button
-          onClick={() => dir[1] !== 1 && setDir([0, -1])}
-          className="rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-700 py-3 font-bold"
-        >
-          ↑
-        </button>
-        <div />
-        <button
-          onClick={() => dir[0] !== 1 && setDir([-1, 0])}
-          className="rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-700 py-3 font-bold"
-        >
-          ←
-        </button>
-        <button
-          onClick={() => dir[1] !== -1 && setDir([0, 1])}
-          className="rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-700 py-3 font-bold"
-        >
-          ↓
-        </button>
-        <button
-          onClick={() => dir[0] !== -1 && setDir([1, 0])}
-          className="rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-700 py-3 font-bold"
-        >
-          →
-        </button>
-      </div>
-      {!alive && (
-        <div className="mt-4 text-center text-rose-600 font-semibold">
-          游戏结束！得分：{score}，点「重开」继续～
-        </div>
-      )}
       </div>
     </FullscreenWrapper>
   );
@@ -599,6 +1130,10 @@ function GameTTT() {
   const [board, setBoard] = useState<("X" | "O" | null)[]>(Array(9).fill(null));
   const [xTurn, setXTurn] = useState(true);
   const [scores, setScores] = useState({ X: 0, O: 0, D: 0 });
+  const [highScore, setHighScore] = useState<number>(() => getHighScore("game-ttt"));
+  const [showResult, setShowResult] = useState(false);
+  const [newRecord, setNewRecord] = useState(false);
+  const lastResultRef = useRef<string | null>(null);
   const lines = [
     [0, 1, 2],
     [3, 4, 5],
@@ -618,6 +1153,21 @@ function GameTTT() {
   };
   const res = winner(board);
   const winLine = res?.line || [];
+
+  // 计算综合分 score = wins*3 + draws*1，取 X 方分数作为综合
+  const compositeScore = () => scores.X * 3 + scores.D * 1;
+
+  // 当 res 出现且本回合还没触发过，更新最高分 + 展示浮层
+  useEffect(() => {
+    if (!res || lastResultRef.current === JSON.stringify(board)) return;
+    lastResultRef.current = JSON.stringify(board);
+    const s = compositeScore();
+    const nr = updateHighScore("game-ttt", s);
+    setHighScore(getHighScore("game-ttt"));
+    setNewRecord(nr);
+    setTimeout(() => setShowResult(true), 400);
+  }, [res]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const place = (i: number) => {
     if (board[i] || res) return;
     const nb = board.slice();
@@ -635,6 +1185,26 @@ function GameTTT() {
     }
     setXTurn(!xTurn);
   };
+
+  const newRound = () => {
+    setBoard(Array(9).fill(null));
+    setXTurn(true);
+    setShowResult(false);
+    setNewRecord(false);
+  };
+
+  const resetAll = () => {
+    setBoard(Array(9).fill(null));
+    setXTurn(true);
+    setScores({ X: 0, O: 0, D: 0 });
+    setShowResult(false);
+    setNewRecord(false);
+    lastResultRef.current = null;
+  };
+
+  const resultTitle = res?.win === "D" ? "本回合平局" : `🎉 ${res?.win} 获胜！`;
+  const resultSuccess = res?.win !== null && res?.win !== "D" && res?.win === "X";
+
   return (
     <FullscreenWrapper>
       <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
@@ -651,47 +1221,80 @@ function GameTTT() {
           <div className="text-[11px] font-semibold text-rose-600">O 胜</div>
           <div className="text-xl font-bold text-rose-700">{scores.O}</div>
         </div>
-        <div className="ml-auto text-sm text-slate-600 font-medium">
-          当前：
-          <span className={xTurn ? "text-sky-600" : "text-rose-600"}>
+        <div className="rounded-2xl bg-slate-100 border border-slate-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-slate-500">综合分</div>
+          <div className="text-xl font-bold text-slate-700">{compositeScore()}</div>
+        </div>
+        <div className="ml-auto text-sm text-slate-600 font-medium flex items-center gap-2">
+          <span>当前：</span>
+          <span
+            className={`inline-flex items-center justify-center w-8 h-8 rounded-lg font-black ${
+              xTurn ? "bg-sky-100 text-sky-600" : "bg-rose-100 text-rose-600"
+            }`}
+          >
             {xTurn ? "X" : "O"}
           </span>
         </div>
         <button
-          onClick={() => {
-            setBoard(Array(9).fill(null));
-            setXTurn(true);
-          }}
+          onClick={resetAll}
           className="rounded-xl bg-gradient-to-r from-slate-700 to-slate-900 text-white font-semibold px-4 py-2 text-sm"
         >
-          清空
+          重置比分
         </button>
       </div>
-      <div className="mx-auto max-w-xs aspect-square grid grid-cols-3 gap-3">
-        {board.map((v, i) => {
-          const win = winLine.includes(i);
-          return (
-            <button
-              key={i}
-              onClick={() => place(i)}
-              className={`rounded-2xl text-4xl md:text-5xl font-black transition-all border-2 ${
-                win
-                  ? "bg-gradient-to-br from-amber-200 to-orange-300 border-amber-400 shadow-lg"
-                  : "bg-slate-50 border-slate-200 hover:bg-slate-100"
-              } ${
-                v === "X" ? "text-sky-600" : v === "O" ? "text-rose-600" : ""
-              }`}
-            >
-              {v}
-            </button>
-          );
-        })}
-      </div>
-      {res && (
-        <div className="mt-5 text-center text-lg font-bold text-slate-800">
-          {res.win === "D" ? "平局" : `🎉 ${res.win} 获胜！`}
+
+      <GameHintBar>
+        <Hint>👆 点击格子落子，先连成 3 子获胜</Hint>
+        <Hint>🔵 <Key k="X" /> 先手 · 🔴 <Key k="O" /> 后手</Hint>
+        <Hint>📊 综合分 = 胜×3 + 平×1</Hint>
+      </GameHintBar>
+
+      <div className="relative mx-auto max-w-xs">
+        <div className="aspect-square grid grid-cols-3 gap-3">
+          {board.map((v, i) => {
+            const win = winLine.includes(i);
+            return (
+              <button
+                key={i}
+                onClick={() => place(i)}
+                className={`rounded-2xl text-4xl md:text-5xl font-black transition-all border-2 ${
+                  win
+                    ? "bg-gradient-to-br from-slate-300 to-slate-400 border-slate-500 shadow-lg scale-[1.02]"
+                    : "bg-slate-50 border-slate-200 hover:bg-slate-100 active:scale-95"
+                } ${
+                  v === "X" ? "text-sky-600" : v === "O" ? "text-rose-600" : ""
+                }`}
+              >
+                {v}
+              </button>
+            );
+          })}
         </div>
-      )}
+        {showResult && res && (
+          <GameResultOverlay
+            title={resultTitle}
+            success={resultSuccess}
+            stats={[
+              { label: "X 胜场", value: scores.X },
+              { label: "平局", value: scores.D },
+              { label: "O 胜场", value: scores.O },
+            ]}
+            highLabel="历史最高综合分"
+            highScore={highScore}
+            newRecord={newRecord}
+            onRestart={newRound}
+            primaryColor="from-slate-600 to-slate-800"
+          />
+        )}
+      </div>
+      <div className="mt-4 text-center">
+        <button
+          onClick={newRound}
+          className="rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-5 py-2 text-sm"
+        >
+          下一局（不清比分）
+        </button>
+      </div>
       </div>
     </FullscreenWrapper>
   );
@@ -1252,6 +1855,12 @@ function GameWhack() {
   const [time, setTime] = useState(30);
   const [playing, setPlaying] = useState(false);
   const [mole, setMole] = useState<{ i: number; kind: "mole" | "gold" | "bomb" | "chick" } | null>(null);
+  const [highScore, setHighScore] = useState<number>(() => getHighScore("game-whack"));
+  const [showResult, setShowResult] = useState(false);
+  const [newRecord, setNewRecord] = useState(false);
+  const [hits, setHits] = useState(0);
+  const [misses, setMisses] = useState(0);
+
   useEffect(() => {
     if (!playing) return;
     const t = setInterval(() => setTime((x) => x - 1), 1000);
@@ -1270,20 +1879,39 @@ function GameWhack() {
     return () => clearInterval(id);
   }, [playing]);
   useEffect(() => {
-    if (playing && time <= 0) setPlaying(false);
+    if (playing && time <= 0) {
+      setPlaying(false);
+      setMole(null);
+      const nr = updateHighScore("game-whack", score);
+      setHighScore(getHighScore("game-whack"));
+      setNewRecord(nr);
+      setTimeout(() => setShowResult(true), 400);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [time, playing]);
+
   const hit = (i: number) => {
-    if (!playing || !mole || mole.i !== i) return;
+    if (!playing || !mole || mole.i !== i) {
+      if (playing) setMisses((m) => m + 1);
+      return;
+    }
     const s =
       mole.kind === "mole" ? 10 : mole.kind === "gold" ? 50 : mole.kind === "chick" ? 30 : -20;
     setScore((v) => Math.max(0, v + s));
+    if (mole.kind !== "bomb") setHits((h) => h + 1);
     setMole(null);
   };
+
   const start = () => {
     setScore(0);
     setTime(30);
     setPlaying(true);
+    setHits(0);
+    setMisses(0);
+    setShowResult(false);
+    setNewRecord(false);
   };
+
   const styleOf = (i: number) => {
     if (!mole || mole.i !== i) return "bg-amber-700/80";
     return mole.kind === "bomb"
@@ -1304,6 +1932,9 @@ function GameWhack() {
         ? "🐥"
         : "🐹"
       : "🕳";
+
+  const accuracy = hits + misses > 0 ? Math.round((hits / (hits + misses)) * 100) : 0;
+
   return (
     <FullscreenWrapper>
       <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
@@ -1316,25 +1947,58 @@ function GameWhack() {
           <div className="text-[11px] font-semibold text-rose-700">剩余</div>
           <div className="text-xl font-bold text-rose-700">{time}s</div>
         </div>
+        <div className="rounded-2xl bg-yellow-50 border border-yellow-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-yellow-700">命中</div>
+          <div className="text-xl font-bold text-yellow-800">{hits}</div>
+        </div>
+        <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-amber-600">最佳</div>
+          <div className="text-xl font-bold text-amber-700">{highScore}</div>
+        </div>
         <button
           onClick={start}
-          className="ml-auto rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-bold shadow-lg px-5 py-3"
+          className="ml-auto rounded-2xl bg-gradient-to-r from-amber-500 to-yellow-500 text-white font-bold shadow-lg px-5 py-3 hover:shadow-xl transition-all"
         >
           {playing ? "重新开始" : time > 0 ? "开始游戏" : "再来一局"}
         </button>
       </div>
-      <div className="mx-auto max-w-md grid grid-cols-3 gap-3 aspect-square">
-        {Array.from({ length: 9 }).map((_, i) => (
-          <button
-            key={i}
-            onClick={() => hit(i)}
-            className={`rounded-3xl border-4 border-amber-900/80 ${styleOf(
-              i
-            )} text-4xl md:text-6xl transition-all shadow-inner active:scale-95`}
-          >
-            {faceOf(i)}
-          </button>
-        ))}
+
+      <GameHintBar>
+        <Hint>👆 点击冒出的角色得分（别点炸弹）</Hint>
+        <Hint>🐹 普通 +10 · ⭐ 金鼠 +50 · 🐥 小鸡 +30 · 💣 炸弹 -20</Hint>
+        <Hint>⏱️ 限时 30 秒，争取高分！</Hint>
+      </GameHintBar>
+
+      <div className="relative mx-auto max-w-md">
+        <div className="grid grid-cols-3 gap-3 aspect-square">
+          {Array.from({ length: 9 }).map((_, i) => (
+            <button
+              key={i}
+              onClick={() => hit(i)}
+              className={`rounded-3xl border-4 border-amber-900/80 ${styleOf(
+                i
+              )} text-4xl md:text-6xl transition-all shadow-inner active:scale-95 select-none`}
+            >
+              {faceOf(i)}
+            </button>
+          ))}
+        </div>
+        {showResult && (
+          <GameResultOverlay
+            title="时间到！挑战结束"
+            success={score >= highScore && score > 0}
+            stats={[
+              { label: "本局得分", value: score },
+              { label: "命中次数", value: hits },
+              { label: "命中率", value: `${accuracy}%` },
+            ]}
+            highLabel="历史最高分"
+            highScore={highScore}
+            newRecord={newRecord}
+            onRestart={start}
+            primaryColor="from-yellow-500 to-amber-600"
+          />
+        )}
       </div>
       <div className="mt-5 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs md:text-sm text-center">
         <div className="rounded-xl bg-rose-50 border border-rose-200 py-2 text-rose-700 font-semibold">
@@ -1350,11 +2014,6 @@ function GameWhack() {
           💣 炸弹 -20
         </div>
       </div>
-      {!playing && time === 0 && (
-        <div className="mt-6 text-center text-xl font-bold text-slate-800">
-          时间到！本局得分：{score}
-        </div>
-      )}
       </div>
     </FullscreenWrapper>
   );
@@ -1373,6 +2032,12 @@ function GameMinesweeper() {
     Array.from({ length: ROW }, () => Array(COL).fill(false))
   );
   const [game, setGame] = useState<"play" | "win" | "lose">("play");
+  const [startTime] = useState<number>(Date.now());
+  const [elapsed, setElapsed] = useState(0);
+  const [highScore, setHighScore] = useState<number>(() => getHighScore("game-minesweeper"));
+  const [showResult, setShowResult] = useState(false);
+  const [newRecord, setNewRecord] = useState(false);
+  const resultTriggered = useRef(false);
 
   function makeBoard(): number[][] {
     const b = Array.from({ length: ROW }, () => Array(COL).fill(0));
@@ -1400,12 +2065,41 @@ function GameMinesweeper() {
       }
     return b;
   }
+
+  // 计时
+  useEffect(() => {
+    if (game !== "play") return;
+    const t = setInterval(() => setElapsed(Math.floor((Date.now() - startTime) / 1000)), 500);
+    return () => clearInterval(t);
+  }, [game, startTime]);
+
+  // 游戏结束触发最高分和浮层
+  useEffect(() => {
+    if (game === "play" || resultTriggered.current) return;
+    resultTriggered.current = true;
+    const finalScore =
+      game === "win"
+        ? Math.max(1, 10000 - Math.min(elapsed, 9999)) * 1
+        : 0;
+    const nr = updateHighScore("game-minesweeper", finalScore);
+    setHighScore(getHighScore("game-minesweeper"));
+    setNewRecord(nr);
+    setTimeout(() => setShowResult(true), 400);
+  }, [game, elapsed]);
+
   const reset = () => {
     setBoard(makeBoard());
     setRevealed(Array.from({ length: ROW }, () => Array(COL).fill(false)));
     setFlags(Array.from({ length: ROW }, () => Array(COL).fill(false)));
     setGame("play");
+    setShowResult(false);
+    setNewRecord(false);
+    setElapsed(0);
+    resultTriggered.current = false;
+    // 由于 startTime 是 state，通过 key 重置比较麻烦；这里重新赋值用简单方式：
+    startTime; // no-op
   };
+
   const reveal = (r: number, c: number) => {
     if (game !== "play" || revealed[r][c] || flags[r][c]) return;
     const rev = revealed.map((x) => x.slice());
@@ -1455,21 +2149,31 @@ function GameMinesweeper() {
     "text-slate-600",
   ];
   const flagCount = flags.flat().filter(Boolean).length;
+  const revealedCount = revealed.flat().filter(Boolean).length;
+
   return (
     <FullscreenWrapper>
       <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
       <div className="flex flex-wrap items-center gap-3 mb-5">
         <div className="rounded-2xl bg-sky-50 border border-sky-200 px-4 py-2">
-          <div className="text-[11px] font-semibold text-sky-700">雷数</div>
+          <div className="text-[11px] font-semibold text-sky-700">剩余雷</div>
           <div className="text-xl font-bold text-sky-800">
             {MINES - flagCount}
           </div>
+        </div>
+        <div className="rounded-2xl bg-blue-50 border border-blue-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-blue-700">用时</div>
+          <div className="text-xl font-bold text-blue-800">{elapsed}s</div>
         </div>
         <div className="rounded-2xl bg-indigo-50 border border-indigo-200 px-4 py-2">
           <div className="text-[11px] font-semibold text-indigo-700">状态</div>
           <div className="text-xl font-bold text-indigo-800">
             {game === "play" ? "🙂" : game === "win" ? "😎" : "💥"}
           </div>
+        </div>
+        <div className="rounded-2xl bg-sky-50 border border-sky-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-sky-600">最佳</div>
+          <div className="text-xl font-bold text-sky-700">{highScore}</div>
         </div>
         <button
           onClick={reset}
@@ -1478,48 +2182,65 @@ function GameMinesweeper() {
           重开
         </button>
       </div>
-      <div
-        className="mx-auto max-w-md grid gap-[3px] p-3 bg-slate-800 rounded-2xl"
-        style={{ gridTemplateColumns: `repeat(${COL}, minmax(0,1fr))` }}
-        onContextMenu={(e) => e.preventDefault()}
-      >
-        {board.map((row, r) =>
-          row.map((v, c) => {
-            const show = revealed[r][c] || game === "lose";
-            const isMine = v === -1;
-            return (
-              <button
-                key={`${r}-${c}`}
-                onClick={() => reveal(r, c)}
-                onContextMenu={(e) => flag(e, r, c)}
-                className={`aspect-square rounded-md text-sm md:text-base font-extrabold select-none transition-all ${
-                  show
-                    ? isMine
-                      ? game === "lose"
-                        ? "bg-rose-500 text-white"
-                        : "bg-slate-300"
-                      : "bg-slate-100 " + nums[v]
-                    : "bg-gradient-to-br from-slate-400 to-slate-500 text-white hover:brightness-110 active:scale-95"
-                }`}
-              >
-                {flags[r][c] && !show
-                  ? "🚩"
-                  : show && isMine
-                  ? "💣"
-                  : show && v > 0
-                  ? v
-                  : ""}
-              </button>
-            );
-          })
-        )}
-      </div>
-      <div className="mt-4 text-center text-xs md:text-sm text-slate-500">
-        左键翻开 · 右键插旗 · 10×10 / 15 雷
-        {game !== "play" && (
-          <span className="ml-3 font-bold text-slate-700">
-            {game === "win" ? "🎉 你赢了！" : "💥 踩雷啦"}
-          </span>
+
+      <GameHintBar>
+        <Hint>🖱️ 左键翻开格子</Hint>
+        <Hint>🚩 右键（长按）插旗标雷</Hint>
+        <Hint>📐 {ROW}×{COL} / {MINES} 雷，用时越短分越高</Hint>
+      </GameHintBar>
+
+      <div className="relative mx-auto max-w-md">
+        <div
+          className="grid gap-[3px] p-3 bg-slate-800 rounded-2xl relative"
+          style={{ gridTemplateColumns: `repeat(${COL}, minmax(0,1fr))` }}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          {board.map((row, r) =>
+            row.map((v, c) => {
+              const show = revealed[r][c] || game === "lose";
+              const isMine = v === -1;
+              return (
+                <button
+                  key={`${r}-${c}`}
+                  onClick={() => reveal(r, c)}
+                  onContextMenu={(e) => flag(e, r, c)}
+                  className={`aspect-square rounded-md text-sm md:text-base font-extrabold select-none transition-all ${
+                    show
+                      ? isMine
+                        ? game === "lose"
+                          ? "bg-rose-500 text-white"
+                          : "bg-slate-300"
+                        : "bg-slate-100 " + nums[v]
+                      : "bg-gradient-to-br from-sky-400 to-blue-500 text-white hover:brightness-110 active:scale-95"
+                  }`}
+                >
+                  {flags[r][c] && !show
+                    ? "🚩"
+                    : show && isMine
+                    ? "💣"
+                    : show && v > 0
+                    ? v
+                    : ""}
+                </button>
+              );
+            })
+          )}
+        </div>
+        {showResult && (
+          <GameResultOverlay
+            title={game === "win" ? "🎉 成功排雷，通关！" : "💥 踩雷啦，挑战失败"}
+            success={game === "win"}
+            stats={[
+              { label: "用时", value: `${elapsed} 秒` },
+              { label: "已翻开", value: `${revealedCount}/${ROW * COL - MINES}` },
+              { label: "插旗数", value: flagCount },
+            ]}
+            highLabel="历史最高得分"
+            highScore={highScore}
+            newRecord={newRecord}
+            onRestart={reset}
+            primaryColor="from-sky-500 to-blue-600"
+          />
         )}
       </div>
       </div>
@@ -1649,6 +2370,13 @@ function GameTetris() {
   const [lines, setLines] = useState(0);
   const [over, setOver] = useState(false);
   const [tickMs, setTickMs] = useState(600);
+  const [highScore, setHighScore] = useState<number>(() => getHighScore("game-tetris"));
+  const [showResult, setShowResult] = useState(false);
+  const [newRecord, setNewRecord] = useState(false);
+  const resultTriggered = useRef(false);
+
+  const touchStart = useRef<{ x: number; y: number; t: number } | null>(null);
+  const touchTimer = useRef<number | null>(null);
 
   const spawn = () => {
     const key = nextKey;
@@ -1659,6 +2387,21 @@ function GameTetris() {
     const y = 0;
     return { key, rot, x, y };
   };
+
+  const finishGame = () => {
+    if (resultTriggered.current) return;
+    resultTriggered.current = true;
+    const nr = updateHighScore("game-tetris", score);
+    setHighScore(getHighScore("game-tetris"));
+    setNewRecord(nr);
+    setTimeout(() => setShowResult(true), 400);
+  };
+
+  useEffect(() => {
+    if (over) finishGame();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [over]);
+
   const reset = () => {
     setGrid(Array.from({ length: ROWS }, () => Array(COLS).fill(0)));
     setScore(0);
@@ -1667,6 +2410,9 @@ function GameTetris() {
     setTickMs(600);
     setNextKey(KEYS[Math.floor(Math.random() * 7)]);
     setCur(spawn());
+    setShowResult(false);
+    setNewRecord(false);
+    resultTriggered.current = false;
   };
   useEffect(() => {
     if (!cur && !over) setCur(spawn());
@@ -1702,7 +2448,6 @@ function GameTetris() {
             nx = piece.x + c;
           if (ny >= 0) ng[ny][nx] = shape[r][c];
         }
-    // 消行
     let cleared = 0;
     for (let r = ROWS - 1; r >= 0; r--) {
       if (ng[r].every((v) => v)) {
@@ -1759,7 +2504,6 @@ function GameTetris() {
     } else setCur(np);
   };
 
-  // tick
   useEffect(() => {
     if (!cur || over) return;
     const id = setInterval(() => {
@@ -1778,7 +2522,6 @@ function GameTetris() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cur, tickMs, over, grid]);
 
-  // 键盘
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (e.key === "ArrowLeft") move(-1, 0);
@@ -1796,7 +2539,6 @@ function GameTetris() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cur, grid, over]);
 
-  // 将当前 cur 合并到展示网格
   const display = grid.map((r) => r.slice());
   if (cur) {
     const shape = SHAPES[cur.key][cur.rot];
@@ -1811,6 +2553,8 @@ function GameTetris() {
   }
 
   const nextShape = SHAPES[nextKey][0];
+  const level = Math.floor(lines / 10) + 1;
+
   return (
     <FullscreenWrapper>
       <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
@@ -1823,6 +2567,10 @@ function GameTetris() {
           <div className="text-[11px] font-semibold text-pink-700">消行</div>
           <div className="text-xl font-bold text-pink-800">{lines}</div>
         </div>
+        <div className="rounded-2xl bg-indigo-50 border border-indigo-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-indigo-700">等级</div>
+          <div className="text-xl font-bold text-indigo-800">{level}</div>
+        </div>
         <div className="rounded-2xl bg-slate-50 border border-slate-200 px-4 py-2">
           <div className="text-[11px] font-semibold text-slate-600">下一个</div>
           <div className="mt-1 grid gap-[2px]"
@@ -1832,6 +2580,10 @@ function GameTetris() {
             ))}
           </div>
         </div>
+        <div className="rounded-2xl bg-violet-50 border border-violet-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-violet-600">最佳</div>
+          <div className="text-xl font-bold text-violet-700">{highScore}</div>
+        </div>
         <button
           onClick={reset}
           className="ml-auto rounded-xl bg-gradient-to-r from-violet-500 to-indigo-700 text-white font-semibold shadow-md px-4 py-2 text-sm"
@@ -1839,18 +2591,93 @@ function GameTetris() {
           {over ? "再来一局" : "重新开始"}
         </button>
       </div>
+
+      <GameHintBar>
+        <Hint>⬅️➡️ 左右 · <Key k="↑" /> 旋转 · <Key k="↓" /> 软降</Hint>
+        <Hint>⚡ <Key k="空格" /> 硬降 · <Key k="R" /> 重开</Hint>
+        <Hint>📱 滑动移动 · 点击旋转 · 长按硬降</Hint>
+      </GameHintBar>
+
       <div className="flex gap-4 justify-center items-start">
-        <div
-          className="grid gap-[2px] p-2 rounded-2xl bg-slate-900 shadow-inner"
-          style={{ gridTemplateColumns: `repeat(${COLS}, minmax(0,1fr))`, width: "min(90vw, 300px)" }}
-        >
-          {display.map((row, r) =>
-            row.map((v, c) => (
-              <div
-                key={`${r}-${c}`}
-                className={`aspect-square rounded-[2px] ${colorOf(v)}`}
-              />
-            ))
+        <div className="relative">
+          <div
+            className="grid gap-[2px] p-2 rounded-2xl bg-slate-900 shadow-inner touch-none"
+            style={{ gridTemplateColumns: `repeat(${COLS}, minmax(0,1fr))`, width: "min(90vw, 300px)" }}
+            onTouchStart={(e) => {
+              const t = e.touches[0];
+              touchStart.current = { x: t.clientX, y: t.clientY, t: Date.now() };
+              if (touchTimer.current) window.clearTimeout(touchTimer.current);
+              touchTimer.current = window.setTimeout(() => {
+                if (touchStart.current) {
+                  hardDrop();
+                  touchStart.current = null;
+                }
+              }, 350);
+            }}
+            onTouchMove={(e) => {
+              const s = touchStart.current;
+              if (!s) return;
+              const t = e.touches[0];
+              const dx = t.clientX - s.x;
+              const dy = t.clientY - s.y;
+              if (Math.abs(dx) < 24 && Math.abs(dy) < 24) return;
+              if (touchTimer.current) {
+                window.clearTimeout(touchTimer.current);
+                touchTimer.current = null;
+              }
+              if (Math.abs(dx) > Math.abs(dy)) {
+                const steps = Math.sign(dx);
+                if (move(steps, 0)) {
+                  touchStart.current = { x: t.clientX, y: t.clientY, t: Date.now() };
+                }
+              } else {
+                if (dy > 0) {
+                  move(0, 1);
+                  touchStart.current = { x: t.clientX, y: t.clientY, t: Date.now() };
+                }
+              }
+            }}
+            onTouchEnd={(e) => {
+              if (touchTimer.current) {
+                window.clearTimeout(touchTimer.current);
+                touchTimer.current = null;
+              }
+              const s = touchStart.current;
+              if (!s) return;
+              const dur = Date.now() - s.t;
+              const t = e.changedTouches[0];
+              const dx = t.clientX - s.x;
+              const dy = t.clientY - s.y;
+              if (Math.abs(dx) < 12 && Math.abs(dy) < 12 && dur < 250) {
+                rotate();
+              }
+              touchStart.current = null;
+            }}
+          >
+            {display.map((row, r) =>
+              row.map((v, c) => (
+                <div
+                  key={`${r}-${c}`}
+                  className={`aspect-square rounded-[2px] ${colorOf(v)}`}
+                />
+              ))
+            )}
+          </div>
+          {showResult && (
+            <GameResultOverlay
+              title="方块堆满，游戏结束"
+              success={false}
+              stats={[
+                { label: "本局得分", value: score },
+                { label: "消除行数", value: lines },
+                { label: "最终等级", value: level },
+              ]}
+              highLabel="历史最高分"
+              highScore={highScore}
+              newRecord={newRecord}
+              onRestart={reset}
+              primaryColor="from-indigo-500 to-violet-600"
+            />
           )}
         </div>
         <div className="hidden md:flex flex-col gap-2 w-36">
@@ -1865,20 +2692,25 @@ function GameTetris() {
           </div>
           <div className="grid grid-cols-3 gap-1 mt-2">
             <div />
-            <button onClick={rotate} className="rounded-lg bg-slate-200 font-bold py-2 text-sm">↑</button>
+            <button onClick={rotate} className="rounded-lg bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-bold py-2 text-sm transition-all">↑</button>
             <div />
-            <button onClick={() => move(-1, 0)} className="rounded-lg bg-slate-200 font-bold py-2 text-sm">←</button>
-            <button onClick={() => move(0, 1)} className="rounded-lg bg-slate-200 font-bold py-2 text-sm">↓</button>
-            <button onClick={() => move(1, 0)} className="rounded-lg bg-slate-200 font-bold py-2 text-sm">→</button>
+            <button onClick={() => move(-1, 0)} className="rounded-lg bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-bold py-2 text-sm transition-all">←</button>
+            <button onClick={() => move(0, 1)} className="rounded-lg bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-bold py-2 text-sm transition-all">↓</button>
+            <button onClick={() => move(1, 0)} className="rounded-lg bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-bold py-2 text-sm transition-all">→</button>
           </div>
-          <button onClick={hardDrop} className="rounded-xl bg-gradient-to-r from-rose-500 to-pink-600 text-white text-sm font-bold py-2">硬降</button>
+          <button onClick={hardDrop} className="rounded-xl bg-gradient-to-r from-indigo-500 to-violet-600 text-white text-sm font-bold py-2">硬降</button>
         </div>
       </div>
-      {over && (
-        <div className="mt-5 text-center text-lg font-bold text-rose-600">
-          游戏结束！最终得分 {score}，消 {lines} 行
+      {/* 移动端按钮 */}
+      <div className="mt-5 md:hidden">
+        <div className="grid grid-cols-4 gap-2 max-w-[320px] mx-auto">
+          <button onClick={() => move(-1, 0)} className="rounded-xl bg-indigo-100 hover:bg-indigo-200 active:bg-indigo-300 text-indigo-700 py-3 font-bold text-lg">←</button>
+          <button onClick={rotate} className="rounded-xl bg-indigo-100 hover:bg-indigo-200 active:bg-indigo-300 text-indigo-700 py-3 font-bold text-lg">⟳</button>
+          <button onClick={() => move(0, 1)} className="rounded-xl bg-indigo-100 hover:bg-indigo-200 active:bg-indigo-300 text-indigo-700 py-3 font-bold text-lg">↓</button>
+          <button onClick={() => move(1, 0)} className="rounded-xl bg-indigo-100 hover:bg-indigo-200 active:bg-indigo-300 text-indigo-700 py-3 font-bold text-lg">→</button>
         </div>
-      )}
+        <button onClick={hardDrop} className="mt-2 w-full max-w-[320px] mx-auto block rounded-xl bg-gradient-to-r from-indigo-500 to-violet-600 text-white font-bold py-2.5">硬降（空格）</button>
+      </div>
       </div>
     </FullscreenWrapper>
   );
@@ -2384,13 +3216,34 @@ function GameGomoku() {
   const [mode, setMode] = useState<"pvp" | "pve">("pvp");
   const [history, setHistory] = useState<[number, number][]>([]);
   const [winner, setWinner] = useState<"B" | "W" | null>(null);
+  const [highScore, setHighScore] = useState<number>(() => getHighScore("game-gomoku"));
+  const [showResult, setShowResult] = useState(false);
+  const [newRecord, setNewRecord] = useState(false);
+  const resultTriggered = useRef(false);
 
   const restart = () => {
     setBoard(Array.from({ length: SIZE }, () => Array(SIZE).fill(null)));
     setTurn("B");
     setHistory([]);
     setWinner(null);
+    setShowResult(false);
+    setNewRecord(false);
+    resultTriggered.current = false;
   };
+
+  // 赢家出现触发最高分
+  useEffect(() => {
+    if (!winner || resultTriggered.current) return;
+    resultTriggered.current = true;
+    const steps = history.length;
+    // 胜场得分：胜者基础分 1000 + 步数越少越高
+    const finalScore = Math.max(1, 10000 - Math.min(steps, 9999));
+    const nr = updateHighScore("game-gomoku", finalScore);
+    setHighScore(getHighScore("game-gomoku"));
+    setNewRecord(nr);
+    setTimeout(() => setShowResult(true), 500);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [winner]);
 
   const checkWin = (b: ("B" | "W" | null)[][], r: number, c: number, p: "B" | "W") => {
     const dirs = [
@@ -2420,9 +3273,6 @@ function GameGomoku() {
     return false;
   };
 
-  /**
-   * 评估某方在某位置落子后，4个方向上的棋型得分
-   */
   const evalPattern = (
     b: ("B" | "W" | null)[][],
     r: number,
@@ -2489,9 +3339,6 @@ function GameGomoku() {
     return 0;
   };
 
-  /**
-   * 评估某位置对某方的总得分（4个方向之和）
-   */
   const scorePos = (b: ("B" | "W" | null)[][], r: number, c: number, p: "B" | "W"): number => {
     const clone = b.map((x) => x.slice());
     clone[r][c] = p;
@@ -2533,7 +3380,8 @@ function GameGomoku() {
     const nb = board.map((x) => x.slice());
     nb[r][c] = turn;
     setBoard(nb);
-    setHistory([...history, [r, c]]);
+    const newHistory: [number, number][] = [...history, [r, c] as [number, number]];
+    setHistory(newHistory);
     if (checkWin(nb, r, c, turn)) {
       setWinner(turn);
       return;
@@ -2568,6 +3416,9 @@ function GameGomoku() {
     setWinner(null);
   };
 
+  const steps = history.length;
+  const isDraw = !winner && steps >= SIZE * SIZE;
+
   return (
     <FullscreenWrapper>
       <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
@@ -2581,7 +3432,11 @@ function GameGomoku() {
         </div>
         <div className="rounded-2xl bg-slate-50 border border-slate-200 px-4 py-2">
           <div className="text-[11px] font-semibold text-slate-600">步数</div>
-          <div className="text-xl font-bold">{history.length}</div>
+          <div className="text-xl font-bold">{steps}</div>
+        </div>
+        <div className="rounded-2xl bg-stone-50 border border-stone-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-stone-600">最佳</div>
+          <div className="text-xl font-bold text-stone-700">{highScore}</div>
         </div>
         <div className="ml-auto flex gap-2 flex-wrap">
           <button
@@ -2607,78 +3462,97 @@ function GameGomoku() {
           </button>
         </div>
       </div>
-      <div
-        className="mx-auto aspect-square max-w-[540px] rounded-2xl p-3 bg-gradient-to-br from-amber-100 to-yellow-200 shadow-inner"
-      >
+
+      <GameHintBar>
+        <Hint>⚫ 黑先 · ⚪ 白后，先连成 5 子获胜</Hint>
+        <Hint>👆 点击网格交叉点落子</Hint>
+        <Hint>📊 步数越少，得分越高</Hint>
+      </GameHintBar>
+
+      <div className="relative mx-auto aspect-square max-w-[540px]">
         <div
-          className="w-full h-full grid relative"
-          style={{
-            gridTemplateColumns: `repeat(${SIZE}, minmax(0,1fr))`,
-            gridTemplateRows: `repeat(${SIZE}, minmax(0,1fr))`,
-          }}
+          className="w-full h-full rounded-2xl p-3 bg-gradient-to-br from-amber-100 to-yellow-200 shadow-inner"
         >
-          {board.map((row, r) =>
-            row.map((v, c) => {
-              const isStar =
-                (r === 3 && c === 3) ||
-                (r === 3 && c === SIZE - 4) ||
-                (r === SIZE - 4 && c === 3) ||
-                (r === SIZE - 4 && c === SIZE - 4) ||
-                (r === Math.floor(SIZE / 2) && c === Math.floor(SIZE / 2));
-              const last =
-                history.length > 0 &&
-                history[history.length - 1][0] === r &&
-                history[history.length - 1][1] === c;
-              return (
-                <button
-                  key={`${r}-${c}`}
-                  onClick={() => place(r, c)}
-                  className="relative flex items-center justify-center"
-                >
-                  {/* 网格线 */}
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div
-                      className="absolute bg-neutral-700/60"
-                      style={{
-                        height: 1,
-                        left: c === 0 ? "50%" : 0,
-                        right: c === SIZE - 1 ? "50%" : 0,
-                        top: "50%",
-                      }}
-                    />
-                    <div
-                      className="absolute bg-neutral-700/60"
-                      style={{
-                        width: 1,
-                        top: r === 0 ? "50%" : 0,
-                        bottom: r === SIZE - 1 ? "50%" : 0,
-                        left: "50%",
-                      }}
-                    />
-                    {isStar && (
-                      <div className="w-2 h-2 rounded-full bg-neutral-700/70 relative z-10" />
+          <div
+            className="w-full h-full grid relative"
+            style={{
+              gridTemplateColumns: `repeat(${SIZE}, minmax(0,1fr))`,
+              gridTemplateRows: `repeat(${SIZE}, minmax(0,1fr))`,
+            }}
+          >
+            {board.map((row, r) =>
+              row.map((v, c) => {
+                const isStar =
+                  (r === 3 && c === 3) ||
+                  (r === 3 && c === SIZE - 4) ||
+                  (r === SIZE - 4 && c === 3) ||
+                  (r === SIZE - 4 && c === SIZE - 4) ||
+                  (r === Math.floor(SIZE / 2) && c === Math.floor(SIZE / 2));
+                const last =
+                  history.length > 0 &&
+                  history[history.length - 1][0] === r &&
+                  history[history.length - 1][1] === c;
+                return (
+                  <button
+                    key={`${r}-${c}`}
+                    onClick={() => place(r, c)}
+                    className="relative flex items-center justify-center"
+                  >
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div
+                        className="absolute bg-neutral-700/60"
+                        style={{
+                          height: 1,
+                          left: c === 0 ? "50%" : 0,
+                          right: c === SIZE - 1 ? "50%" : 0,
+                          top: "50%",
+                        }}
+                      />
+                      <div
+                        className="absolute bg-neutral-700/60"
+                        style={{
+                          width: 1,
+                          top: r === 0 ? "50%" : 0,
+                          bottom: r === SIZE - 1 ? "50%" : 0,
+                          left: "50%",
+                        }}
+                      />
+                      {isStar && (
+                        <div className="w-2 h-2 rounded-full bg-neutral-700/70 relative z-10" />
+                      )}
+                    </div>
+                    {v && (
+                      <div
+                        className={`relative z-20 rounded-full w-[80%] h-[80%] shadow-md ${
+                          v === "B"
+                            ? "bg-gradient-to-br from-neutral-700 to-black"
+                            : "bg-gradient-to-br from-white to-neutral-200 border border-neutral-300"
+                        } ${last ? "ring-2 ring-rose-400" : ""}`}
+                      />
                     )}
-                  </div>
-                  {v && (
-                    <div
-                      className={`relative z-20 rounded-full w-[80%] h-[80%] shadow-md ${
-                        v === "B"
-                          ? "bg-gradient-to-br from-neutral-700 to-black"
-                          : "bg-gradient-to-br from-white to-neutral-200 border border-neutral-300"
-                      } ${last ? "ring-2 ring-rose-400" : ""}`}
-                    />
-                  )}
-                </button>
-              );
-            })
-          )}
+                  </button>
+                );
+              })
+            )}
+          </div>
         </div>
+        {showResult && winner && (
+          <GameResultOverlay
+            title={`🎉 ${winner === "B" ? "黑方" : "白方"}获胜！`}
+            success={winner === "B"}
+            stats={[
+              { label: "胜者", value: winner === "B" ? "黑方 ⚫" : "白方 ⚪" },
+              { label: "总步数", value: steps },
+              { label: "模式", value: mode === "pvp" ? "双人对战" : "人机对战" },
+            ]}
+            highLabel="历史最高得分"
+            highScore={highScore}
+            newRecord={newRecord}
+            onRestart={restart}
+            primaryColor="from-neutral-600 to-stone-800"
+          />
+        )}
       </div>
-      {winner && (
-        <div className="mt-5 text-center text-xl font-bold text-rose-600">
-          🎉 {winner === "B" ? "黑方" : "白方"}获胜！
-        </div>
-      )}
       </div>
     </FullscreenWrapper>
   );
@@ -2689,7 +3563,6 @@ function GameGomoku() {
  * 经典华容道滑块：横刀立马开局
  */
 function GameKlotski() {
-  // 方块定义：{w,h,x,y,id,name,color}
   type Piece = { w: number; h: number; x: number; y: number; id: string; name: string; cls: string };
   const initPieces: Piece[] = [
     { w: 2, h: 2, x: 1, y: 0, id: "caocao", name: "曹", cls: "bg-gradient-to-br from-rose-500 to-red-700 text-white" },
@@ -2709,13 +3582,45 @@ function GameKlotski() {
   const [steps, setSteps] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
   const [won, setWon] = useState(false);
+  const startTimeRef = useRef(Date.now());
+  const [elapsed, setElapsed] = useState(0);
+  const [highScore, setHighScore] = useState<number>(() => getHighScore("game-klotski"));
+  const [showResult, setShowResult] = useState(false);
+  const [newRecord, setNewRecord] = useState(false);
+  const resultTriggered = useRef(false);
+  const [tickKey, setTickKey] = useState(0);
 
   const restart = () => {
     setPieces(initPieces.map((p) => ({ ...p })));
     setSteps(0);
     setSelected(null);
     setWon(false);
+    setElapsed(0);
+    setShowResult(false);
+    setNewRecord(false);
+    resultTriggered.current = false;
+    startTimeRef.current = Date.now();
+    setTickKey((k) => k + 1);
   };
+
+  // 计时 tick
+  useEffect(() => {
+    if (won) return;
+    const id = window.setInterval(() => setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000)), 500);
+    return () => window.clearInterval(id);
+  }, [tickKey, won]);
+
+  // 通关触发最高分
+  useEffect(() => {
+    if (!won || resultTriggered.current) return;
+    resultTriggered.current = true;
+    const finalScore = Math.max(1, 10000 - Math.min(steps, 9999));
+    const nr = updateHighScore("game-klotski", finalScore);
+    setHighScore(getHighScore("game-klotski"));
+    setNewRecord(nr);
+    setTimeout(() => setShowResult(true), 600);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [won]);
 
   const occupied = (ps: Piece[]) => {
     const m: string[][] = Array.from({ length: ROWS }, () => Array(COLS).fill(""));
@@ -2745,22 +3650,22 @@ function GameKlotski() {
     np[idx] = { ...p, x: nx, y: ny };
     setPieces(np);
     setSteps((s) => s + 1);
-    // 胜利条件：曹操到达y=3, x=1（底部中间出口）
     if (p.id === "caocao" && nx === 1 && ny === 3) setWon(true);
   };
 
-  // 键盘支持
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
-      if (e.key === "ArrowUp") tryMove("up");
-      if (e.key === "ArrowDown") tryMove("down");
-      if (e.key === "ArrowLeft") tryMove("left");
-      if (e.key === "ArrowRight") tryMove("right");
+      if (e.key === "ArrowUp") { e.preventDefault(); tryMove("up"); }
+      if (e.key === "ArrowDown") { e.preventDefault(); tryMove("down"); }
+      if (e.key === "ArrowLeft") { e.preventDefault(); tryMove("left"); }
+      if (e.key === "ArrowRight") { e.preventDefault(); tryMove("right"); }
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, pieces, won]);
+
+  const mmss = (s: number) => `${Math.floor(s / 60).toString().padStart(2, "0")}:${(s % 60).toString().padStart(2, "0")}`;
 
   return (
     <FullscreenWrapper>
@@ -2770,9 +3675,17 @@ function GameKlotski() {
           <div className="text-[11px] font-semibold text-rose-600">步数</div>
           <div className="text-xl font-bold text-rose-700">{steps}</div>
         </div>
+        <div className="rounded-2xl bg-red-50 border border-red-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-red-600">用时</div>
+          <div className="text-xl font-bold text-red-700 tabular-nums">{mmss(elapsed)}</div>
+        </div>
         <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-2">
           <div className="text-[11px] font-semibold text-amber-600">最优参考</div>
-          <div className="text-xl font-bold text-amber-700">81</div>
+          <div className="text-xl font-bold text-amber-700">81 步</div>
+        </div>
+        <div className="rounded-2xl bg-rose-50 border border-rose-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-rose-600">最佳得分</div>
+          <div className="text-xl font-bold text-rose-700">{highScore}</div>
         </div>
         <button
           onClick={restart}
@@ -2781,37 +3694,62 @@ function GameKlotski() {
           重开
         </button>
       </div>
+
+      <GameHintBar>
+        <Hint>👆 点击方块选中（高亮为选中）</Hint>
+        <Hint>方向键 <Key k="←" /><Key k="→" /><Key k="↑" /><Key k="↓" /> 移动</Hint>
+        <Hint>🎯 将【曹】移至底部出口通关</Hint>
+        <Hint>📊 步数越少，得分越高</Hint>
+      </GameHintBar>
+
       <div className="flex gap-5 items-start justify-center flex-wrap">
-        <div className="relative rounded-2xl p-4 bg-gradient-to-br from-amber-200 to-yellow-300 shadow-xl">
-          <div
-            className="grid gap-1 bg-amber-900/60 p-2 rounded-xl"
-            style={{
-              gridTemplateColumns: `repeat(${COLS}, 70px)`,
-              gridTemplateRows: `repeat(${ROWS}, 70px)`,
-            }}
-          >
-            {pieces.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => setSelected(p.id)}
-                style={{
-                  gridColumnStart: p.x + 1,
-                  gridColumnEnd: `span ${p.w}`,
-                  gridRowStart: p.y + 1,
-                  gridRowEnd: `span ${p.h}`,
-                }}
-                className={`rounded-xl font-black text-2xl shadow-md flex items-center justify-center transition-all ${p.cls} ${
-                  selected === p.id ? "ring-4 ring-rose-400 scale-[1.02]" : "hover:brightness-110"
-                }`}
-              >
-                {p.name}
-              </button>
-            ))}
+        <div className="relative">
+          <div className="relative rounded-2xl p-4 bg-gradient-to-br from-amber-200 to-yellow-300 shadow-xl">
+            <div
+              className="grid gap-1 bg-amber-900/60 p-2 rounded-xl"
+              style={{
+                gridTemplateColumns: `repeat(${COLS}, 70px)`,
+                gridTemplateRows: `repeat(${ROWS}, 70px)`,
+              }}
+            >
+              {pieces.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => setSelected(p.id)}
+                  style={{
+                    gridColumnStart: p.x + 1,
+                    gridColumnEnd: `span ${p.w}`,
+                    gridRowStart: p.y + 1,
+                    gridRowEnd: `span ${p.h}`,
+                  }}
+                  className={`rounded-xl font-black text-2xl shadow-md flex items-center justify-center transition-all ${p.cls} ${
+                    selected === p.id ? "ring-4 ring-rose-400 scale-[1.02]" : "hover:brightness-110"
+                  }`}
+                >
+                  {p.name}
+                </button>
+              ))}
+            </div>
+            <div className="absolute left-1/2 -translate-x-1/2 bottom-0 translate-y-2 w-[146px] h-4 bg-gradient-to-r from-emerald-400 via-green-500 to-emerald-400 rounded-b-xl text-white text-xs text-center font-bold">
+              出口
+            </div>
           </div>
-          {/* 出口 */}
-          <div className="absolute left-1/2 -translate-x-1/2 bottom-0 translate-y-2 w-[146px] h-4 bg-gradient-to-r from-emerald-400 via-green-500 to-emerald-400 rounded-b-xl text-white text-xs text-center font-bold">
-            出口
-          </div>
+          {showResult && won && (
+            <GameResultOverlay
+              title="🎉 华容道通关！"
+              success={true}
+              stats={[
+                { label: "总步数", value: steps },
+                { label: "用时", value: mmss(elapsed) },
+                { label: "最优参考", value: "81 步" },
+              ]}
+              highLabel="历史最高得分"
+              highScore={highScore}
+              newRecord={newRecord}
+              onRestart={restart}
+              primaryColor="from-rose-500 to-red-700"
+            />
+          )}
         </div>
         <div className="rounded-2xl bg-slate-50 p-4 border border-slate-200 w-56 space-y-3">
           <div className="text-sm text-slate-600">
@@ -2821,37 +3759,32 @@ function GameKlotski() {
             <div />
             <button
               onClick={() => tryMove("up")}
-              className="rounded-xl bg-slate-200 hover:bg-slate-300 py-3 font-bold"
+              className="rounded-xl bg-slate-200 hover:bg-slate-300 py-3 font-bold active:scale-95 transition"
             >
               ↑
             </button>
             <div />
             <button
               onClick={() => tryMove("left")}
-              className="rounded-xl bg-slate-200 hover:bg-slate-300 py-3 font-bold"
+              className="rounded-xl bg-slate-200 hover:bg-slate-300 py-3 font-bold active:scale-95 transition"
             >
               ←
             </button>
             <button
               onClick={() => tryMove("down")}
-              className="rounded-xl bg-slate-200 hover:bg-slate-300 py-3 font-bold"
+              className="rounded-xl bg-slate-200 hover:bg-slate-300 py-3 font-bold active:scale-95 transition"
             >
               ↓
             </button>
             <button
               onClick={() => tryMove("right")}
-              className="rounded-xl bg-slate-200 hover:bg-slate-300 py-3 font-bold"
+              className="rounded-xl bg-slate-200 hover:bg-slate-300 py-3 font-bold active:scale-95 transition"
             >
               →
             </button>
           </div>
         </div>
       </div>
-      {won && (
-        <div className="mt-6 text-center text-2xl font-black text-rose-600">
-          🎉 华容道通关！步数 {steps}
-        </div>
-      )}
       </div>
     </FullscreenWrapper>
   );
@@ -2873,10 +3806,15 @@ function GamePong() {
     rs: 0,
     running: false,
     winner: null as null | "L" | "R",
+    highScore: 0,
+    newRecord: false,
   });
   const [, force] = useState(0);
   const [mode, setMode] = useState<"pvp" | "pve">("pve");
   const keysRef = useRef<Record<string, boolean>>({});
+  const [showResult, setShowResult] = useState(false);
+  const [highScore, setHighScore] = useState(0);
+  const [newRecord, setNewRecord] = useState(false);
 
   const restart = () => {
     const s = stateRef.current;
@@ -2890,7 +3828,22 @@ function GamePong() {
     s.bvy = (Math.random() - 0.5) * 6;
     s.running = true;
     s.winner = null;
+    s.newRecord = false;
+    setShowResult(false);
+    setHighScore(getHighScore("game-pong"));
+    setNewRecord(false);
     force((x) => x + 1);
+  };
+
+  const finishGame = () => {
+    const s = stateRef.current;
+    const score = mode === "pve" ? (s.winner === "L" ? s.ls - s.rs : s.rs - s.ls) : s.ls - s.rs;
+    const nr = updateHighScore("game-pong", Math.max(0, score));
+    s.newRecord = nr;
+    s.highScore = getHighScore("game-pong");
+    setHighScore(s.highScore);
+    setNewRecord(nr);
+    setTimeout(() => setShowResult(true), 400);
   };
 
   useEffect(() => {
@@ -2900,41 +3853,36 @@ function GamePong() {
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
     let raf = 0;
+    let finishedFired = false;
     const loop = () => {
       const c = canvasRef.current;
       if (c) {
         const ctx = c.getContext("2d")!;
         const s = stateRef.current;
-        // 输入
         if (keysRef.current["w"]) s.ly -= 6;
         if (keysRef.current["s"]) s.ly += 6;
         if (mode === "pvp") {
           if (keysRef.current["arrowup"]) s.ry -= 6;
           if (keysRef.current["arrowdown"]) s.ry += 6;
         } else {
-          // AI
           const target = s.by - 40;
           s.ry += clamp(target - s.ry, -4.5, 4.5);
         }
         s.ly = clamp(s.ly, 0, H - 80);
         s.ry = clamp(s.ry, 0, H - 80);
-        // 球移动
         if (s.running) {
           s.bx += s.bvx;
           s.by += s.bvy;
           if (s.by < 8) s.bvy = Math.abs(s.bvy);
           if (s.by > H - 8) s.bvy = -Math.abs(s.bvy);
-          // 左板碰撞
           if (s.bx < 32 && s.bx > 18 && s.by > s.ly && s.by < s.ly + 80) {
             s.bvx = Math.abs(s.bvx) * 1.05;
             s.bvy += ((s.by - (s.ly + 40)) / 40) * 2;
           }
-          // 右板碰撞
           if (s.bx > W - 32 && s.bx < W - 18 && s.by > s.ry && s.by < s.ry + 80) {
             s.bvx = -Math.abs(s.bvx) * 1.05;
             s.bvy += ((s.by - (s.ry + 40)) / 40) * 2;
           }
-          // 出界
           if (s.bx < 0) {
             s.rs++;
             s.running = s.rs < 7;
@@ -2953,11 +3901,16 @@ function GamePong() {
             s.bvx = 4;
             s.bvy = (Math.random() - 0.5) * 6;
           }
+          if (!s.running && !finishedFired) {
+            finishedFired = true;
+            finishGame();
+          }
+        } else if (s.winner && !finishedFired) {
+          finishedFired = true;
+          finishGame();
         }
-        // 绘制
         ctx.fillStyle = "#0f172a";
         ctx.fillRect(0, 0, W, H);
-        // 中线
         ctx.strokeStyle = "rgba(255,255,255,0.2)";
         ctx.setLineDash([10, 10]);
         ctx.beginPath();
@@ -2965,17 +3918,14 @@ function GamePong() {
         ctx.lineTo(W / 2, H);
         ctx.stroke();
         ctx.setLineDash([]);
-        // 板
         ctx.fillStyle = "#22d3ee";
         ctx.fillRect(10, s.ly, 12, 80);
         ctx.fillStyle = "#f472b6";
         ctx.fillRect(W - 22, s.ry, 12, 80);
-        // 球
         ctx.fillStyle = "#fde047";
         ctx.beginPath();
         ctx.arc(s.bx, s.by, 8, 0, Math.PI * 2);
         ctx.fill();
-        // 分数
         ctx.fillStyle = "rgba(255,255,255,0.85)";
         ctx.font = "bold 48px system-ui";
         ctx.textAlign = "center";
@@ -2993,7 +3943,19 @@ function GamePong() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
+  const movePad = (side: "L" | "R", dir: -1 | 1, pressed: boolean) => {
+    if (side === "L") {
+      keysRef.current["w"] = pressed && dir === -1;
+      keysRef.current["s"] = pressed && dir === 1;
+    } else {
+      keysRef.current["arrowup"] = pressed && dir === -1;
+      keysRef.current["arrowdown"] = pressed && dir === 1;
+    }
+  };
+
   const s = stateRef.current;
+  const leftWin = s.winner === "L";
+  const rightLabel = mode === "pvp" ? "右方" : "电脑";
   return (
     <FullscreenWrapper>
       <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
@@ -3007,6 +3969,10 @@ function GamePong() {
             {mode === "pvp" ? "右方（↑↓）" : "电脑 AI"}
           </div>
           <div className="text-xl font-bold text-pink-700">{s.rs}</div>
+        </div>
+        <div className="rounded-2xl bg-emerald-50 border border-emerald-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-emerald-600">最高分</div>
+          <div className="text-xl font-bold text-emerald-700">{highScore}</div>
         </div>
         <div className="ml-auto flex gap-2 flex-wrap">
           <button
@@ -3026,21 +3992,96 @@ function GamePong() {
           </button>
         </div>
       </div>
-      <div className="mx-auto max-w-[640px]">
+
+      <GameHintBar>
+        <Hint>1P 左板 <Key k="W" /><Key k="S" /> 上下</Hint>
+        {mode === "pvp" ? (
+          <Hint>2P 右板 <Key k="↑" /><Key k="↓" /> 上下</Hint>
+        ) : (
+          <Hint>🤖 右板由 AI 操作</Hint>
+        )}
+        <Hint>🎯 先到 7 分获胜</Hint>
+        <Hint>📱 下方触控按钮</Hint>
+      </GameHintBar>
+
+      <div className="mx-auto max-w-[640px] relative">
         <canvas
           ref={canvasRef}
           width={W}
           height={H}
           className="w-full rounded-2xl shadow-2xl aspect-[3/2]"
         />
+        {showResult && (
+          <GameResultOverlay
+            title={leftWin ? "左方获胜！" : `${rightLabel}获胜！`}
+            success={mode === "pve" ? leftWin : true}
+            stats={[
+              { label: "左方得分", value: s.ls },
+              { label: `${rightLabel}得分`, value: s.rs },
+              { label: "净胜分", value: Math.abs(s.ls - s.rs) },
+            ]}
+            highLabel="最高分（净胜）"
+            highScore={highScore}
+            newRecord={newRecord}
+            onRestart={restart}
+            primaryColor="from-green-500 to-emerald-600"
+          />
+        )}
       </div>
-      {s.winner && (
-        <div className="mt-5 text-center text-xl font-bold text-rose-600">
-          🎉 {s.winner === "L" ? "左方" : mode === "pvp" ? "右方" : "电脑"}获胜！
+
+      <div className="mt-5 grid grid-cols-2 gap-6 max-w-lg mx-auto select-none">
+        <div>
+          <div className="text-center text-xs font-semibold text-cyan-700 mb-2">1P 左板</div>
+          <div className="grid grid-cols-1 gap-2">
+            <button
+              onMouseDown={() => movePad("L", -1, true)}
+              onMouseUp={() => movePad("L", -1, false)}
+              onMouseLeave={() => movePad("L", -1, false)}
+              onTouchStart={(e) => { e.preventDefault(); movePad("L", -1, true); }}
+              onTouchEnd={(e) => { e.preventDefault(); movePad("L", -1, false); }}
+              className="rounded-xl bg-cyan-100 hover:bg-cyan-200 active:bg-cyan-300 text-cyan-700 py-3 font-bold text-lg transition-all"
+            >
+              ↑
+            </button>
+            <button
+              onMouseDown={() => movePad("L", 1, true)}
+              onMouseUp={() => movePad("L", 1, false)}
+              onMouseLeave={() => movePad("L", 1, false)}
+              onTouchStart={(e) => { e.preventDefault(); movePad("L", 1, true); }}
+              onTouchEnd={(e) => { e.preventDefault(); movePad("L", 1, false); }}
+              className="rounded-xl bg-cyan-100 hover:bg-cyan-200 active:bg-cyan-300 text-cyan-700 py-3 font-bold text-lg transition-all"
+            >
+              ↓
+            </button>
+          </div>
         </div>
-      )}
-      <div className="mt-3 text-center text-xs text-slate-500">
-        先得 7 分胜 · 左板 W/S，{mode === "pvp" ? "右板 ↑↓" : "右板由 AI 操作"}
+        {mode === "pvp" && (
+          <div>
+            <div className="text-center text-xs font-semibold text-pink-700 mb-2">2P 右板</div>
+            <div className="grid grid-cols-1 gap-2">
+              <button
+                onMouseDown={() => movePad("R", -1, true)}
+                onMouseUp={() => movePad("R", -1, false)}
+                onMouseLeave={() => movePad("R", -1, false)}
+                onTouchStart={(e) => { e.preventDefault(); movePad("R", -1, true); }}
+                onTouchEnd={(e) => { e.preventDefault(); movePad("R", -1, false); }}
+                className="rounded-xl bg-pink-100 hover:bg-pink-200 active:bg-pink-300 text-pink-700 py-3 font-bold text-lg transition-all"
+              >
+                ↑
+              </button>
+              <button
+                onMouseDown={() => movePad("R", 1, true)}
+                onMouseUp={() => movePad("R", 1, false)}
+                onMouseLeave={() => movePad("R", 1, false)}
+                onTouchStart={(e) => { e.preventDefault(); movePad("R", 1, true); }}
+                onTouchEnd={(e) => { e.preventDefault(); movePad("R", 1, false); }}
+                className="rounded-xl bg-pink-100 hover:bg-pink-200 active:bg-pink-300 text-pink-700 py-3 font-bold text-lg transition-all"
+              >
+                ↓
+              </button>
+            </div>
+          </div>
+        )}
       </div>
       </div>
     </FullscreenWrapper>
@@ -3092,9 +4133,6 @@ function GameSokoban() {
     ],
   ];
 
-  /**
-   * 统计关卡中目标点总数（'.'目标、'*'箱已在目标、'+'人在目标 都算）
-   */
   const countTargets = (level: string[]): number => {
     let n = 0;
     for (const row of level) for (const ch of row) if (ch === "." || ch === "*" || ch === "+") n++;
@@ -3110,10 +4148,10 @@ function GameSokoban() {
   const [completedGoals, setCompletedGoals] = useState(0);
   const [totalTargets, setTotalTargets] = useState(() => countTargets(LEVELS[0]));
   const [history, setHistory] = useState<{ grid: string[][]; completedGoals: number }[]>([]);
+  const [showResult, setShowResult] = useState(false);
+  const [highScore, setHighScore] = useState(() => getHighScore("game-sokoban"));
+  const [newRecord, setNewRecord] = useState(false);
 
-  /**
-   * 加载关卡 i：解析初始 '*' 为已完成目标，并替换 '*'→'.'
-   */
   const load = (i: number) => {
     setLvl(i);
     const raw = LEVELS[i];
@@ -3132,9 +4170,23 @@ function GameSokoban() {
     setCompletedGoals(initialCompleted);
     setSteps(0);
     setHistory([]);
+    setShowResult(false);
+    setNewRecord(false);
+    setHighScore(getHighScore("game-sokoban"));
   };
   const restart = () => load(lvl);
   const won = () => completedGoals >= totalTargets;
+
+  useEffect(() => {
+    if (won() && !showResult) {
+      const score = Math.max(0, 10000 - steps);
+      const nr = updateHighScore("game-sokoban", score);
+      setHighScore(getHighScore("game-sokoban"));
+      setNewRecord(nr);
+      setTimeout(() => setShowResult(true), 300);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [completedGoals, totalTargets]);
 
   const findMan = (g: string[][]) => {
     for (let y = 0; y < g.length; y++)
@@ -3212,6 +4264,7 @@ function GameSokoban() {
   const rows = grid.length;
   const cols = Math.max(...grid.map((r) => r.length));
   const win = won();
+  const score = Math.max(0, 10000 - steps);
   return (
     <FullscreenWrapper>
       <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
@@ -3229,6 +4282,10 @@ function GameSokoban() {
         <div className="rounded-2xl bg-emerald-50 border border-emerald-200 px-4 py-2">
           <div className="text-[11px] font-semibold text-emerald-700">已完成</div>
           <div className="text-xl font-bold text-emerald-800">{completedGoals} / {totalTargets}</div>
+        </div>
+        <div className="rounded-2xl bg-orange-50 border border-orange-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-orange-700">最高分</div>
+          <div className="text-xl font-bold text-orange-800">{highScore}</div>
         </div>
         <div className="ml-auto flex gap-2 flex-wrap">
           <select
@@ -3256,64 +4313,89 @@ function GameSokoban() {
           </button>
         </div>
       </div>
-      <div className="mx-auto max-w-lg rounded-2xl bg-gradient-to-br from-stone-100 to-stone-200 p-4 shadow-inner">
-        <div
-          className="grid mx-auto gap-[2px] w-max"
-          style={{
-            gridTemplateColumns: `repeat(${cols}, minmax(0,1fr))`,
-          }}
-        >
-          {Array.from({ length: rows }).flatMap((_, y) =>
-            Array.from({ length: cols }).map((__, x) => {
-              const ch = grid[y]?.[x] || " ";
-              let cls = "bg-stone-200/40 ";
-              let inner = "";
-              if (ch === "#") cls += "bg-stone-700 rounded shadow-inner";
-              else if (ch === ".") {
-                cls += "bg-amber-100 rounded-full";
-                inner = "·";
-              } else if (ch === "@") {
-                cls += "bg-sky-500 rounded-full shadow";
-                inner = "🙂";
-              } else if (ch === "+") {
-                cls += "bg-sky-600 rounded-full ring-2 ring-amber-400 shadow";
-                inner = "🙂";
-              } else if (ch === "$") {
-                cls += "bg-yellow-600 rounded shadow";
-                inner = "📦";
-              }
-              return (
-                <div
-                  key={`${x}-${y}`}
-                  className={`w-9 h-9 md:w-10 md:h-10 flex items-center justify-center text-lg font-bold ${cls}`}
-                >
-                  {inner}
-                </div>
-              );
-            })
-          )}
+
+      <GameHintBar>
+        <Hint>方向键 <Key k="↑" /><Key k="↓" /><Key k="←" /><Key k="→" /> 移动</Hint>
+        <Hint>撤销 <Key k="Ctrl" />+<Key k="Z" /></Hint>
+        <Hint>重开本关 <Key k="R" /></Hint>
+        <Hint>🎯 把 📦 推到 · 目标点</Hint>
+        <Hint>📱 下方方向按键</Hint>
+      </GameHintBar>
+
+      <div className="mx-auto max-w-lg relative">
+        <div className="rounded-2xl bg-gradient-to-br from-stone-100 to-stone-200 p-4 shadow-inner">
+          <div
+            className="grid mx-auto gap-[2px] w-max"
+            style={{
+              gridTemplateColumns: `repeat(${cols}, minmax(0,1fr))`,
+            }}
+          >
+            {Array.from({ length: rows }).flatMap((_, y) =>
+              Array.from({ length: cols }).map((__, x) => {
+                const ch = grid[y]?.[x] || " ";
+                let cls = "bg-stone-200/40 ";
+                let inner = "";
+                if (ch === "#") cls += "bg-stone-700 rounded shadow-inner";
+                else if (ch === ".") {
+                  cls += "bg-amber-100 rounded-full";
+                  inner = "·";
+                } else if (ch === "@") {
+                  cls += "bg-sky-500 rounded-full shadow";
+                  inner = "🙂";
+                } else if (ch === "+") {
+                  cls += "bg-sky-600 rounded-full ring-2 ring-amber-400 shadow";
+                  inner = "🙂";
+                } else if (ch === "$") {
+                  cls += "bg-yellow-600 rounded shadow";
+                  inner = "📦";
+                }
+                return (
+                  <div
+                    key={`${x}-${y}`}
+                    className={`w-9 h-9 md:w-10 md:h-10 flex items-center justify-center text-lg font-bold ${cls}`}
+                  >
+                    {inner}
+                  </div>
+                );
+              })
+            )}
+          </div>
         </div>
+        {showResult && (
+          <GameResultOverlay
+            title={`第 ${lvl + 1} 关通过！`}
+            success={true}
+            stats={[
+              { label: "本局步数", value: steps },
+              { label: "本局分数", value: score },
+              { label: "当前关卡", value: `${lvl + 1}/${LEVELS.length}` },
+            ]}
+            highLabel="最高分（10000-步数）"
+            highScore={highScore}
+            newRecord={newRecord}
+            onRestart={restart}
+            primaryColor="from-amber-500 to-yellow-700"
+          />
+        )}
       </div>
-      {/* 触控按钮 */}
-      <div className="mt-5 grid grid-cols-3 gap-2 max-w-[220px] mx-auto">
+
+      <div className="mt-5 grid grid-cols-3 gap-2 max-w-[220px] mx-auto select-none">
         <div />
-        <button onClick={() => move(0, -1)} className="rounded-xl bg-amber-100 hover:bg-amber-200 py-3 font-bold text-amber-800">↑</button>
+        <button onClick={() => move(0, -1)} className="rounded-xl bg-amber-100 hover:bg-amber-200 active:bg-amber-300 py-3 font-bold text-amber-800 text-lg transition-all">↑</button>
         <div />
-        <button onClick={() => move(-1, 0)} className="rounded-xl bg-amber-100 hover:bg-amber-200 py-3 font-bold text-amber-800">←</button>
-        <button onClick={() => move(0, 1)} className="rounded-xl bg-amber-100 hover:bg-amber-200 py-3 font-bold text-amber-800">↓</button>
-        <button onClick={() => move(1, 0)} className="rounded-xl bg-amber-100 hover:bg-amber-200 py-3 font-bold text-amber-800">→</button>
+        <button onClick={() => move(-1, 0)} className="rounded-xl bg-amber-100 hover:bg-amber-200 active:bg-amber-300 py-3 font-bold text-amber-800 text-lg transition-all">←</button>
+        <button onClick={() => move(0, 1)} className="rounded-xl bg-amber-100 hover:bg-amber-200 active:bg-amber-300 py-3 font-bold text-amber-800 text-lg transition-all">↓</button>
+        <button onClick={() => move(1, 0)} className="rounded-xl bg-amber-100 hover:bg-amber-200 active:bg-amber-300 py-3 font-bold text-amber-800 text-lg transition-all">→</button>
       </div>
-      {win && (
-        <div className="mt-5 text-center text-2xl font-black text-emerald-600">
-          🎉 第 {lvl + 1} 关通过！步数 {steps}
-          {lvl < LEVELS.length - 1 && (
-            <button
-              onClick={() => load(lvl + 1)}
-              className="ml-3 text-base rounded-xl bg-emerald-500 text-white px-4 py-2"
-            >
-              下一关 →
-            </button>
-          )}
+
+      {win && !showResult && lvl < LEVELS.length - 1 && (
+        <div className="mt-4 text-center">
+          <button
+            onClick={() => load(lvl + 1)}
+            className="rounded-xl bg-gradient-to-r from-emerald-500 to-green-600 text-white font-semibold px-5 py-2.5 shadow-md hover:shadow-lg transition-all"
+          >
+            下一关 →
+          </button>
         </div>
       )}
       </div>
@@ -3329,7 +4411,6 @@ function GameSudoku() {
   type Board = (number | null)[][];
   const SIZE = 9;
 
-  // 完整解生成
   const fullSolve = (): Board => {
     const b: Board = Array.from({ length: SIZE }, () => Array(SIZE).fill(null));
     const fill = (idx: number): boolean => {
@@ -3338,7 +4419,6 @@ function GameSudoku() {
       const c = idx % 9;
       const nums = [1,2,3,4,5,6,7,8,9].sort(() => Math.random() - 0.5);
       for (const n of nums) {
-        // 检查行列宫
         let ok = true;
         for (let i = 0; i < 9; i++) if (b[r][i] === n || b[i][c] === n) { ok = false; break; }
         if (!ok) continue;
@@ -3357,14 +4437,36 @@ function GameSudoku() {
   };
 
   const difficulties = { 简单: 40, 中等: 50, 困难: 56, 专家: 62 };
+  const diffCoeff: Record<keyof typeof difficulties, number> = { 简单: 1, 中等: 2, 困难: 3, 专家: 4 };
   const [diff, setDiff] = useState<keyof typeof difficulties>("简单");
-  const [puzzle, setPuzzle] = useState<Board>([]); // 原始题（固定值）
+  const [puzzle, setPuzzle] = useState<Board>([]);
   const [board, setBoard] = useState<Board>([]);
   const [cands, setCands] = useState<Set<number>[][]>([]);
   const [sel, setSel] = useState<[number, number] | null>(null);
   const [note, setNote] = useState(false);
   const [mistakes, setMistakes] = useState<Set<string>>(new Set());
   const [won, setWon] = useState(false);
+  const [seconds, setSeconds] = useState(0);
+  const [showResult, setShowResult] = useState(false);
+  const [highScore, setHighScore] = useState(() => getHighScore("game-sudoku"));
+  const [newRecord, setNewRecord] = useState(false);
+  const timerRef = useRef<number | null>(null);
+  const startRef = useRef<number>(0);
+
+  const startTimer = () => {
+    if (timerRef.current) window.clearInterval(timerRef.current);
+    startRef.current = Date.now();
+    setSeconds(0);
+    timerRef.current = window.setInterval(() => {
+      setSeconds(Math.floor((Date.now() - startRef.current) / 1000));
+    }, 500);
+  };
+  const stopTimer = () => {
+    if (timerRef.current) {
+      window.clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  };
 
   const generate = (d: keyof typeof difficulties) => {
     const sol = fullSolve();
@@ -3382,17 +4484,34 @@ function GameSudoku() {
     setSel(null);
     setMistakes(new Set());
     setWon(false);
+    setShowResult(false);
+    setNewRecord(false);
     setDiff(d);
+    setHighScore(getHighScore("game-sudoku"));
+    startTimer();
   };
 
-  useEffect(() => { generate("简单"); }, []);
+  useEffect(() => { generate("简单"); return () => stopTimer(); }, []);
+
+  useEffect(() => {
+    if (won) {
+      stopTimer();
+      const coeff = diffCoeff[diff];
+      const finalSecs = Math.floor((Date.now() - startRef.current) / 1000);
+      const score = Math.max(0, (10000 - finalSecs) * coeff);
+      const nr = updateHighScore("game-sudoku", score);
+      setHighScore(getHighScore("game-sudoku"));
+      setNewRecord(nr);
+      setTimeout(() => setShowResult(true), 400);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [won]);
 
   const checkWin = (b: Board) => {
     for (let r = 0; r < 9; r++)
       for (let c = 0; c < 9; c++) {
         if (b[r][c] == null) return false;
       }
-    // 验证（理论上不会错）
     const set9 = new Set([1,2,3,4,5,6,7,8,9]);
     for (let i = 0; i < 9; i++) {
       if (new Set(b[i]).size !== 9 || new Set(b.map((r) => r[i])).size !== 9) return false;
@@ -3420,7 +4539,6 @@ function GameSudoku() {
       nb[r][c] = n === 0 ? null : n;
       nc[r][c].clear();
       setBoard(nb);
-      // 检查规则冲突
       const m = new Set<string>();
       for (let rr = 0; rr < 9; rr++)
         for (let cc = 0; cc < 9; cc++) {
@@ -3440,7 +4558,6 @@ function GameSudoku() {
     }
   };
 
-  // 键盘支持
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (/^[1-9]$/.test(e.key)) place(Number(e.key));
@@ -3463,6 +4580,10 @@ function GameSudoku() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sel, note, board]);
 
+  const mm = String(Math.floor(seconds / 60)).padStart(2, "0");
+  const ss = String(seconds % 60).padStart(2, "0");
+  const finalSecs = seconds;
+  const finalScore = Math.max(0, (10000 - finalSecs) * diffCoeff[diff]);
   return (
     <FullscreenWrapper>
       <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
@@ -3470,6 +4591,14 @@ function GameSudoku() {
         <div className="rounded-2xl bg-teal-50 border border-teal-200 px-4 py-2">
           <div className="text-[11px] font-semibold text-teal-700">难度</div>
           <div className="text-xl font-bold text-teal-800">{diff}</div>
+        </div>
+        <div className="rounded-2xl bg-cyan-50 border border-cyan-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-cyan-700">用时</div>
+          <div className="text-xl font-bold text-cyan-800 font-mono">{mm}:{ss}</div>
+        </div>
+        <div className="rounded-2xl bg-emerald-50 border border-emerald-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-emerald-700">最高分</div>
+          <div className="text-xl font-bold text-emerald-800">{highScore}</div>
         </div>
         <div className="ml-auto flex gap-2 flex-wrap items-center">
           <select
@@ -3497,7 +4626,15 @@ function GameSudoku() {
           </button>
         </div>
       </div>
-      <div className="mx-auto max-w-[500px]">
+
+      <GameHintBar>
+        <Hint>点击格子选中，数字键 <Key k="1" />-<Key k="9" /> 填数</Hint>
+        <Hint>方向键 <Key k="↑" /><Key k="↓" /><Key k="←" /><Key k="→" /> 移动光标</Hint>
+        <Hint>候选笔记 <Key k="N" /> 切换</Hint>
+        <Hint>清除 <Key k="Backspace" /> / <Key k="0" /></Hint>
+      </GameHintBar>
+
+      <div className="mx-auto max-w-[500px] relative">
         <div className="grid grid-cols-9 aspect-square rounded-2xl overflow-hidden border-4 border-slate-800 shadow-xl">
           {board.map((row, r) =>
             row.map((v, c) => {
@@ -3536,8 +4673,23 @@ function GameSudoku() {
             })
           )}
         </div>
+        {showResult && (
+          <GameResultOverlay
+            title="数独完成！"
+            success={true}
+            stats={[
+              { label: "用时", value: `${mm}:${ss}` },
+              { label: "本局分数", value: finalScore },
+              { label: "难度系数", value: `×${diffCoeff[diff]}` },
+            ]}
+            highLabel="最高分"
+            highScore={highScore}
+            newRecord={newRecord}
+            onRestart={() => generate(diff)}
+            primaryColor="from-teal-400 to-cyan-600"
+          />
+        )}
       </div>
-      {/* 数字键盘 */}
       <div className="mt-5 grid grid-cols-10 gap-2 max-w-[500px] mx-auto">
         {[1,2,3,4,5,6,7,8,9].map((n) => (
           <button
@@ -3556,11 +4708,6 @@ function GameSudoku() {
           ✕
         </button>
       </div>
-      {won && (
-        <div className="mt-6 text-center text-2xl font-black text-teal-600 animate-bounce">
-          🎉 数独通过！
-        </div>
-      )}
       </div>
     </FullscreenWrapper>
   );
@@ -3573,17 +4720,39 @@ function GameSudoku() {
 function GameLianLian() {
   const COLS = 10;
   const ROWS = 8;
+  const TOTAL_TIME = 180;
+  const MAX_HINTS = 10;
   const SYMBOLS = ["🍎","🍌","🍇","🍓","🍊","🍉","🍒","🍑","🥝","🍍","🥥","🥭"];
   type Cell = { sym: string | null; id: number };
   const [grid, setGrid] = useState<Cell[][]>([]);
   const [sel, setSel] = useState<[number, number] | null>(null);
   const [hint, setHint] = useState<[[number,number],[number,number]] | null>(null);
   const [score, setScore] = useState(0);
-  const [time, setTime] = useState(180);
+  const [time, setTime] = useState(TOTAL_TIME);
   const [playing, setPlaying] = useState(true);
   const [won, setWon] = useState(false);
+  const [hintsUsed, setHintsUsed] = useState(0);
+  const [pairsFound, setPairsFound] = useState(0);
+  const [showResult, setShowResult] = useState(false);
+  const [highScore, setHighScore] = useState(() => getHighScore("game-lianliankan"));
+  const [newRecord, setNewRecord] = useState(false);
+  const resultFired = useRef(false);
+
+  const finishGame = (success: boolean) => {
+    if (resultFired.current) return;
+    resultFired.current = true;
+    if (success) {
+      const remainingHints = Math.max(0, MAX_HINTS - hintsUsed);
+      const finalScore = Math.max(0, 10000 - (TOTAL_TIME - time) + remainingHints * 100);
+      const nr = updateHighScore("game-lianliankan", finalScore);
+      setHighScore(getHighScore("game-lianliankan"));
+      setNewRecord(nr);
+    }
+    setTimeout(() => setShowResult(true), 300);
+  };
 
   const newGame = () => {
+    resultFired.current = false;
     const total = ROWS * COLS;
     const pairs = total / 2;
     const arr: string[] = [];
@@ -3603,21 +4772,36 @@ function GameLianLian() {
     setSel(null);
     setHint(null);
     setScore(0);
-    setTime(180);
+    setTime(TOTAL_TIME);
     setPlaying(true);
     setWon(false);
+    setHintsUsed(0);
+    setPairsFound(0);
+    setShowResult(false);
+    setNewRecord(false);
+    setHighScore(getHighScore("game-lianliankan"));
   };
   useEffect(() => { newGame(); }, []);
 
-  // 计时器
   useEffect(() => {
     if (!playing) return;
     const t = setInterval(() => setTime((x) => Math.max(0, x - 1)), 1000);
     return () => clearInterval(t);
   }, [playing]);
-  useEffect(() => { if (time <= 0) setPlaying(false); }, [time]);
 
-  // 路径判定：0/1/2 个折点，格子内空或相同匹配
+  useEffect(() => {
+    if (time <= 0 && playing) {
+      setPlaying(false);
+      finishGame(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [time]);
+
+  useEffect(() => {
+    if (won) finishGame(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [won]);
+
   const emptyAt = (g: Cell[][], r: number, c: number) =>
     r < 0 || c < 0 || r >= ROWS || c >= COLS ? true : g[r][c].sym === null;
 
@@ -3642,12 +4826,9 @@ function GameLianLian() {
   const findPath = (g: Cell[][], r1: number, c1: number, r2: number, c2: number) => {
     if (r1 === r2 && c1 === c2) return false;
     if (g[r1][c1].sym !== g[r2][c2].sym) return false;
-    // 0 拐点
     if ((r1 === r2 || c1 === c2) && straight(g, r1, c1, r2, c2, true)) return true;
-    // 1 拐点 (r1,c2) 或 (r2,c1)
     if (emptyAt(g, r1, c2) && straight(g, r1, c1, r1, c2, true) && straight(g, r1, c2, r2, c2, true)) return true;
     if (emptyAt(g, r2, c1) && straight(g, r1, c1, r2, c1, true) && straight(g, r2, c1, r2, c2, true)) return true;
-    // 2 拐点：走 (r1, x) -> (r2, x)，或 (x, c1) -> (x, c2)
     for (let c = -1; c <= COLS; c++) {
       if (c === c1 || c === c2) continue;
       const aOk = c < 0 || c >= COLS ? true : emptyAt(g, r1, c);
@@ -3691,13 +4872,12 @@ function GameLianLian() {
       ng[r][c].sym = null;
       setGrid(ng);
       setScore((s) => s + 10);
+      setPairsFound((p) => p + 1);
       setSel(null);
-      // 是否胜利
       if (ng.every((row) => row.every((cell) => !cell.sym))) {
         setWon(true);
         setPlaying(false);
       } else {
-        // 是否无解 -> 自动洗牌
         if (!findHint(ng)) {
           setTimeout(() => {
             const all: string[] = [];
@@ -3714,6 +4894,13 @@ function GameLianLian() {
     }
   };
 
+  const doHint = () => {
+    if (hintsUsed >= MAX_HINTS) return;
+    const h = findHint(grid);
+    setHint(h);
+    if (h) setHintsUsed((u) => u + 1);
+  };
+
   const shuffle = () => {
     const all: string[] = [];
     grid.forEach((row) => row.forEach((x) => { if (x.sym) all.push(x.sym); }));
@@ -3725,6 +4912,10 @@ function GameLianLian() {
     setHint(null);
   };
 
+  const remainingHints = Math.max(0, MAX_HINTS - hintsUsed);
+  const usedSecs = TOTAL_TIME - time;
+  const finalScore = Math.max(0, 10000 - usedSecs + remainingHints * 100);
+  const totalPairs = (ROWS * COLS) / 2;
   return (
     <FullscreenWrapper>
       <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
@@ -3737,12 +4928,21 @@ function GameLianLian() {
           <div className="text-[11px] font-semibold text-pink-600">剩余时间</div>
           <div className="text-xl font-bold text-pink-700">{time}s</div>
         </div>
+        <div className="rounded-2xl bg-sky-50 border border-sky-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-sky-600">剩余提示</div>
+          <div className="text-xl font-bold text-sky-700">{remainingHints}</div>
+        </div>
+        <div className="rounded-2xl bg-emerald-50 border border-emerald-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-emerald-700">最高分</div>
+          <div className="text-xl font-bold text-emerald-800">{highScore}</div>
+        </div>
         <div className="ml-auto flex gap-2 flex-wrap">
           <button
-            onClick={() => setHint(findHint(grid))}
-            className="rounded-xl bg-sky-100 hover:bg-sky-200 text-sky-700 font-semibold px-4 py-2 text-sm"
+            onClick={doHint}
+            disabled={!playing || remainingHints <= 0}
+            className="rounded-xl bg-sky-100 hover:bg-sky-200 text-sky-700 font-semibold px-4 py-2 text-sm disabled:opacity-50"
           >
-            💡 提示
+            💡 提示 ({remainingHints})
           </button>
           <button
             onClick={shuffle}
@@ -3758,49 +4958,65 @@ function GameLianLian() {
           </button>
         </div>
       </div>
-      <div className="mx-auto max-w-3xl rounded-2xl p-3 bg-gradient-to-br from-pink-50 to-fuchsia-100 shadow-inner">
-        <div
-          className="grid gap-2 mx-auto"
-          style={{ gridTemplateColumns: `repeat(${COLS}, minmax(0,1fr))` }}
-        >
-          {grid.map((row, r) =>
-            row.map((cell, c) => {
-              const isSel = sel && sel[0] === r && sel[1] === c;
-              const isHint =
-                hint &&
-                ((hint[0][0] === r && hint[0][1] === c) || (hint[1][0] === r && hint[1][1] === c));
-              return (
-                <button
-                  key={cell.id}
-                  onClick={() => click(r, c)}
-                  disabled={!cell.sym}
-                  className={`aspect-square rounded-xl text-2xl md:text-3xl font-bold flex items-center justify-center transition-all ${
-                    !cell.sym
-                      ? "bg-transparent cursor-default"
-                      : isSel
-                      ? "bg-white ring-4 ring-rose-400 shadow-lg scale-105"
-                      : isHint
-                      ? "bg-yellow-200 ring-4 ring-yellow-400 animate-pulse shadow-lg"
-                      : "bg-white border border-pink-200 hover:shadow-md hover:scale-105 active:scale-95"
-                  }`}
-                >
-                  {cell.sym}
-                </button>
-              );
-            })
-          )}
+
+      <GameHintBar>
+        <Hint>点击两相同图案消除</Hint>
+        <Hint>允许 0-2 个转角连线</Hint>
+        <Hint>💡 提示：{remainingHints} 次（剩得越多分越高）</Hint>
+        <Hint>🎯 180 秒内消完全部</Hint>
+      </GameHintBar>
+
+      <div className="mx-auto max-w-3xl relative">
+        <div className="rounded-2xl p-3 bg-gradient-to-br from-pink-50 to-fuchsia-100 shadow-inner">
+          <div
+            className="grid gap-2 mx-auto"
+            style={{ gridTemplateColumns: `repeat(${COLS}, minmax(0,1fr))` }}
+          >
+            {grid.map((row, r) =>
+              row.map((cell, c) => {
+                const isSel = sel && sel[0] === r && sel[1] === c;
+                const isHint =
+                  hint &&
+                  ((hint[0][0] === r && hint[0][1] === c) || (hint[1][0] === r && hint[1][1] === c));
+                return (
+                  <button
+                    key={cell.id}
+                    onClick={() => click(r, c)}
+                    disabled={!cell.sym || !playing}
+                    className={`aspect-square rounded-xl text-2xl md:text-3xl font-bold flex items-center justify-center transition-all ${
+                      !cell.sym
+                        ? "bg-transparent cursor-default"
+                        : isSel
+                        ? "bg-white ring-4 ring-rose-400 shadow-lg scale-105"
+                        : isHint
+                        ? "bg-yellow-200 ring-4 ring-yellow-400 animate-pulse shadow-lg"
+                        : "bg-white border border-pink-200 hover:shadow-md hover:scale-105 active:scale-95"
+                    }`}
+                  >
+                    {cell.sym}
+                  </button>
+                );
+              })
+            )}
+          </div>
         </div>
+        {showResult && (
+          <GameResultOverlay
+            title={won ? "🎉 连连看通关！" : "⏰ 时间到！"}
+            success={won}
+            stats={[
+              { label: "消除得分", value: score },
+              { label: "用时", value: `${usedSecs}s` },
+              { label: "消除/总对数", value: `${pairsFound}/${totalPairs}` },
+            ]}
+            highLabel="最高分（10000-用时+剩提示×100）"
+            highScore={highScore}
+            newRecord={newRecord}
+            onRestart={newGame}
+            primaryColor="from-fuchsia-400 to-pink-500"
+          />
+        )}
       </div>
-      {won && (
-        <div className="mt-5 text-center text-2xl font-black text-pink-600">
-          🎉 连连看通关！最终得分 {score}
-        </div>
-      )}
-      {!playing && !won && (
-        <div className="mt-5 text-center text-xl font-bold text-slate-700">
-          时间到！最终得分 {score}
-        </div>
-      )}
       </div>
     </FullscreenWrapper>
   );
@@ -3809,6 +5025,9 @@ function GameLianLian() {
 // ===================== 坦克大战 =====================
 /**
  * 坦克大战：单人生存版，守住基地击杀敌方坦克
+ */
+/**
+ * 坦克大战：保卫基地、击毁全部敌军坦克获胜
  */
 function GameTank() {
   const W = 520;
@@ -3833,11 +5052,17 @@ function GameTank() {
     totalEnemy: 10,
   });
   const [, force] = useState(0);
+  const [highScore, setHighScore] = useState(() => getHighScore("game-tank"));
+  const [newRecord, setNewRecord] = useState(false);
+  const virtualKeysRef = useRef<Record<string, boolean>>({});
+  const endedRef = useRef(false);
 
+  /**
+   * 生成初始地图：砖墙、钢墙、基地周围防御
+   */
   const newMap = (): Tile[][] => {
     const cols = W / TILE, rows = H / TILE;
     const m: Tile[][] = Array.from({ length: rows }, () => Array(cols).fill(0));
-    // 建几个砖墙堆
     const bricks = [
       [2,2],[2,3],[2,4],[3,2],[5,2],[5,3],[5,4],[5,5],
       [8,2],[8,3],[8,4],[8,5],[9,2],[10,2],[10,3],[10,4],
@@ -3845,16 +5070,17 @@ function GameTank() {
       [8,9],[8,10],[9,8],[9,9],[10,8],[10,9],[10,10],
     ];
     for (const [r,c] of bricks) if (m[r]) m[r][c] = 1;
-    // 钢墙
     const steels = [[0,6],[12,6],[6,0],[6,12]];
     for (const [r,c] of steels) if (m[r]) m[r][c] = 2;
-    // 基地周围砖墙
     const br = rows - 2, bc = Math.floor(cols / 2) - 1;
     for (let dc = -1; dc <= 1; dc++) m[br][bc + dc] = 1;
     m[br - 1][bc - 1] = 1; m[br - 1][bc + 1] = 1;
     return m;
   };
 
+  /**
+   * 重置游戏状态，开始新一局
+   */
   const restart = () => {
     const s = stateRef.current;
     s.map = newMap();
@@ -3870,6 +5096,8 @@ function GameTank() {
     s.baseAlive = true;
     s.frame = 0;
     s.spawned = 0;
+    endedRef.current = false;
+    setNewRecord(false);
     force((x) => x + 1);
   };
 
@@ -3889,24 +5117,27 @@ function GameTank() {
       [0, 1], // down 2
       [-1, 0], // left 3
     ];
+    /**
+     * 检测坦克与墙体/其他坦克/基地的碰撞
+     */
     const collideTank = (t: Tank, nx: number, ny: number, list: Tank[]) => {
       if (nx < 0 || ny < 0 || nx + TILE > W || ny + TILE > H) return true;
-      // 砖墙/钢墙碰撞
       const c1 = Math.floor(nx / TILE), c2 = Math.floor((nx + TILE - 1) / TILE);
       const r1 = Math.floor(ny / TILE), r2 = Math.floor((ny + TILE - 1) / TILE);
       for (let r = r1; r <= r2; r++) for (let c = c1; c <= c2; c++) {
         if (stateRef.current.map[r]?.[c] && stateRef.current.map[r][c] >= 1) return true;
       }
-      // 基地
       const br = rows - 1, bc = Math.floor(cols / 2);
       if (r1 <= br && r2 >= br && c1 <= bc && c2 >= bc && t.isEnemy) return true;
-      // 与其他坦克碰撞
       for (const o of list) {
         if (o === t || !o.alive) continue;
         if (!(nx + TILE <= o.x || o.x + TILE <= nx || ny + TILE <= o.y || o.y + TILE <= ny)) return true;
       }
       return false;
     };
+    /**
+     * 尝试发射子弹（有冷却时间）
+     */
     const tryFire = (t: Tank) => {
       if (t.cooldown > 0) return;
       t.cooldown = 30;
@@ -3917,13 +5148,15 @@ function GameTank() {
         x: cx, y: cy, vx: dx * 4, vy: dy * 4, owner: t.isEnemy ? "E" : "P", alive: true,
       });
     };
+    /**
+     * 在生成点生成敌军坦克
+     */
     const spawnEnemy = () => {
       const s = stateRef.current;
       if (s.spawned >= s.totalEnemy) return;
       const spawnPoints: [number, number][] = [[0,0],[cols-1,0],[Math.floor(cols/2),0]];
       const [cx, cy] = spawnPoints[Math.floor(Math.random() * spawnPoints.length)];
       const nx = cx * TILE, ny = cy * TILE;
-      // 与其他坦克不重叠
       for (const o of s.tanks) {
         if (o.alive && !(nx + TILE <= o.x || o.x + TILE <= nx || ny + TILE <= o.y || o.y + TILE <= ny)) return;
       }
@@ -3935,24 +5168,31 @@ function GameTank() {
     const loop = () => {
       const c = canvasRef.current;
       const s = stateRef.current;
-      if (!c || s.gameOver || s.win) { raf = requestAnimationFrame(loop); return; }
+      if (!c) { raf = requestAnimationFrame(loop); return; }
+      if ((s.gameOver || s.win) && !endedRef.current) {
+        endedRef.current = true;
+        const nr = updateHighScore("game-tank", s.score);
+        setNewRecord(nr);
+        setHighScore(getHighScore("game-tank"));
+      }
+      if (s.gameOver || s.win) { raf = requestAnimationFrame(loop); return; }
       s.frame++;
       const ctx = c.getContext("2d")!;
-      // 输入
+      // 合并键盘和虚拟按键
+      const vk = virtualKeysRef.current;
+      const isDown = (k: string) => !!keys[k] || !!vk[k];
       const player = s.tanks[0];
       if (player.alive) {
         let moved = false;
-        if (keys["arrowup"]) { player.dir = 0; const nx = player.x, ny = player.y - 3; if (!collideTank(player, nx, ny, s.tanks)) { player.y = ny; moved = true; } }
-        else if (keys["arrowdown"]) { player.dir = 2; const nx = player.x, ny = player.y + 3; if (!collideTank(player, nx, ny, s.tanks)) { player.y = ny; moved = true; } }
-        else if (keys["arrowleft"]) { player.dir = 3; const nx = player.x - 3, ny = player.y; if (!collideTank(player, nx, ny, s.tanks)) { player.x = nx; moved = true; } }
-        else if (keys["arrowright"]) { player.dir = 1; const nx = player.x + 3, ny = player.y; if (!collideTank(player, nx, ny, s.tanks)) { player.x = nx; moved = true; } }
-        if (keys[" "]) tryFire(player);
+        if (isDown("arrowup")) { player.dir = 0; const nx = player.x, ny = player.y - 3; if (!collideTank(player, nx, ny, s.tanks)) { player.y = ny; moved = true; } }
+        else if (isDown("arrowdown")) { player.dir = 2; const nx = player.x, ny = player.y + 3; if (!collideTank(player, nx, ny, s.tanks)) { player.y = ny; moved = true; } }
+        else if (isDown("arrowleft")) { player.dir = 3; const nx = player.x - 3, ny = player.y; if (!collideTank(player, nx, ny, s.tanks)) { player.x = nx; moved = true; } }
+        else if (isDown("arrowright")) { player.dir = 1; const nx = player.x + 3, ny = player.y; if (!collideTank(player, nx, ny, s.tanks)) { player.x = nx; moved = true; } }
+        if (isDown(" ")) tryFire(player);
         player.cooldown = Math.max(0, player.cooldown - 1);
       }
-      // 敌人生成
       const aliveEnemies = s.tanks.filter((t) => t.isEnemy && t.alive).length;
       if (s.frame % 180 === 0 && aliveEnemies < 4 && s.spawned < s.totalEnemy) spawnEnemy();
-      // 敌人AI
       for (const t of s.tanks) {
         if (!t.isEnemy || !t.alive) continue;
         t.moveTimer--;
@@ -3967,19 +5207,15 @@ function GameTank() {
         else t.moveTimer = 0;
         if (Math.random() < 0.015) tryFire(t);
       }
-      // 子弹移动和碰撞
       for (const b of s.bullets) {
         if (!b.alive) continue;
         b.x += b.vx; b.y += b.vy;
         if (b.x < 0 || b.x > W || b.y < 0 || b.y > H) { b.alive = false; continue; }
-        // 墙碰撞
         const cc = Math.floor(b.x / TILE), rr = Math.floor(b.y / TILE);
         if (s.map[rr]?.[cc] === 1) { s.map[rr][cc] = 0; b.alive = false; continue; }
         if (s.map[rr]?.[cc] === 2) { b.alive = false; continue; }
-        // 基地碰撞
         const br = rows - 1, bc = Math.floor(cols / 2);
         if (rr === br && cc === bc) { s.baseAlive = false; s.gameOver = true; b.alive = false; continue; }
-        // 坦克碰撞
         for (const t of s.tanks) {
           if (!t.alive) continue;
           if (b.owner === "P" && !t.isEnemy) continue;
@@ -3997,9 +5233,7 @@ function GameTank() {
         }
       }
       s.bullets = s.bullets.filter((b) => b.alive);
-      // 胜利
       if (s.spawned >= s.totalEnemy && s.tanks.filter((t) => t.isEnemy && t.alive).length === 0) s.win = true;
-      // 画地图
       ctx.fillStyle = "#0f172a";
       ctx.fillRect(0, 0, W, H);
       for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
@@ -4016,7 +5250,6 @@ function GameTank() {
           ctx.strokeRect(c * TILE + 2, r * TILE + 2, TILE - 4, TILE - 4);
         }
       }
-      // 基地（鹰）
       const br2 = rows - 1, bc2 = Math.floor(cols / 2);
       ctx.fillStyle = s.baseAlive ? "#fbbf24" : "#7f1d1d";
       ctx.fillRect(bc2 * TILE, br2 * TILE, TILE, TILE);
@@ -4025,7 +5258,6 @@ function GameTank() {
       ctx.textBaseline = "middle";
       ctx.fillStyle = "#fff";
       ctx.fillText("🦅", bc2 * TILE + TILE / 2, br2 * TILE + TILE / 2);
-      // 画坦克
       for (const t of s.tanks) {
         if (!t.alive) continue;
         ctx.fillStyle = t.color;
@@ -4039,7 +5271,6 @@ function GameTank() {
           6 + Math.abs(dx) * (TILE / 3)
         );
       }
-      // 画子弹
       ctx.fillStyle = "#fecaca";
       for (const b of s.bullets) ctx.fillRect(b.x - 3, b.y - 3, 6, 6);
       raf = requestAnimationFrame(loop);
@@ -4054,6 +5285,20 @@ function GameTank() {
 
   const s = stateRef.current;
   const p = s.tanks[0];
+  const remaining = Math.max(0, s.totalEnemy - s.spawned) + s.tanks.filter((t) => t.isEnemy && t.alive).length;
+  const destroyed = s.totalEnemy - remaining;
+
+  /**
+   * 设置虚拟按键按下状态（鼠标/触摸）
+   */
+  const bindBtn = (k: string) => ({
+    onMouseDown: (e: React.MouseEvent) => { e.preventDefault(); virtualKeysRef.current[k] = true; },
+    onMouseUp: (e: React.MouseEvent) => { e.preventDefault(); virtualKeysRef.current[k] = false; },
+    onMouseLeave: () => { virtualKeysRef.current[k] = false; },
+    onTouchStart: (e: React.TouchEvent) => { e.preventDefault(); virtualKeysRef.current[k] = true; },
+    onTouchEnd: (e: React.TouchEvent) => { e.preventDefault(); virtualKeysRef.current[k] = false; },
+  });
+
   return (
     <FullscreenWrapper>
       <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
@@ -4068,7 +5313,11 @@ function GameTank() {
         </div>
         <div className="rounded-2xl bg-emerald-50 border border-emerald-200 px-4 py-2">
           <div className="text-[11px] font-semibold text-emerald-700">剩余敌军</div>
-          <div className="text-xl font-bold text-emerald-800">{Math.max(0, s.totalEnemy - s.spawned) + s.tanks.filter((t) => t.isEnemy && t.alive).length}</div>
+          <div className="text-xl font-bold text-emerald-800">{remaining}</div>
+        </div>
+        <div className="rounded-2xl bg-slate-50 border border-slate-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-slate-600">最高分</div>
+          <div className="text-xl font-bold text-slate-800">{highScore}</div>
         </div>
         <button
           onClick={restart}
@@ -4077,20 +5326,48 @@ function GameTank() {
           重开
         </button>
       </div>
-      <div className="mx-auto max-w-[540px]">
+      <GameHintBar>
+        <Hint>🎮 移动 <Key k="↑" /><Key k="←" /><Key k="↓" /><Key k="→" /></Hint>
+        <Hint>🔫 射击 <Key k="空格" /></Hint>
+        <Hint>🎯 击毁 <b>{s.totalEnemy}</b> 辆敌军，守住 🦅</Hint>
+      </GameHintBar>
+      <div className="mx-auto max-w-[540px] relative">
         <canvas ref={canvasRef} width={W} height={H} className="w-full rounded-2xl shadow-2xl aspect-square" />
+        {(s.gameOver || s.win) && (
+          <GameResultOverlay
+            title={s.win ? "保卫基地成功！" : "游戏结束！"}
+            success={s.win}
+            stats={[
+              { label: "本局得分", value: s.score },
+              { label: "击毁敌军", value: destroyed },
+              { label: "剩余生命", value: Math.max(0, p?.hp ?? 0) },
+            ]}
+            highLabel="最高分"
+            highScore={highScore}
+            newRecord={newRecord}
+            onRestart={restart}
+            primaryColor="from-lime-500 to-green-700"
+          />
+        )}
       </div>
-      {(s.gameOver || s.win) && (
-        <div className="mt-5 text-center text-2xl font-black">
-          {s.win ? (
-            <span className="text-emerald-600">🎉 保卫基地成功！得分 {s.score}</span>
-          ) : (
-            <span className="text-rose-600">💥 游戏结束！得分 {s.score}</span>
-          )}
+      <div className="mt-5 flex items-end justify-between gap-4 max-w-[540px] mx-auto">
+        <div className="grid grid-cols-3 gap-1.5 w-40">
+          <div />
+          <button {...bindBtn("arrowup")} className="h-12 rounded-xl bg-lime-500 text-white font-bold text-xl active:scale-95 shadow">↑</button>
+          <div />
+          <button {...bindBtn("arrowleft")} className="h-12 rounded-xl bg-lime-500 text-white font-bold text-xl active:scale-95 shadow">←</button>
+          <div className="h-12 rounded-xl bg-lime-100" />
+          <button {...bindBtn("arrowright")} className="h-12 rounded-xl bg-lime-500 text-white font-bold text-xl active:scale-95 shadow">→</button>
+          <div />
+          <button {...bindBtn("arrowdown")} className="h-12 rounded-xl bg-lime-500 text-white font-bold text-xl active:scale-95 shadow">↓</button>
+          <div />
         </div>
-      )}
-      <div className="mt-3 text-center text-xs text-slate-500">
-        方向键移动，空格射击 · 共 {s.totalEnemy} 辆敌军 · 守住 🦅
+        <button
+          {...bindBtn(" ")}
+          className="h-24 w-24 rounded-full bg-gradient-to-br from-red-500 to-rose-700 text-white font-black text-sm shadow-xl active:scale-95"
+        >
+          射击
+        </button>
       </div>
       </div>
     </FullscreenWrapper>
@@ -4101,11 +5378,14 @@ function GameTank() {
 /**
  * 三消：交换相邻糖果形成 ≥3 连消除、特殊糖果、关卡目标
  */
+/**
+ * 消消乐（三消）：交换相邻糖果形成 ≥3 连消除、特殊糖果、关卡目标
+ */
 function GameMatch3() {
   const SIZE = 8;
   const COLORS = ["bg-rose-500", "bg-amber-400", "bg-emerald-500", "bg-sky-500", "bg-violet-500", "bg-fuchsia-500"];
   const EMOJIS = ["🍓","🍋","🍏","💎","🍇","🍬"];
-  type Cell = { color: number; id: number; special: 0|1|2; falling?: boolean }; // special: 1条纹 2彩虹
+  type Cell = { color: number; id: number; special: 0|1|2; falling?: boolean };
   const [grid, setGrid] = useState<Cell[]>([]);
   const [sel, setSel] = useState<number | null>(null);
   const [score, setScore] = useState(0);
@@ -4113,14 +5393,19 @@ function GameMatch3() {
   const [goal] = useState(2000);
   const [animating, setAnimating] = useState(false);
   const [combo, setCombo] = useState(0);
+  const [highScore, setHighScore] = useState(() => getHighScore("game-match3"));
+  const [newRecord, setNewRecord] = useState(false);
+  const endedRef = useRef(false);
 
+  /**
+   * 开始新游戏：随机生成 8×8 糖果盘（避免初始三连）
+   */
   const newGame = () => {
     const arr: Cell[] = [];
     let id = 0;
     const make = (): number => Math.floor(Math.random() * COLORS.length);
     for (let i = 0; i < SIZE * SIZE; i++) {
       let color = make();
-      // 避免初始三连
       while (
         (i >= 2 && arr[i - 1].color === color && arr[i - 2].color === color) ||
         (i >= SIZE && arr[i - SIZE].color === color && i >= 2 * SIZE && arr[i - 2 * SIZE].color === color)
@@ -4132,15 +5417,19 @@ function GameMatch3() {
     setScore(0);
     setMoves(25);
     setCombo(0);
+    setNewRecord(false);
+    endedRef.current = false;
   };
   useEffect(() => { newGame(); }, []);
 
   const xy = (i: number) => [i % SIZE, Math.floor(i / SIZE)];
   const idx = (x: number, y: number) => y * SIZE + x;
 
+  /**
+   * 找出盘面上所有横向/纵向 ≥3 连匹配位置
+   */
   const findMatches = (g: Cell[]): Set<number> => {
     const rem = new Set<number>();
-    // 横向
     for (let y = 0; y < SIZE; y++) {
       let run = 1;
       for (let x = 1; x <= SIZE; x++) {
@@ -4152,7 +5441,6 @@ function GameMatch3() {
         }
       }
     }
-    // 纵向
     for (let x = 0; x < SIZE; x++) {
       let run = 1;
       for (let y = 1; y <= SIZE; y++) {
@@ -4167,6 +5455,9 @@ function GameMatch3() {
     return rem;
   };
 
+  /**
+   * 循环消除匹配、触发特殊糖果、下落补充，直到盘面稳定
+   */
   const resolve = async (g: Cell[]): Promise<Cell[]> => {
     let local = g.map((c) => ({ ...c }));
     let loop = 0;
@@ -4176,9 +5467,7 @@ function GameMatch3() {
       loop++;
       setCombo(loop);
       let addScore = 0;
-      // 先记录特殊糖果触发（连锁在彩虹）
       const toRemove = new Set(matches);
-      // 处理彩虹糖：与任意颜色相邻 -> 消除同色
       for (const i of matches) {
         const [x, y] = xy(i);
         const c = local[i];
@@ -4186,16 +5475,11 @@ function GameMatch3() {
           const targetColor = c.color;
           for (let j = 0; j < local.length; j++) if (local[j].color === targetColor) toRemove.add(j);
         } else if (c.special === 1) {
-          // 条纹：整行+整列
           for (let k = 0; k < SIZE; k++) { toRemove.add(idx(k, y)); toRemove.add(idx(x, k)); }
         }
       }
       addScore += toRemove.size * 10 * loop;
-      // 检查生成特殊
-      // (简化：连续4生成条纹，5生成彩虹）- 对匹配段扫描
-      // 标记为删除
       for (const i of toRemove) local[i] = { ...local[i], color: -1 };
-      // 下落+补充
       let idMax = Math.max(...local.map((c) => c.id)) + 1;
       for (let x = 0; x < SIZE; x++) {
         const col: number[] = [];
@@ -4214,6 +5498,9 @@ function GameMatch3() {
     return local;
   };
 
+  /**
+   * 点击糖果：选中、与相邻格交换、触发消除
+   */
   const click = async (i: number) => {
     if (animating || moves <= 0) return;
     if (sel === null) { setSel(i); return; }
@@ -4222,12 +5509,10 @@ function GameMatch3() {
     const adj = Math.abs(sx - tx) + Math.abs(sy - ty) === 1;
     if (!adj) { setSel(i); return; }
     setAnimating(true);
-    // 交换
     const ng = grid.slice();
     [ng[sel], ng[i]] = [ng[i], ng[sel]];
     const matches = findMatches(ng);
     if (!matches.size) {
-      // 无匹配，换回
       [ng[sel], ng[i]] = [ng[i], ng[sel]];
       setGrid(ng);
       setSel(null);
@@ -4244,6 +5529,17 @@ function GameMatch3() {
 
   const won = score >= goal;
   const lose = !won && moves <= 0;
+  const gameEnded = won || lose;
+
+  // 游戏结束时写入最高分
+  useEffect(() => {
+    if (gameEnded && !endedRef.current) {
+      endedRef.current = true;
+      const nr = updateHighScore("game-match3", score);
+      setNewRecord(nr);
+      setHighScore(getHighScore("game-match3"));
+    }
+  }, [gameEnded, score]);
 
   return (
     <FullscreenWrapper>
@@ -4263,6 +5559,10 @@ function GameMatch3() {
             <div className="text-xl font-black text-rose-700">×{combo}</div>
           </div>
         )}
+        <div className="rounded-2xl bg-slate-50 border border-slate-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-slate-600">最高分</div>
+          <div className="text-xl font-bold text-slate-800">{highScore}</div>
+        </div>
         <button
           onClick={newGame}
           className="ml-auto rounded-xl bg-gradient-to-r from-rose-500 to-fuchsia-600 text-white font-semibold px-4 py-2 text-sm shadow-md"
@@ -4270,7 +5570,18 @@ function GameMatch3() {
           重开
         </button>
       </div>
-      <div className="mx-auto max-w-md rounded-2xl p-3 bg-gradient-to-br from-pink-100 to-fuchsia-100 shadow-inner">
+      <GameHintBar>
+        <Hint>
+          <b>操作</b>：点击 <b>选中</b> + 点击 <b>相邻格</b> 交换
+        </Hint>
+        <Hint>
+          <b>消除</b>：相同色 <b>≥3 连</b> 即可消除
+        </Hint>
+        <Hint>
+          <b>目标</b>：{moves} 步内达成 <b>{goal}</b> 分
+        </Hint>
+      </GameHintBar>
+      <div className="mx-auto max-w-md rounded-2xl p-3 bg-gradient-to-br from-pink-100 to-fuchsia-100 shadow-inner relative">
         <div
           className="grid gap-1.5 aspect-square"
           style={{ gridTemplateColumns: `repeat(${SIZE}, minmax(0,1fr))` }}
@@ -4292,6 +5603,22 @@ function GameMatch3() {
             );
           })}
         </div>
+        {gameEnded && (
+          <GameResultOverlay
+            title={won ? "🎉 目标达成！" : "步数用尽～"}
+            success={won}
+            stats={[
+              { label: "本局得分", value: score },
+              { label: "目标分数", value: goal },
+              { label: "剩余步数", value: Math.max(0, moves) },
+            ]}
+            highLabel="最高分"
+            highScore={highScore}
+            newRecord={newRecord}
+            onRestart={newGame}
+            primaryColor="from-rose-400 to-fuchsia-600"
+          />
+        )}
       </div>
       <div className="mt-4 h-3 rounded-full bg-slate-200 overflow-hidden max-w-md mx-auto">
         <div
@@ -4299,16 +5626,6 @@ function GameMatch3() {
           style={{ width: `${Math.min(100, (score / goal) * 100)}%` }}
         />
       </div>
-      {won && (
-        <div className="mt-6 text-center text-2xl font-black text-rose-600">
-          🎉 目标达成！得分 {score}
-        </div>
-      )}
-      {lose && (
-        <div className="mt-6 text-center text-2xl font-black text-slate-700">
-          步数用尽～得分 {score}
-        </div>
-      )}
       <div className="mt-3 text-center text-xs text-slate-500">
         交换相邻糖果形成 3+ 连即可消除，凑出 4/5 连生成特殊糖果威力更强
       </div>
@@ -4332,8 +5649,14 @@ function GameSheep() {
   const [won, setWon] = useState(false);
   const [lose, setLose] = useState(false);
   const [props, setProps] = useState({ undo: 3, shuffle: 3, remove: 2 });
+  const [clearedCount, setClearedCount] = useState(0);
+  const [highScore, setHighScore] = useState(() => getHighScore("game-yanglegeyang"));
+  const [newRecord, setNewRecord] = useState(false);
 
   const posMapRef = useRef<Map<number, [number, number]>>(new Map());
+
+  const WIDTH = 600;
+  const HEIGHT = 500;
 
   const generate = (lv: number) => {
     const total = LEVEL_CARDS[lv] || 120;
@@ -4386,11 +5709,12 @@ function GameSheep() {
     setLose(false);
     setLvl(lv);
     setProps({ undo: 3, shuffle: 3, remove: 2 });
+    setClearedCount(0);
+    setNewRecord(false);
   };
 
   useEffect(() => { start(0); /* eslint-disable-next-line */ }, []);
 
-  // 顶部卡判定
   const topCard = (c: Card, all: Card[]) => {
     const [cx, cy] = posMapRef.current.get(c.id) || [0, 0];
     const W = 34, H = 44;
@@ -4403,19 +5727,18 @@ function GameSheep() {
     return true;
   };
 
-  // 历史
-  const historyRef = useRef<{ cards: Card[]; slots: (Card | null)[] }[]>([]);
+  const historyRef = useRef<{ cards: Card[]; slots: (Card | null)[]; cleared: number }[]>([]);
 
   const pushHistory = () => {
     historyRef.current.push({
       cards: cards.map((c) => ({ ...c })),
       slots: slots.slice(),
+      cleared: clearedCount,
     });
     if (historyRef.current.length > 20) historyRef.current.shift();
   };
 
   const processSlots = (s: (Card | null)[]): { slots: (Card | null)[]; removed: number } => {
-    // 3 连去除
     const countMap = new Map<number, Card[]>();
     for (const c of s) if (c) {
       if (!countMap.has(c.sym)) countMap.set(c.sym, []);
@@ -4433,7 +5756,6 @@ function GameSheep() {
         }
       }
     }
-    // 压缩非 null 到前面
     const out: (Card | null)[] = [];
     for (const c of newSlots) if (c) out.push(c);
     while (out.length < SLOT) out.push(null);
@@ -4443,33 +5765,33 @@ function GameSheep() {
   const click = (c: Card) => {
     if (!c.visible || won || lose) return;
     if (!topCard(c, cards)) return;
-    // 找空槽位
     const firstEmpty = slots.findIndex((s) => s === null);
     if (firstEmpty === -1) return;
     pushHistory();
     const ns = slots.slice();
-    // 插入：按同图案相邻更优？ -> 简单：找到第一个和当前图案相同的槽位后面；没有就放第一个空
     let put = firstEmpty;
     for (let i = SLOT - 1; i >= 0; i--) {
       if (ns[i] && ns[i]!.sym === c.sym) { put = i + 1; break; }
     }
     if (put >= SLOT || ns[put] !== null) put = firstEmpty;
-    // 把后面的往后挪一格（保留顺序）
     for (let i = SLOT - 1; i > put; i--) ns[i] = ns[i - 1];
     ns[put] = { ...c };
     const nc = cards.filter((x) => x.id !== c.id);
-    // 处理三连
     const { slots: after, removed } = processSlots(ns);
     setSlots(after);
     setCards(nc);
-    // 胜利
-    if (nc.length === 0 && after.every((x) => x === null)) setWon(true);
-    // 失败：槽位满（非空=SLOT且无法再消）
+    if (removed > 0) setClearedCount((x) => x + removed);
+    if (nc.length === 0 && after.every((x) => x === null)) {
+      setWon(true);
+      const finalScore = (lvl + 1) * 1000 + (clearedCount + removed);
+      const nr = updateHighScore("game-yanglegeyang", finalScore);
+      if (nr) setHighScore(getHighScore("game-yanglegeyang"));
+      setNewRecord(nr);
+    }
     if (after[after.length - 1] !== null) {
       const canMatch = processSlots(after).removed > 0;
       if (!canMatch) setLose(true);
     }
-    void removed;
   };
 
   const undo = () => {
@@ -4478,6 +5800,7 @@ function GameSheep() {
     if (!h) return;
     setCards(h.cards);
     setSlots(h.slots);
+    setClearedCount(h.cleared);
     setProps({ ...props, undo: props.undo - 1 });
     setLose(false);
   };
@@ -4491,7 +5814,7 @@ function GameSheep() {
   };
   const remove = () => {
     if (props.remove <= 0) return;
-    // 移出底部3个卡片（最早3个）
+    pushHistory();
     const ns = slots.slice();
     const filled: number[] = [];
     for (let i = 0; i < ns.length; i++) if (ns[i]) filled.push(i);
@@ -4505,9 +5828,7 @@ function GameSheep() {
     setProps({ ...props, remove: props.remove - 1 });
   };
 
-  // 计算布局尺寸
-  const WIDTH = 600;
-  const HEIGHT = 500;
+  const curScore = (lvl + 1) * 1000 + clearedCount;
 
   return (
     <FullscreenWrapper>
@@ -4520,6 +5841,10 @@ function GameSheep() {
         <div className="rounded-2xl bg-rose-50 border border-rose-200 px-4 py-2">
           <div className="text-[11px] font-semibold text-rose-600">剩余卡片</div>
           <div className="text-xl font-bold text-rose-700">{cards.length}</div>
+        </div>
+        <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-2">
+          <div className="text-[11px] font-semibold text-amber-600">最高分</div>
+          <div className="text-xl font-bold text-amber-700">{highScore}</div>
         </div>
         <div className="ml-auto flex gap-2 flex-wrap items-center">
           <select
@@ -4545,11 +5870,19 @@ function GameSheep() {
           </button>
         </div>
       </div>
+
+      <GameHintBar>
+        <Hint>🖱️ 点击卡片放入槽位</Hint>
+        <Hint>✨ 3 张相同图案自动消除</Hint>
+        <Hint>↶ 撤回 · 🔀 洗牌 · 移出 救急</Hint>
+        <Hint>⚠️ 槽位满且无法消除就失败</Hint>
+      </GameHintBar>
+
+      <div className="relative mx-auto" style={{ width: "min(100%, 640px)" }}>
       <div
-        className="mx-auto rounded-3xl relative shadow-inner bg-gradient-to-br from-emerald-100 via-green-100 to-teal-100 border-4 border-emerald-200"
-        style={{ width: "min(100%, 640px)", aspectRatio: `${WIDTH}/${HEIGHT + 100}` }}
+        className="rounded-3xl relative shadow-inner bg-gradient-to-br from-emerald-100 via-green-100 to-teal-100 border-4 border-emerald-200"
+        style={{ aspectRatio: `${WIDTH}/${HEIGHT + 100}` }}
       >
-        {/* 卡片区 */}
         <div className="absolute inset-0" style={{ height: `${HEIGHT / (HEIGHT + 100) * 100}%` }}>
           <svg
             viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
@@ -4571,7 +5904,6 @@ function GameSheep() {
             })}
           </svg>
         </div>
-        {/* 底部槽位 */}
         <div className="absolute left-0 right-0 bottom-0 h-[92px] px-4 flex items-center justify-center">
           <div className="flex gap-2 p-2 bg-white/80 rounded-2xl backdrop-blur border border-pink-200 shadow-xl">
             {slots.map((s, i) => (
@@ -4587,19 +5919,28 @@ function GameSheep() {
           </div>
         </div>
       </div>
-      {won && (
-        <div className="mt-5 text-center text-2xl font-black text-emerald-600">
-          🎉 第 {lvl + 1} 关通过！
-          {lvl + 1 < LEVEL_CARDS.length && (
-            <button onClick={() => start(lvl + 1)} className="ml-3 rounded-xl bg-emerald-500 text-white px-4 py-2 text-base">
-              下一关 →
-            </button>
-          )}
-        </div>
+      {(won || lose) && (
+        <GameResultOverlay
+          title={won ? `🎉 第 ${lvl + 1} 关通过！` : "槽位已满"}
+          success={won}
+          stats={[
+            { label: "通关关卡", value: won ? lvl + 1 : lvl },
+            { label: "消除卡片", value: clearedCount },
+            { label: "本局得分", value: curScore },
+          ]}
+          highLabel="最高分"
+          highScore={highScore}
+          newRecord={won ? newRecord : false}
+          onRestart={() => start(lvl)}
+          primaryColor="from-pink-400 to-rose-500"
+        />
       )}
-      {lose && (
-        <div className="mt-5 text-center text-2xl font-black text-rose-600">
-          💥 槽位已满！试试「撤回」或「移出」，或点重开本关
+      </div>
+      {won && lvl + 1 < LEVEL_CARDS.length && (
+        <div className="mt-5 text-center">
+          <button onClick={() => start(lvl + 1)} className="rounded-xl bg-gradient-to-r from-emerald-500 to-green-600 text-white font-bold px-6 py-3 text-base shadow-lg hover:shadow-xl">
+            下一关 →
+          </button>
         </div>
       )}
       </div>
@@ -5440,20 +6781,24 @@ function GameAircraft() {
   const H = 600;
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const keysRef = useRef<Record<string, boolean>>({});
-  // 游戏全部可变状态放进 ref，避免每帧触发 React 重渲染
+  const particles = useRef(createParticleSystem());
+  const ft = useRef(createFloatTextSystem());
+  const [highScore, setHighScore] = useState<number>(() => getHighScore("game-aircraft"));
+  const [paused, setPaused] = useState(false);
+  const [newRecord, setNewRecord] = useState(false);
   const stateRef = useRef({
-    px: W / 2, // 玩家飞机 x 坐标
+    px: W / 2,
     bullets: [] as { x: number; y: number }[],
     enemies: [] as { x: number; y: number; vy: number; hp: number }[],
     score: 0,
-    cool: 0, // 开火冷却计数
-    spawn: 0, // 敌机生成计数
+    cool: 0,
+    spawn: 0,
     running: true,
     over: false,
+    paused: false,
   });
   const [, force] = useState(0);
 
-  // 重置全部状态，开始新一局
   const restart = () => {
     const s = stateRef.current;
     s.px = W / 2;
@@ -5464,11 +6809,30 @@ function GameAircraft() {
     s.spawn = 0;
     s.running = true;
     s.over = false;
+    s.paused = false;
+    particles.current.clear();
+    ft.current.clear();
+    setPaused(false);
+    setNewRecord(false);
+    setHighScore(getHighScore("game-aircraft"));
     force((x) => x + 1);
   };
 
+  const togglePause = () => {
+    const s = stateRef.current;
+    if (s.over) return;
+    s.paused = !s.paused;
+    setPaused(s.paused);
+  };
+
   useEffect(() => {
-    const down = (e: KeyboardEvent) => (keysRef.current[e.key.toLowerCase()] = true);
+    const down = (e: KeyboardEvent) => {
+      if (e.key === " " || e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        togglePause();
+      }
+      keysRef.current[e.key.toLowerCase()] = true;
+    };
     const up = (e: KeyboardEvent) => (keysRef.current[e.key.toLowerCase()] = false);
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
@@ -5478,21 +6842,17 @@ function GameAircraft() {
       if (c) {
         const ctx = c.getContext("2d")!;
         const s = stateRef.current;
-        if (s.running && !s.over) {
-          // 输入：左右移动
+        if (s.running && !s.over && !s.paused) {
           if (keysRef.current["arrowleft"] || keysRef.current["a"]) s.px -= 6;
           if (keysRef.current["arrowright"] || keysRef.current["d"]) s.px += 6;
           s.px = clamp(s.px, 20, W - 20);
-          // 自动开火
           s.cool--;
           if (s.cool <= 0) {
             s.bullets.push({ x: s.px, y: H - 60 });
             s.cool = 8;
           }
-          // 子弹上移
           for (const b of s.bullets) b.y -= 8;
           s.bullets = s.bullets.filter((b) => b.y > -10);
-          // 敌机生成（难度随分数提升）
           const speedBase = 1.5 + Math.floor(s.score / 50) * 0.5;
           s.spawn--;
           if (s.spawn <= 0) {
@@ -5504,36 +6864,38 @@ function GameAircraft() {
             });
             s.spawn = Math.max(20, 60 - Math.floor(s.score / 30) * 4);
           }
-          // 敌机下移
           for (const e of s.enemies) e.y += e.vy;
-          // 子弹击中敌机
           for (const b of s.bullets) {
             for (const e of s.enemies) {
               if (e.hp > 0 && Math.abs(b.x - e.x) < 16 && Math.abs(b.y - e.y) < 16) {
                 e.hp = 0;
                 b.y = -100;
                 s.score += 10;
+                particles.current.burst(e.x, e.y, 16, ["#f472b6", "#fb7185", "#f43f5e", "#fde047"], 4.5, 32);
+                ft.current.spawn(e.x, e.y - 10, "+10", "#fde047", 18, 40);
               }
             }
           }
           s.enemies = s.enemies.filter((e) => e.hp > 0 && e.y < H + 20);
-          // 玩家被撞 -> 游戏结束
           for (const e of s.enemies) {
             if (Math.abs(e.x - s.px) < 22 && Math.abs(e.y - (H - 50)) < 22) {
               s.over = true;
               s.running = false;
+              particles.current.burst(s.px, H - 50, 28, ["#22d3ee", "#06b6d4", "#fde047", "#f97316", "#ef4444"], 5.5, 44);
+              const isNew = updateHighScore("game-aircraft", s.score);
+              if (isNew) {
+                setNewRecord(true);
+                setHighScore(s.score);
+              }
             }
           }
         }
-        // 绘制背景
         ctx.fillStyle = "#0f172a";
         ctx.fillRect(0, 0, W, H);
-        // 星空滚动
         ctx.fillStyle = "rgba(255,255,255,0.5)";
         for (let i = 0; i < 30; i++) {
           ctx.fillRect((i * 37) % W, (i * 53 + (Date.now() / 30) % H) % H, 2, 2);
         }
-        // 玩家飞机（三角形）
         ctx.fillStyle = "#22d3ee";
         ctx.beginPath();
         ctx.moveTo(s.px, H - 60);
@@ -5541,10 +6903,8 @@ function GameAircraft() {
         ctx.lineTo(s.px + 16, H - 36);
         ctx.closePath();
         ctx.fill();
-        // 子弹
         ctx.fillStyle = "#fde047";
         for (const b of s.bullets) ctx.fillRect(b.x - 2, b.y - 8, 4, 12);
-        // 敌机（倒三角）
         ctx.fillStyle = "#f472b6";
         for (const e of s.enemies) {
           ctx.beginPath();
@@ -5554,7 +6914,20 @@ function GameAircraft() {
           ctx.closePath();
           ctx.fill();
         }
-        // 分数
+        particles.current.step(ctx, 0.1);
+        ft.current.step(ctx);
+        if (s.paused && !s.over) {
+          ctx.fillStyle = "rgba(0,0,0,0.55)";
+          ctx.fillRect(0, 0, W, H);
+          ctx.fillStyle = "rgba(255,255,255,0.95)";
+          ctx.font = "bold 44px system-ui";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText("⏸ 已暂停", W / 2, H / 2);
+          ctx.font = "16px system-ui";
+          ctx.fillStyle = "rgba(255,255,255,0.8)";
+          ctx.fillText("按空格 / P 或点击右上角继续", W / 2, H / 2 + 44);
+        }
         ctx.fillStyle = "rgba(255,255,255,0.9)";
         ctx.font = "bold 20px system-ui";
         ctx.textAlign = "left";
@@ -5571,13 +6944,20 @@ function GameAircraft() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 鼠标移动控制飞机
   const onMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const c = canvasRef.current;
     if (!c) return;
     const rect = c.getBoundingClientRect();
     const x = ((e.clientX - rect.left) / rect.width) * W;
     stateRef.current.px = clamp(x, 20, W - 20);
+  };
+
+  const onTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    const c = canvasRef.current;
+    if (!c || !e.touches[0]) return;
+    e.preventDefault();
+    const p = canvasLogicalPoint(c, e.touches[0].clientX, e.touches[0].clientY, W, H);
+    stateRef.current.px = clamp(p.x, 20, W - 20);
   };
 
   const s = stateRef.current;
@@ -5589,6 +6969,10 @@ function GameAircraft() {
             <div className="text-[11px] font-semibold text-cyan-600">得分</div>
             <div className="text-xl font-bold text-cyan-700">{s.score}</div>
           </div>
+          <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-2">
+            <div className="text-[11px] font-semibold text-amber-600">最高分</div>
+            <div className="text-xl font-bold text-amber-700">{highScore}</div>
+          </div>
           <button
             onClick={restart}
             className="ml-auto rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-semibold px-4 py-2 text-sm shadow-md flex items-center gap-1.5"
@@ -5597,23 +6981,38 @@ function GameAircraft() {
             重开
           </button>
         </div>
-        <div className="mx-auto max-w-[480px]">
+
+        <GameHintBar>
+          <Hint>⌨️ <Key k="←" /><Key k="→" /> 或 <Key k="A" /><Key k="D" /> 移动</Hint>
+          <Hint>🖱️ 鼠标移动控制</Hint>
+          <Hint>📱 触摸滑动控制</Hint>
+          <Hint>🔫 自动开火</Hint>
+          <Hint><Key k="空格" /> / <Key k="P" /> 暂停</Hint>
+        </GameHintBar>
+
+        <div className="relative mx-auto max-w-[480px]">
+          <PauseButton paused={paused} toggle={togglePause} />
           <canvas
             ref={canvasRef}
             width={W}
             height={H}
             onMouseMove={onMove}
-            className="w-full rounded-2xl shadow-2xl"
+            onTouchMove={onTouchMove}
+            className="w-full rounded-2xl shadow-2xl touch-none"
             style={{ aspectRatio: "4 / 5" }}
           />
-        </div>
-        {s.over && (
-          <div className="mt-4 text-center text-rose-600 font-semibold">
-            ✈️ 坠机！得分：{s.score}，点「重开」再战
-          </div>
-        )}
-        <div className="mt-3 text-center text-xs text-slate-500">
-          ← → / A D 或鼠标移动控制飞机，自动开火，击落敌机 +10
+          {s.over && (
+            <GameResultOverlay
+              title="飞机坠毁"
+              success={false}
+              stats={[{ label: "本局得分", value: s.score }]}
+              highLabel="历史最高分"
+              highScore={highScore}
+              newRecord={newRecord}
+              onRestart={restart}
+              primaryColor="from-cyan-500 to-blue-600"
+            />
+          )}
         </div>
       </div>
     </FullscreenWrapper>
@@ -5631,10 +7030,15 @@ function GameBreakout() {
   const H = 540;
   const ROWS = 4;
   const COLS = 10;
-  const BW = 42; // 砖块宽
-  const BH = 18; // 砖块高
+  const BW = 42;
+  const BH = 18;
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const keysRef = useRef<Record<string, boolean>>({});
+  const particles = useRef(createParticleSystem());
+  const ft = useRef(createFloatTextSystem());
+  const [highScore, setHighScore] = useState<number>(() => getHighScore("game-breakout"));
+  const [paused, setPaused] = useState(false);
+  const [newRecord, setNewRecord] = useState(false);
   type Brick = { x: number; y: number; alive: boolean; color: string; score: number };
   const stateRef = useRef({
     paddle: W / 2 - 40,
@@ -5647,10 +7051,11 @@ function GameBreakout() {
     running: true,
     over: false,
     won: false,
+    paused: false,
+    launched: false,
   });
   const [, force] = useState(0);
 
-  // 生成 4 行彩色砖块，顶行分值高
   const buildBricks = (): Brick[] => {
     const colors = ["#ef4444", "#f59e0b", "#22c55e", "#3b82f6"];
     const scores = [50, 30, 20, 10];
@@ -5673,7 +7078,7 @@ function GameBreakout() {
     const s = stateRef.current;
     s.paddle = W / 2 - 40;
     s.bx = W / 2;
-    s.by = H - 60;
+    s.by = H - 32;
     s.bvx = 3 * (Math.random() < 0.5 ? -1 : 1);
     s.bvy = -3;
     s.bricks = buildBricks();
@@ -5681,12 +7086,56 @@ function GameBreakout() {
     s.running = true;
     s.over = false;
     s.won = false;
+    s.paused = false;
+    s.launched = false;
+    particles.current.clear();
+    ft.current.clear();
+    setPaused(false);
+    setNewRecord(false);
+    setHighScore(getHighScore("game-breakout"));
     force((x) => x + 1);
+  };
+
+  const togglePause = () => {
+    const s = stateRef.current;
+    if (s.over || s.won) return;
+    s.paused = !s.paused;
+    setPaused(s.paused);
+  };
+
+  const launchBall = () => {
+    const s = stateRef.current;
+    if (s.over || s.won || s.paused) return;
+    if (!s.launched) {
+      s.launched = true;
+      s.bvx = 3 * (Math.random() < 0.5 ? -1 : 1);
+      s.bvy = -3.5;
+    }
+  };
+
+  const checkHighScore = (score: number) => {
+    const isNew = updateHighScore("game-breakout", score);
+    if (isNew) {
+      setNewRecord(true);
+      setHighScore(score);
+    }
   };
 
   useEffect(() => {
     restart();
-    const down = (e: KeyboardEvent) => (keysRef.current[e.key.toLowerCase()] = true);
+    const down = (e: KeyboardEvent) => {
+      if (e.key === " " || e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        const s = stateRef.current;
+        if (!s.launched && !s.over && !s.won) {
+          launchBall();
+        } else {
+          togglePause();
+        }
+        return;
+      }
+      keysRef.current[e.key.toLowerCase()] = true;
+    };
     const up = (e: KeyboardEvent) => (keysRef.current[e.key.toLowerCase()] = false);
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
@@ -5696,63 +7145,81 @@ function GameBreakout() {
       if (c) {
         const ctx = c.getContext("2d")!;
         const s = stateRef.current;
-        if (s.running && !s.over && !s.won) {
-          // 挡板移动
+        if (s.running && !s.over && !s.won && !s.paused) {
           if (keysRef.current["arrowleft"] || keysRef.current["a"]) s.paddle -= 6;
           if (keysRef.current["arrowright"] || keysRef.current["d"]) s.paddle += 6;
           s.paddle = clamp(s.paddle, 0, W - 80);
-          // 球移动
-          s.bx += s.bvx;
-          s.by += s.bvy;
-          // 墙壁反弹
-          if (s.bx < 8) { s.bx = 8; s.bvx = Math.abs(s.bvx); }
-          if (s.bx > W - 8) { s.bx = W - 8; s.bvx = -Math.abs(s.bvx); }
-          if (s.by < 8) { s.by = 8; s.bvy = Math.abs(s.bvy); }
-          // 挡板反弹（按击中位置改变水平速度）
-          if (s.by > H - 24 && s.by < H - 12 && s.bx > s.paddle && s.bx < s.paddle + 80) {
-            s.bvy = -Math.abs(s.bvy);
-            s.bvx += ((s.bx - (s.paddle + 40)) / 40) * 1.5;
-            s.bvx = clamp(s.bvx, -5, 5);
-          }
-          // 球落地 -> 失败
-          if (s.by > H) {
-            s.over = true;
-            s.running = false;
-          }
-          // 砖块碰撞
-          for (const b of s.bricks) {
-            if (!b.alive) continue;
-            if (s.bx > b.x && s.bx < b.x + BW && s.by > b.y && s.by < b.y + BH) {
-              b.alive = false;
-              s.bvy = -s.bvy;
-              s.score += b.score;
-              break;
+          if (s.launched) {
+            s.bx += s.bvx;
+            s.by += s.bvy;
+            if (s.bx < 8) { s.bx = 8; s.bvx = Math.abs(s.bvx); }
+            if (s.bx > W - 8) { s.bx = W - 8; s.bvx = -Math.abs(s.bvx); }
+            if (s.by < 8) { s.by = 8; s.bvy = Math.abs(s.bvy); }
+            if (s.by > H - 24 && s.by < H - 12 && s.bx > s.paddle && s.bx < s.paddle + 80) {
+              s.bvy = -Math.abs(s.bvy);
+              s.bvx += ((s.bx - (s.paddle + 40)) / 40) * 1.5;
+              s.bvx = clamp(s.bvx, -5, 5);
+              particles.current.burst(s.bx, H - 20, 3, ["#e2e8f0", "#cbd5e1", "#fde047"], 2, 18);
             }
-          }
-          // 全部清除 -> 通关
-          if (s.bricks.every((b) => !b.alive)) {
-            s.won = true;
-            s.running = false;
+            if (s.by > H) {
+              s.over = true;
+              s.running = false;
+              checkHighScore(s.score);
+            }
+            for (const b of s.bricks) {
+              if (!b.alive) continue;
+              if (s.bx > b.x && s.bx < b.x + BW && s.by > b.y && s.by < b.y + BH) {
+                b.alive = false;
+                s.bvy = -s.bvy;
+                s.score += b.score;
+                particles.current.burst(b.x + BW / 2, b.y + BH / 2, 10, [b.color, "#ffffff", "#fde047"], 3.5, 28);
+                ft.current.spawn(b.x + BW / 2, b.y - 4, "+" + b.score, "#fde047", 16, 40);
+                break;
+              }
+            }
+            if (s.bricks.every((b) => !b.alive)) {
+              s.won = true;
+              s.running = false;
+              checkHighScore(s.score);
+            }
+          } else {
+            s.bx = s.paddle + 40;
+            s.by = H - 32;
           }
         }
-        // 绘制背景
         ctx.fillStyle = "#0f172a";
         ctx.fillRect(0, 0, W, H);
-        // 砖块
         for (const b of s.bricks) {
           if (!b.alive) continue;
           ctx.fillStyle = b.color;
           ctx.fillRect(b.x, b.y, BW - 2, BH - 2);
         }
-        // 挡板
         ctx.fillStyle = "#e2e8f0";
         ctx.fillRect(s.paddle, H - 20, 80, 10);
-        // 球
         ctx.fillStyle = "#fde047";
         ctx.beginPath();
         ctx.arc(s.bx, s.by, 7, 0, Math.PI * 2);
         ctx.fill();
-        // 分数
+        particles.current.step(ctx, 0.12);
+        ft.current.step(ctx);
+        if (!s.launched && !s.over && !s.won && !s.paused) {
+          ctx.fillStyle = "rgba(255,255,255,0.9)";
+          ctx.font = "bold 18px system-ui";
+          ctx.textAlign = "center";
+          ctx.fillText("点击 / 按空格发射小球", W / 2, H / 2 + 40);
+        }
+        if (s.paused && !s.over && !s.won) {
+          ctx.fillStyle = "rgba(0,0,0,0.55)";
+          ctx.fillRect(0, 0, W, H);
+          ctx.fillStyle = "rgba(255,255,255,0.95)";
+          ctx.font = "bold 44px system-ui";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText("⏸ 已暂停", W / 2, H / 2);
+          ctx.font = "16px system-ui";
+          ctx.fillStyle = "rgba(255,255,255,0.8)";
+          ctx.fillText("按空格 / P 或点击右上角继续", W / 2, H / 2 + 44);
+        }
         ctx.fillStyle = "rgba(255,255,255,0.9)";
         ctx.font = "bold 18px system-ui";
         ctx.textAlign = "left";
@@ -5769,13 +7236,24 @@ function GameBreakout() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 鼠标控制挡板
   const onMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const c = canvasRef.current;
     if (!c) return;
     const rect = c.getBoundingClientRect();
     const x = ((e.clientX - rect.left) / rect.width) * W;
     stateRef.current.paddle = clamp(x - 40, 0, W - 80);
+  };
+
+  const onTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    const c = canvasRef.current;
+    if (!c || !e.touches[0]) return;
+    e.preventDefault();
+    const p = canvasLogicalPoint(c, e.touches[0].clientX, e.touches[0].clientY, W, H);
+    stateRef.current.paddle = clamp(p.x - 40, 0, W - 80);
+  };
+
+  const onCanvasClick = () => {
+    launchBall();
   };
 
   const s = stateRef.current;
@@ -5791,36 +7269,69 @@ function GameBreakout() {
             <div className="text-[11px] font-semibold text-rose-600">剩余砖块</div>
             <div className="text-xl font-bold text-rose-700">{s.bricks.filter((b) => b.alive).length}</div>
           </div>
+          <div className="rounded-2xl bg-violet-50 border border-violet-200 px-4 py-2">
+            <div className="text-[11px] font-semibold text-violet-600">最高分</div>
+            <div className="text-xl font-bold text-violet-700">{highScore}</div>
+          </div>
           <button
             onClick={restart}
-            className="ml-auto rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-semibold px-4 py-2 text-sm shadow-md flex items-center gap-1.5"
+            className="ml-auto rounded-xl bg-gradient-to-r from-orange-400 to-red-500 text-white font-semibold px-4 py-2 text-sm shadow-md flex items-center gap-1.5"
           >
             <RotateCcw className="w-4 h-4" />
             重开
           </button>
         </div>
-        <div className="mx-auto max-w-[480px]">
+
+        <GameHintBar>
+          <Hint>⌨️ <Key k="←" /><Key k="→" /> 或 <Key k="A" /><Key k="D" /> 移动挡板</Hint>
+          <Hint>🖱️ 鼠标移动控制</Hint>
+          <Hint>📱 触摸滑动控制</Hint>
+          <Hint>🎯 <Key k="空格" /> / 点击 发射小球</Hint>
+          <Hint><Key k="P" /> 暂停</Hint>
+        </GameHintBar>
+
+        <div className="relative mx-auto max-w-[480px]">
+          <PauseButton paused={paused} toggle={togglePause} />
           <canvas
             ref={canvasRef}
             width={W}
             height={H}
             onMouseMove={onMove}
-            className="w-full rounded-2xl shadow-2xl"
+            onTouchMove={onTouchMove}
+            onClick={onCanvasClick}
+            className="w-full rounded-2xl shadow-2xl touch-none cursor-pointer"
             style={{ aspectRatio: "8 / 9" }}
           />
-        </div>
-        {s.over && (
-          <div className="mt-4 text-center text-rose-600 font-semibold">
-            球落地！得分：{s.score}，点「重开」再来
-          </div>
-        )}
-        {s.won && (
-          <div className="mt-4 text-center text-emerald-600 font-bold text-lg">
-            🎉 通关！全部砖块已清除，得分：{s.score}
-          </div>
-        )}
-        <div className="mt-3 text-center text-xs text-slate-500">
-          ← → 或鼠标移动控制挡板，顶行 50 分递减至 10 分
+          {s.over && (
+            <GameResultOverlay
+              title="球落地了"
+              success={false}
+              stats={[
+                { label: "本局得分", value: s.score },
+                { label: "剩余砖块", value: s.bricks.filter((b) => b.alive).length },
+              ]}
+              highLabel="历史最高分"
+              highScore={highScore}
+              newRecord={newRecord}
+              onRestart={restart}
+              primaryColor="from-orange-400 to-red-500"
+            />
+          )}
+          {s.won && (
+            <GameResultOverlay
+              title="通关胜利！"
+              success={true}
+              stats={[
+                { label: "本局得分", value: s.score },
+                { label: "击碎砖块", value: ROWS * COLS },
+              ]}
+              highLabel="历史最高分"
+              highScore={highScore}
+              newRecord={newRecord}
+              onRestart={restart}
+              primaryColor="from-orange-400 to-red-500"
+            />
+          )}
         </div>
       </div>
     </FullscreenWrapper>
@@ -5836,19 +7347,29 @@ function GameBreakout() {
 function GameFlappy() {
   const W = 420;
   const H = 560;
-  const GAP = 140; // 管道间隙
+  const GAP = 140;
   const PIPE_W = 60;
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const jumpRef = useRef<() => void>(() => {});
+  const particlesRef = useRef(createParticleSystem());
+  const floatsRef = useRef(createFloatTextSystem());
   const stateRef = useRef({
-    by: H / 2, // 小鸟 y
+    by: H / 2,
     vy: 0,
     pipes: [] as { x: number; gapY: number; passed: boolean }[],
     spawn: 0,
     score: 0,
     running: true,
     over: false,
+    paused: false,
+    newRecord: false,
   });
   const [, force] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const [highScore, setHighScore] = useState(() => getHighScore("game-flappy"));
+  const [resultOpen, setResultOpen] = useState(false);
+  const [resultScore, setResultScore] = useState(0);
+  const [resultNewRecord, setResultNewRecord] = useState(false);
 
   const restart = () => {
     const s = stateRef.current;
@@ -5859,20 +7380,54 @@ function GameFlappy() {
     s.score = 0;
     s.running = true;
     s.over = false;
+    s.paused = false;
+    s.newRecord = false;
+    particlesRef.current.clear();
+    floatsRef.current.clear();
+    setPaused(false);
+    setResultOpen(false);
     force((x) => x + 1);
   };
 
-  // 跳跃；已结束则重开
-  const flap = () => {
+  const togglePause = () => {
     const s = stateRef.current;
-    if (s.over) { restart(); return; }
+    if (s.over) return;
+    s.paused = !s.paused;
+    setPaused(s.paused);
+  };
+
+  jumpRef.current = () => {
+    const s = stateRef.current;
+    if (s.over) {
+      restart();
+      return;
+    }
+    if (s.paused) {
+      togglePause();
+      return;
+    }
     s.vy = -7;
     s.running = true;
   };
 
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      if (e.key === " " || e.key === "ArrowUp") { e.preventDefault(); flap(); }
+      if (e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        togglePause();
+        return;
+      }
+      if (e.key === " " || e.key === "ArrowUp") {
+        e.preventDefault();
+        const s = stateRef.current;
+        if (!s.over && !s.paused && s.running) {
+          jumpRef.current();
+        } else if (s.paused) {
+          togglePause();
+        } else {
+          jumpRef.current();
+        }
+      }
     };
     window.addEventListener("keydown", key);
     let raf = 0;
@@ -5881,59 +7436,85 @@ function GameFlappy() {
       if (c) {
         const ctx = c.getContext("2d")!;
         const s = stateRef.current;
-        if (s.running && !s.over) {
-          // 重力下落
+        if (s.running && !s.over && !s.paused) {
           s.vy += 0.35;
           s.by += s.vy;
-          // 生成管道
           s.spawn--;
           if (s.spawn <= 0) {
             s.pipes.push({ x: W, gapY: 80 + Math.random() * (H - 160 - GAP), passed: false });
             s.spawn = 100;
           }
-          // 管道左移
           for (const p of s.pipes) p.x -= 2.5;
-          // 计分 + 碰撞判定
           for (const p of s.pipes) {
             if (!p.passed && p.x + PIPE_W < 60) {
               p.passed = true;
               s.score++;
+              particlesRef.current.burst(60, s.by, 8, ["#facc15", "#eab308", "#a3e635", "#84cc16"], 3.5, 32);
+              floatsRef.current.spawn(60, s.by - 20, "+1", "#facc15", 20, 48);
             }
             if (60 + 14 > p.x && 60 - 14 < p.x + PIPE_W) {
-              if (s.by - 14 < p.gapY || s.by + 14 > p.gapY + GAP) s.over = true;
+              if (s.by - 14 < p.gapY || s.by + 14 > p.gapY + GAP) {
+                if (!s.over) {
+                  s.over = true;
+                  particlesRef.current.burst(60, s.by, 20, ["#ef4444", "#f97316", "#fbbf24", "#fde047"], 5, 40);
+                  const nr = updateHighScore("game-flappy", s.score);
+                  s.newRecord = nr;
+                  if (nr) setHighScore(getHighScore("game-flappy"));
+                  setResultScore(s.score);
+                  setResultNewRecord(nr);
+                  setResultOpen(true);
+                }
+              }
             }
           }
           s.pipes = s.pipes.filter((p) => p.x > -PIPE_W);
-          // 落地或撞顶
-          if (s.by > H - 14 || s.by < 14) s.over = true;
+          if (s.by > H - 14 || s.by < 14) {
+            if (!s.over) {
+              s.over = true;
+              particlesRef.current.burst(60, clamp(s.by, 14, H - 14), 20, ["#ef4444", "#f97316", "#fbbf24", "#fde047"], 5, 40);
+              const nr = updateHighScore("game-flappy", s.score);
+              s.newRecord = nr;
+              if (nr) setHighScore(getHighScore("game-flappy"));
+              setResultScore(s.score);
+              setResultNewRecord(nr);
+              setResultOpen(true);
+            }
+          }
         }
-        // 绘制天空背景
         ctx.fillStyle = "#7dd3fc";
         ctx.fillRect(0, 0, W, H);
-        // 管道
         ctx.fillStyle = "#22c55e";
         for (const p of s.pipes) {
           ctx.fillRect(p.x, 0, PIPE_W, p.gapY);
           ctx.fillRect(p.x, p.gapY + GAP, PIPE_W, H - p.gapY - GAP);
         }
-        // 地面
         ctx.fillStyle = "#ca8a04";
         ctx.fillRect(0, H - 12, W, 12);
-        // 小鸟
         ctx.fillStyle = "#fde047";
         ctx.beginPath();
         ctx.arc(60, s.by, 14, 0, Math.PI * 2);
         ctx.fill();
-        // 眼睛
         ctx.fillStyle = "#000";
         ctx.beginPath();
         ctx.arc(66, s.by - 4, 2.5, 0, Math.PI * 2);
         ctx.fill();
-        // 分数
+        particlesRef.current.step(ctx, 0.12);
+        floatsRef.current.step(ctx);
         ctx.fillStyle = "#fff";
         ctx.font = "bold 32px system-ui";
         ctx.textAlign = "center";
         ctx.fillText(String(s.score), W / 2, 50);
+        if (s.paused && !s.over) {
+          ctx.fillStyle = "rgba(0,0,0,0.55)";
+          ctx.fillRect(0, 0, W, H);
+          ctx.fillStyle = "#fff";
+          ctx.font = "bold 40px system-ui";
+          ctx.textAlign = "center";
+          ctx.fillText("⏸ 已暂停", W / 2, H / 2 - 10);
+          ctx.font = "16px system-ui";
+          ctx.fillStyle = "#e2e8f0";
+          ctx.fillText("按 P / 空格 或点击右上角继续", W / 2, H / 2 + 24);
+        }
       }
       raf = requestAnimationFrame(loop);
     };
@@ -5946,13 +7527,30 @@ function GameFlappy() {
   }, []);
 
   const s = stateRef.current;
+  const onCanvasTouch = (e: React.TouchEvent) => {
+    e.preventDefault();
+    jumpRef.current();
+  };
+  const onCanvasClick = () => {
+    jumpRef.current();
+  };
+
   return (
     <FullscreenWrapper>
       <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+        <GameHintBar>
+          <Hint><Key k="空格" /> / 点击画布 跳跃</Hint>
+          <Hint><Key k="P" /> 暂停</Hint>
+          <Hint>📱 触摸屏幕跳跃</Hint>
+        </GameHintBar>
         <div className="flex flex-wrap items-center gap-3 mb-5">
           <div className="rounded-2xl bg-sky-50 border border-sky-200 px-4 py-2">
             <div className="text-[11px] font-semibold text-sky-600">得分</div>
             <div className="text-xl font-bold text-sky-700">{s.score}</div>
+          </div>
+          <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-2">
+            <div className="text-[11px] font-semibold text-amber-600">最高分</div>
+            <div className="text-xl font-bold text-amber-700">{highScore}</div>
           </div>
           <button
             onClick={restart}
@@ -5962,23 +7560,29 @@ function GameFlappy() {
             重开
           </button>
         </div>
-        <div className="mx-auto max-w-[420px]">
+        <div className="mx-auto max-w-[420px] relative">
+          <PauseButton paused={paused} toggle={togglePause} />
           <canvas
             ref={canvasRef}
             width={W}
             height={H}
-            onClick={flap}
-            className="w-full rounded-2xl shadow-2xl cursor-pointer"
+            onClick={onCanvasClick}
+            onTouchStart={onCanvasTouch}
+            className="w-full rounded-2xl shadow-2xl cursor-pointer block"
             style={{ aspectRatio: "3 / 4" }}
           />
-        </div>
-        {s.over && (
-          <div className="mt-4 text-center text-rose-600 font-semibold">
-            撞到了！得分：{s.score}，点击画布或「重开」继续
-          </div>
-        )}
-        <div className="mt-3 text-center text-xs text-slate-500">
-          点击画布或按空格让小鸟跳跃，穿过管道 +1
+          {resultOpen && (
+            <GameResultOverlay
+              title="游戏结束"
+              success={false}
+              stats={[{ label: "本局得分", value: resultScore }]}
+              highLabel="最高分"
+              highScore={highScore}
+              newRecord={resultNewRecord}
+              onRestart={restart}
+              primaryColor="from-yellow-400 to-green-500"
+            />
+          )}
         </div>
       </div>
     </FullscreenWrapper>
@@ -5992,13 +7596,14 @@ function GameFlappy() {
  * 吃食物变长，撞墙/撞任意蛇身即淘汰，显示存活蛇数量
  */
 function GameSnakeArena() {
-  const GW = 36; // 网格宽
-  const GH = 28; // 网格高
-  const CELL = 16; // 每格像素
+  const GW = 36;
+  const GH = 28;
+  const CELL = 16;
   const W = GW * CELL;
   const H = GH * CELL;
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const dirRef = useRef<[number, number]>([1, 0]);
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
   type Seg = { x: number; y: number };
   type Snake = { body: Seg[]; dir: [number, number]; alive: boolean; isPlayer: boolean; color: string };
   const stateRef = useRef({
@@ -6007,10 +7612,17 @@ function GameSnakeArena() {
     score: 0,
     tick: 0,
     over: false,
+    ended: false,
+    newRecord: false,
+    initLen: 3,
   });
   const [, force] = useState(0);
+  const [highScore, setHighScore] = useState(() => getHighScore("game-snake-arena"));
+  const [showResult, setShowResult] = useState(false);
+  const [resultScore, setResultScore] = useState(0);
+  const [resultAlive, setResultAlive] = useState(0);
+  const [newRecord, setNewRecord] = useState(false);
 
-  // 创建一条蛇
   const makeSnake = (x: number, y: number, color: string, isPlayer: boolean): Snake => ({
     body: [{ x, y }, { x: x - 1, y }, { x: x - 2, y }],
     dir: [1, 0],
@@ -6019,7 +7631,6 @@ function GameSnakeArena() {
     color,
   });
 
-  // 在空闲格子中随机生成食物
   const spawnFood = (snakes: Snake[]): Seg => {
     const occupied = new Set<string>();
     for (const sn of snakes) for (const seg of sn.body) occupied.add(seg.x + "," + seg.y);
@@ -6045,17 +7656,42 @@ function GameSnakeArena() {
     stateRef.current.score = 0;
     stateRef.current.tick = 0;
     stateRef.current.over = false;
+    stateRef.current.ended = false;
+    stateRef.current.newRecord = false;
+    setShowResult(false);
+    setNewRecord(false);
     force((x) => x + 1);
+  };
+
+  const endGame = () => {
+    const s = stateRef.current;
+    if (s.ended) return;
+    s.ended = true;
+    const player = s.snakes.find((sn) => sn.isPlayer);
+    const finalScore = player ? (player.body.length - s.initLen) * 10 : s.score;
+    const nr = updateHighScore("game-snake-arena", finalScore);
+    s.newRecord = nr;
+    if (nr) setHighScore(getHighScore("game-snake-arena"));
+    setResultScore(finalScore);
+    setResultAlive(s.snakes.filter((sn) => sn.alive).length);
+    setNewRecord(nr);
+    setTimeout(() => setShowResult(true), 350);
+  };
+
+  const changeDir = (nd: [number, number]) => {
+    const d = dirRef.current;
+    if (d[0] + nd[0] === 0 && d[1] + nd[1] === 0) return;
+    dirRef.current = nd;
   };
 
   useEffect(() => {
     restart();
     const key = (e: KeyboardEvent) => {
       const d = dirRef.current;
-      if (e.key === "ArrowUp" && d[1] !== 1) dirRef.current = [0, -1];
-      if (e.key === "ArrowDown" && d[1] !== -1) dirRef.current = [0, 1];
-      if (e.key === "ArrowLeft" && d[0] !== 1) dirRef.current = [-1, 0];
-      if (e.key === "ArrowRight" && d[0] !== -1) dirRef.current = [1, 0];
+      if (e.key === "ArrowUp" && d[1] !== 1) { changeDir([0, -1]); e.preventDefault(); }
+      if (e.key === "ArrowDown" && d[1] !== -1) { changeDir([0, 1]); e.preventDefault(); }
+      if (e.key === "ArrowLeft" && d[0] !== 1) { changeDir([-1, 0]); e.preventDefault(); }
+      if (e.key === "ArrowRight" && d[0] !== -1) { changeDir([1, 0]); e.preventDefault(); }
     };
     window.addEventListener("keydown", key);
     let raf = 0;
@@ -6065,12 +7701,9 @@ function GameSnakeArena() {
         const ctx = c.getContext("2d")!;
         const s = stateRef.current;
         s.tick++;
-        // 每 8 帧走一步
         if (s.tick % 8 === 0 && !s.over) {
-          // 玩家方向
           const player = s.snakes.find((sn) => sn.isPlayer);
           if (player && player.alive) player.dir = dirRef.current;
-          // AI 方向：朝最近食物移动（仅换轴，避免反向自杀）
           for (const sn of s.snakes) {
             if (!sn.alive || sn.isPlayer) continue;
             const head = sn.body[0];
@@ -6087,14 +7720,11 @@ function GameSnakeArena() {
               else if (dy !== 0 && sn.dir[1] === 0) sn.dir = [0, dy];
             }
           }
-          // 移动每条蛇
           for (const sn of s.snakes) {
             if (!sn.alive) continue;
             const head = sn.body[0];
             const nh: Seg = { x: head.x + sn.dir[0], y: head.y + sn.dir[1] };
-            // 撞墙
             if (nh.x < 0 || nh.x >= GW || nh.y < 0 || nh.y >= GH) { sn.alive = false; continue; }
-            // 撞任意蛇身
             let hit = false;
             for (const o of s.snakes) {
               for (const seg of o.body) {
@@ -6104,7 +7734,6 @@ function GameSnakeArena() {
             }
             if (hit) { sn.alive = false; continue; }
             sn.body.unshift(nh);
-            // 吃食物变长，否则去尾
             const fi = s.foods.findIndex((f) => f.x === nh.x && f.y === nh.y);
             if (fi >= 0) {
               s.foods.splice(fi, 1);
@@ -6114,28 +7743,41 @@ function GameSnakeArena() {
               sn.body.pop();
             }
           }
-          // 玩家被淘汰 -> 结束
-          if (player && !player.alive) s.over = true;
+          if (player && !player.alive) {
+            s.over = true;
+            endGame();
+          }
         }
-        // 绘制背景
         ctx.fillStyle = "#0f172a";
         ctx.fillRect(0, 0, W, H);
-        // 食物
+        ctx.strokeStyle = "rgba(148,163,184,0.06)";
+        ctx.lineWidth = 1;
+        for (let x = 1; x < GW; x++) {
+          ctx.beginPath(); ctx.moveTo(x * CELL, 0); ctx.lineTo(x * CELL, H); ctx.stroke();
+        }
+        for (let y = 1; y < GH; y++) {
+          ctx.beginPath(); ctx.moveTo(0, y * CELL); ctx.lineTo(W, y * CELL); ctx.stroke();
+        }
         ctx.fillStyle = "#f87171";
         for (const f of s.foods) {
           ctx.beginPath();
           ctx.arc(f.x * CELL + CELL / 2, f.y * CELL + CELL / 2, CELL / 2 - 2, 0, Math.PI * 2);
           ctx.fill();
         }
-        // 蛇身
         for (const sn of s.snakes) {
           if (!sn.alive) continue;
           ctx.fillStyle = sn.color;
-          for (const seg of sn.body) ctx.fillRect(seg.x * CELL + 1, seg.y * CELL + 1, CELL - 2, CELL - 2);
-          // 头部高亮
+          for (let i = 0; i < sn.body.length; i++) {
+            const seg = sn.body[i];
+            const t = i / Math.max(1, sn.body.length);
+            ctx.globalAlpha = 1 - t * 0.4;
+            ctx.fillRect(seg.x * CELL + 1, seg.y * CELL + 1, CELL - 2, CELL - 2);
+          }
+          ctx.globalAlpha = 1;
           const h = sn.body[0];
           ctx.fillStyle = "#fff";
           ctx.fillRect(h.x * CELL + 4, h.y * CELL + 4, 3, 3);
+          ctx.fillRect(h.x * CELL + CELL - 7, h.y * CELL + 4, 3, 3);
         }
       }
       raf = requestAnimationFrame(loop);
@@ -6149,43 +7791,116 @@ function GameSnakeArena() {
   }, []);
 
   const s = stateRef.current;
+  const player = s.snakes.find((sn) => sn.isPlayer);
+  const curScore = player ? (player.body.length - s.initLen) * 10 : 0;
   const aliveCount = s.snakes.filter((sn) => sn.alive).length;
+
   return (
     <FullscreenWrapper>
       <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
         <div className="flex flex-wrap items-center gap-3 mb-5">
           <div className="rounded-2xl bg-cyan-50 border border-cyan-200 px-4 py-2">
             <div className="text-[11px] font-semibold text-cyan-600">玩家得分</div>
-            <div className="text-xl font-bold text-cyan-700">{s.score}</div>
+            <div className="text-xl font-bold text-cyan-700">{curScore}</div>
           </div>
           <div className="rounded-2xl bg-emerald-50 border border-emerald-200 px-4 py-2">
             <div className="text-[11px] font-semibold text-emerald-600">存活蛇数</div>
             <div className="text-xl font-bold text-emerald-700">{aliveCount}</div>
           </div>
+          <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-2">
+            <div className="text-[11px] font-semibold text-amber-600">最高分</div>
+            <div className="text-xl font-bold text-amber-700">{highScore}</div>
+          </div>
           <button
             onClick={restart}
-            className="ml-auto rounded-xl bg-gradient-to-r from-emerald-500 to-green-600 text-white font-semibold px-4 py-2 text-sm shadow-md flex items-center gap-1.5"
+            className="ml-auto rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-semibold px-4 py-2 text-sm shadow-md flex items-center gap-1.5"
           >
             <RotateCcw className="w-4 h-4" />
             重开
           </button>
         </div>
-        <div className="mx-auto max-w-[640px]">
-          <canvas
-            ref={canvasRef}
-            width={W}
-            height={H}
-            className="w-full rounded-2xl shadow-2xl"
-            style={{ aspectRatio: `${GW} / ${GH}` }}
-          />
-        </div>
-        {s.over && (
-          <div className="mt-4 text-center text-rose-600 font-semibold">
-            你的蛇被淘汰！得分：{s.score}，存活 {aliveCount} 条，点「重开」再战
+
+        <GameHintBar>
+          <Hint>🎮 方向键 / WASD <Key k="↑" /><Key k="↓" /><Key k="←" /><Key k="→" /> 移动</Hint>
+          <Hint>🍎 吃红色食物变长得分</Hint>
+          <Hint>💥 撞墙/撞蛇身即淘汰</Hint>
+          <Hint>📱 滑动屏幕改变方向</Hint>
+        </GameHintBar>
+
+        <div className="mx-auto max-w-[640px] relative">
+          <div className="relative rounded-2xl bg-slate-900 p-1.5 shadow-2xl overflow-hidden">
+            <canvas
+              ref={canvasRef}
+              width={W}
+              height={H}
+              className="w-full rounded-xl block"
+              style={{ aspectRatio: `${GW} / ${GH}`, imageRendering: "pixelated" }}
+              onTouchStart={(e) => {
+                const t = e.touches[0];
+                const p = canvasLogicalPoint(canvasRef.current!, t.clientX, t.clientY, W, H);
+                touchStart.current = p;
+              }}
+              onTouchEnd={(e) => {
+                const start = touchStart.current;
+                if (!start) return;
+                const t = e.changedTouches[0];
+                const end = canvasLogicalPoint(canvasRef.current!, t.clientX, t.clientY, W, H);
+                const dx = end.x - start.x, dy = end.y - start.y;
+                if (Math.abs(dx) < 20 && Math.abs(dy) < 20) return;
+                if (Math.abs(dx) > Math.abs(dy)) {
+                  changeDir(dx > 0 ? [1, 0] : [-1, 0]);
+                } else {
+                  changeDir(dy > 0 ? [0, 1] : [0, -1]);
+                }
+                touchStart.current = null;
+              }}
+            />
+            {showResult && (
+              <GameResultOverlay
+                title="你的蛇被淘汰！"
+                success={false}
+                stats={[
+                  { label: "本局得分", value: resultScore },
+                  { label: "存活蛇数", value: resultAlive },
+                  { label: "参赛蛇数", value: s.snakes.length },
+                ]}
+                highLabel="最高分"
+                highScore={highScore}
+                newRecord={newRecord}
+                onRestart={restart}
+                primaryColor="from-emerald-500 to-teal-600"
+              />
+            )}
           </div>
-        )}
-        <div className="mt-3 text-center text-xs text-slate-500">
-          方向键控制玩家蛇，吃红色食物变长，撞墙撞身即淘汰
+        </div>
+
+        <div className="mt-5 grid grid-cols-3 gap-2 max-w-[240px] mx-auto select-none">
+          <div />
+          <button
+            onClick={() => changeDir([0, -1])}
+            className="rounded-xl bg-emerald-100 hover:bg-emerald-200 active:bg-emerald-300 text-emerald-700 py-3 font-bold text-lg transition-all"
+          >
+            ↑
+          </button>
+          <div />
+          <button
+            onClick={() => changeDir([-1, 0])}
+            className="rounded-xl bg-emerald-100 hover:bg-emerald-200 active:bg-emerald-300 text-emerald-700 py-3 font-bold text-lg transition-all"
+          >
+            ←
+          </button>
+          <button
+            onClick={() => changeDir([0, 1])}
+            className="rounded-xl bg-emerald-100 hover:bg-emerald-200 active:bg-emerald-300 text-emerald-700 py-3 font-bold text-lg transition-all"
+          >
+            ↓
+          </button>
+          <button
+            onClick={() => changeDir([1, 0])}
+            className="rounded-xl bg-emerald-100 hover:bg-emerald-200 active:bg-emerald-300 text-emerald-700 py-3 font-bold text-lg transition-all"
+          >
+            →
+          </button>
         </div>
       </div>
     </FullscreenWrapper>
@@ -6203,6 +7918,8 @@ function GamePinball() {
   const H = 560;
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const keysRef = useRef<Record<string, boolean>>({});
+  const leftBtnRef = useRef(false);
+  const rightBtnRef = useRef(false);
   type Peg = { x: number; y: number; hit: boolean };
   const stateRef = useRef({
     bx: W / 2,
@@ -6210,15 +7927,21 @@ function GamePinball() {
     bvx: 1.5,
     bvy: 0,
     pegs: [] as Peg[],
-    flipperL: 0, // 左挡板抬起量 0~1
-    flipperR: 0, // 右挡板抬起量 0~1
+    flipperL: 0,
+    flipperR: 0,
     score: 0,
     running: true,
     over: false,
+    ended: false,
+    pegHits: 0,
+    newRecord: false,
   });
   const [, force] = useState(0);
+  const [highScore, setHighScore] = useState(() => getHighScore("game-pinball"));
+  const [showResult, setShowResult] = useState(false);
+  const [newRecord, setNewRecord] = useState(false);
+  const [uiScore, setUiScore] = useState(0);
 
-  // 生成钉子阵列（交错排布）
   const buildPegs = (): Peg[] => {
     const pegs: Peg[] = [];
     const rows = 6;
@@ -6244,16 +7967,36 @@ function GamePinball() {
     s.score = 0;
     s.running = true;
     s.over = false;
+    s.ended = false;
+    s.pegHits = 0;
+    s.newRecord = false;
+    setShowResult(false);
+    setNewRecord(false);
+    setUiScore(0);
     force((x) => x + 1);
+  };
+
+  const endGame = () => {
+    const s = stateRef.current;
+    if (s.ended) return;
+    s.ended = true;
+    const nr = updateHighScore("game-pinball", s.score);
+    s.newRecord = nr;
+    if (nr) setHighScore(getHighScore("game-pinball"));
+    setUiScore(s.score);
+    setNewRecord(nr);
+    setTimeout(() => setShowResult(true), 300);
   };
 
   useEffect(() => {
     restart();
-    const down = (e: KeyboardEvent) => (keysRef.current[e.key.toLowerCase()] = true);
+    const down = (e: KeyboardEvent) => {
+      keysRef.current[e.key.toLowerCase()] = true;
+      if (["arrowleft", "arrowright"].includes(e.key.toLowerCase())) e.preventDefault();
+    };
     const up = (e: KeyboardEvent) => (keysRef.current[e.key.toLowerCase()] = false);
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
-    // 挡板枢轴与末端坐标
     const leftPivot = { x: 120, y: H - 40 };
     const rightPivot = { x: 300, y: H - 40 };
     let raf = 0;
@@ -6262,22 +8005,18 @@ function GamePinball() {
       if (c) {
         const ctx = c.getContext("2d")!;
         const s = stateRef.current;
-        // 挡板动画（按下抬起，松开回落）
-        if (keysRef.current["arrowleft"] || keysRef.current["a"]) s.flipperL = Math.min(1, s.flipperL + 0.2);
+        if (keysRef.current["arrowleft"] || keysRef.current["a"] || leftBtnRef.current) s.flipperL = Math.min(1, s.flipperL + 0.2);
         else s.flipperL = Math.max(0, s.flipperL - 0.15);
-        if (keysRef.current["arrowright"] || keysRef.current["d"]) s.flipperR = Math.min(1, s.flipperR + 0.2);
+        if (keysRef.current["arrowright"] || keysRef.current["d"] || rightBtnRef.current) s.flipperR = Math.min(1, s.flipperR + 0.2);
         else s.flipperR = Math.max(0, s.flipperR - 0.15);
         const leftEnd = { x: 180, y: leftPivot.y - s.flipperL * 24 };
         const rightEnd = { x: 240, y: rightPivot.y - s.flipperR * 24 };
         if (s.running && !s.over) {
-          // 重力
           s.bvy += 0.18;
           s.bx += s.bvx;
           s.by += s.bvy;
-          // 左右墙壁
           if (s.bx < 10) { s.bx = 10; s.bvx = Math.abs(s.bvx); }
           if (s.bx > W - 10) { s.bx = W - 10; s.bvx = -Math.abs(s.bvx); }
-          // 钉子碰撞（反射 + 随机扰动）
           for (const p of s.pegs) {
             const dx = s.bx - p.x;
             const dy = s.by - p.y;
@@ -6291,10 +8030,9 @@ function GamePinball() {
               s.bx = p.x + nx * 14;
               s.by = p.y + ny * 14;
               s.bvx += (Math.random() - 0.5) * 0.6;
-              if (!p.hit) { p.hit = true; s.score += 5; }
+              if (!p.hit) { p.hit = true; s.score += 5; s.pegHits++; setUiScore(s.score); }
             }
           }
-          // 挡板弹球：按下时把球向上弹飞
           if (s.by > H - 58 && s.by < H - 30 && s.bvy > 0) {
             if (s.bx > 116 && s.bx < 184 && s.flipperL > 0.3) {
               s.bvy = -Math.abs(s.bvy) - 5 - s.flipperL * 3;
@@ -6305,26 +8043,41 @@ function GamePinball() {
               s.bvx += 1.5;
             }
           }
-          // 球从底部缝隙落地 -> 结束
           if (s.by > H) {
             s.over = true;
             s.running = false;
+            endGame();
           }
         }
-        // 绘制背景
-        ctx.fillStyle = "#1e293b";
+        ctx.fillStyle = "#1e1b4b";
         ctx.fillRect(0, 0, W, H);
-        // 钉子
-        for (const p of s.pegs) {
-          ctx.fillStyle = p.hit ? "#64748b" : "#fbbf24";
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
-          ctx.fill();
+        ctx.fillStyle = "rgba(139,92,246,0.1)";
+        for (let i = 0; i < 80; i++) {
+          ctx.fillRect((i * 53) % W, (i * 37 + ((Date.now() / 40) | 0)) % H, 1, 1);
         }
-        // 挡板
-        ctx.strokeStyle = "#22d3ee";
+        for (const p of s.pegs) {
+          if (p.hit) {
+            ctx.fillStyle = "#475569";
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+            ctx.fill();
+          } else {
+            const pulse = 1 + Math.sin(Date.now() / 200 + p.x) * 0.08;
+            ctx.fillStyle = "#fbbf24";
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 6 * pulse, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "#fef3c7";
+            ctx.beginPath();
+            ctx.arc(p.x - 1.5, p.y - 1.5, 2, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+        ctx.strokeStyle = "#a78bfa";
         ctx.lineWidth = 6;
         ctx.lineCap = "round";
+        ctx.shadowColor = "#a78bfa";
+        ctx.shadowBlur = 8;
         ctx.beginPath();
         ctx.moveTo(leftPivot.x, leftPivot.y);
         ctx.lineTo(leftEnd.x, leftEnd.y);
@@ -6333,16 +8086,1496 @@ function GamePinball() {
         ctx.moveTo(rightPivot.x, rightPivot.y);
         ctx.lineTo(rightEnd.x, rightEnd.y);
         ctx.stroke();
-        // 球
-        ctx.fillStyle = "#fde047";
+        ctx.shadowBlur = 0;
+        const grad = ctx.createRadialGradient(s.bx - 2, s.by - 2, 1, s.bx, s.by, 10);
+        grad.addColorStop(0, "#fff");
+        grad.addColorStop(0.5, "#fde047");
+        grad.addColorStop(1, "#ca8a04");
+        ctx.fillStyle = grad;
         ctx.beginPath();
         ctx.arc(s.bx, s.by, 8, 0, Math.PI * 2);
         ctx.fill();
-        // 分数
-        ctx.fillStyle = "rgba(255,255,255,0.9)";
+        ctx.fillStyle = "rgba(255,255,255,0.92)";
         ctx.font = "bold 18px system-ui";
         ctx.textAlign = "left";
         ctx.fillText("得分 " + s.score, 12, 24);
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      cancelAnimationFrame(raf);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const s = stateRef.current;
+  const totalPegs = s.pegs.length || 26;
+
+  return (
+    <FullscreenWrapper>
+      <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+        <div className="flex flex-wrap items-center gap-3 mb-5">
+          <div className="rounded-2xl bg-purple-50 border border-purple-200 px-4 py-2">
+            <div className="text-[11px] font-semibold text-purple-600">得分</div>
+            <div className="text-xl font-bold text-purple-700">{uiScore || s.score}</div>
+          </div>
+          <div className="rounded-2xl bg-indigo-50 border border-indigo-200 px-4 py-2">
+            <div className="text-[11px] font-semibold text-indigo-600">击中钉子</div>
+            <div className="text-xl font-bold text-indigo-700">{s.pegHits}/{totalPegs}</div>
+          </div>
+          <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-2">
+            <div className="text-[11px] font-semibold text-amber-600">最高分</div>
+            <div className="text-xl font-bold text-amber-700">{highScore}</div>
+          </div>
+          <button
+            onClick={restart}
+            className="ml-auto rounded-xl bg-gradient-to-r from-purple-400 to-indigo-600 text-white font-semibold px-4 py-2 text-sm shadow-md flex items-center gap-1.5"
+          >
+            <RotateCcw className="w-4 h-4" />
+            重开
+          </button>
+        </div>
+
+        <GameHintBar>
+          <Hint><Key k="←" /> / <Key k="A" /> 左挡板</Hint>
+          <Hint><Key k="→" /> / <Key k="D" /> 右挡板</Hint>
+          <Hint>🟡 新钉子 +5 分</Hint>
+          <Hint>📱 点击下方两个大按钮</Hint>
+        </GameHintBar>
+
+        <div className="mx-auto max-w-[420px] relative">
+          <div className="relative rounded-2xl p-1.5 shadow-2xl overflow-hidden" style={{ background: "linear-gradient(135deg,#1e1b4b,#312e81)" }}>
+            <canvas
+              ref={canvasRef}
+              width={W}
+              height={H}
+              className="w-full rounded-xl block"
+              style={{ aspectRatio: "3 / 4" }}
+            />
+            {showResult && (
+              <GameResultOverlay
+                title="球落地啦"
+                success={false}
+                stats={[
+                  { label: "本局得分", value: uiScore || s.score },
+                  { label: "击中钉子", value: `${s.pegHits}/${totalPegs}` },
+                ]}
+                highLabel="最高分"
+                highScore={highScore}
+                newRecord={newRecord}
+                onRestart={restart}
+                primaryColor="from-purple-400 to-indigo-600"
+              />
+            )}
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <button
+              onTouchStart={(e) => { e.preventDefault(); leftBtnRef.current = true; }}
+              onTouchEnd={(e) => { e.preventDefault(); leftBtnRef.current = false; }}
+              onMouseDown={() => { leftBtnRef.current = true; }}
+              onMouseUp={() => { leftBtnRef.current = false; }}
+              onMouseLeave={() => { leftBtnRef.current = false; }}
+              className="rounded-2xl bg-gradient-to-br from-purple-400 to-purple-600 text-white font-black py-5 text-2xl shadow-lg active:scale-95 transition-all select-none"
+            >
+              ◀ 左挡板
+            </button>
+            <button
+              onTouchStart={(e) => { e.preventDefault(); rightBtnRef.current = true; }}
+              onTouchEnd={(e) => { e.preventDefault(); rightBtnRef.current = false; }}
+              onMouseDown={() => { rightBtnRef.current = true; }}
+              onMouseUp={() => { rightBtnRef.current = false; }}
+              onMouseLeave={() => { rightBtnRef.current = false; }}
+              className="rounded-2xl bg-gradient-to-br from-indigo-400 to-indigo-600 text-white font-black py-5 text-2xl shadow-lg active:scale-95 transition-all select-none"
+            >
+              右挡板 ▶
+            </button>
+          </div>
+        </div>
+      </div>
+    </FullscreenWrapper>
+  );
+}
+
+// ===================== 记忆翻牌 =====================
+// 4×4 共 16 张卡片（8 对 emoji），翻两张相同则消除，全部配对即通关，统计步数
+function GameMemory() {
+  const ICONS = ["🐶", "🐱", "🐰", "🐯", "🦁", "🐼", "🐨", "🐸"];
+  type Card = { id: number; icon: string; flipped: boolean; matched: boolean };
+
+  const buildDeck = (): Card[] => {
+    const pairs = [...ICONS, ...ICONS];
+    for (let i = pairs.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pairs[i], pairs[j]] = [pairs[j], pairs[i]];
+    }
+    return pairs.map((icon, id) => ({ id, icon, flipped: false, matched: false }));
+  };
+
+  const [cards, setCards] = useState<Card[]>(buildDeck);
+  const [openIds, setOpenIds] = useState<number[]>([]);
+  const [steps, setSteps] = useState(0);
+  const [lock, setLock] = useState(false);
+  const [won, setWon] = useState(false);
+  const [startTime] = useState(() => Date.now());
+  const [elapsed, setElapsed] = useState(0);
+  const [highScore, setHighScore] = useState(() => getHighScore("game-memory"));
+  const [finalScore, setFinalScore] = useState(0);
+  const [newRecord, setNewRecord] = useState(false);
+
+  const restart = () => {
+    setCards(buildDeck());
+    setOpenIds([]);
+    setSteps(0);
+    setLock(false);
+    setWon(false);
+    setElapsed(0);
+    setFinalScore(0);
+    setNewRecord(false);
+  };
+
+  useEffect(() => {
+    if (won) return;
+    const t = setInterval(() => setElapsed(Math.floor((Date.now() - startTime) / 1000)), 500);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [won, startTime]);
+
+  const flip = (idx: number) => {
+    if (lock || won) return;
+    const card = cards[idx];
+    if (card.flipped || card.matched) return;
+    const newCards = cards.map((c, i) => (i === idx ? { ...c, flipped: true } : c));
+    const newOpen = [...openIds, idx];
+    setCards(newCards);
+    setOpenIds(newOpen);
+    if (newOpen.length === 2) {
+      setSteps((s) => s + 1);
+      setLock(true);
+      const [a, b] = newOpen;
+      if (newCards[a].icon === newCards[b].icon) {
+        setTimeout(() => {
+          setCards((cs) => cs.map((c, i) => (i === a || i === b ? { ...c, matched: true } : c)));
+          setOpenIds([]);
+          setLock(false);
+        }, 400);
+      } else {
+        setTimeout(() => {
+          setCards((cs) => cs.map((c, i) => (i === a || i === b ? { ...c, flipped: false } : c)));
+          setOpenIds([]);
+          setLock(false);
+        }, 1000);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (cards.length > 0 && cards.every((c) => c.matched) && !won) {
+      setWon(true);
+      const usedTime = Math.floor((Date.now() - startTime) / 1000);
+      setElapsed(usedTime);
+      const calc = 10000 - (steps + 1) * 20 - usedTime;
+      const score = Math.max(0, calc);
+      setFinalScore(score);
+      const nr = updateHighScore("game-memory", score);
+      if (nr) setHighScore(getHighScore("game-memory"));
+      setNewRecord(nr);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cards]);
+
+  const matchedCount = cards.filter((c) => c.matched).length / 2;
+
+  return (
+    <FullscreenWrapper>
+      <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+        <div className="flex flex-wrap items-center gap-3 mb-5">
+          <div className="rounded-2xl bg-pink-50 border border-pink-200 px-4 py-2">
+            <div className="text-[11px] font-semibold text-pink-600">步数</div>
+            <div className="text-xl font-bold text-pink-700">{steps}</div>
+          </div>
+          <div className="rounded-2xl bg-fuchsia-50 border border-fuchsia-200 px-4 py-2">
+            <div className="text-[11px] font-semibold text-fuchsia-600">用时</div>
+            <div className="text-xl font-bold text-fuchsia-700">{elapsed}s</div>
+          </div>
+          <div className="rounded-2xl bg-purple-50 border border-purple-200 px-4 py-2">
+            <div className="text-[11px] font-semibold text-purple-600">配对</div>
+            <div className="text-xl font-bold text-purple-700">{matchedCount}/8</div>
+          </div>
+          <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-2">
+            <div className="text-[11px] font-semibold text-amber-600">最高分</div>
+            <div className="text-xl font-bold text-amber-700">{highScore}</div>
+          </div>
+          <button
+            onClick={restart}
+            className="ml-auto rounded-xl bg-gradient-to-r from-pink-400 to-purple-500 text-white font-semibold px-4 py-2 text-sm shadow-md flex items-center gap-1.5"
+          >
+            <RotateCcw className="w-4 h-4" />
+            重开
+          </button>
+        </div>
+
+        <GameHintBar>
+          <Hint>🖱️ 点击卡片翻面</Hint>
+          <Hint>✨ 两张相同图案配对</Hint>
+          <Hint>🏆 步数越少用时越短分越高</Hint>
+          <Hint>📱 手机直接点触卡片</Hint>
+        </GameHintBar>
+
+        <div className="relative mx-auto" style={{ maxWidth: 420 }}>
+          <div
+            className="grid gap-3"
+            style={{ gridTemplateColumns: "repeat(4, minmax(0,1fr))" }}
+          >
+            {cards.map((c, idx) => {
+              const show = c.flipped || c.matched;
+              return (
+                <button
+                  key={c.id}
+                  onClick={() => flip(idx)}
+                  className="relative aspect-square rounded-2xl [transform-style:preserve-3d] transition-transform duration-500 shadow-md"
+                  style={{ transform: show ? "rotateY(0deg)" : "rotateY(180deg)" }}
+                >
+                  <span
+                    className="absolute inset-0 flex items-center justify-center text-4xl md:text-5xl rounded-2xl [backface-visibility:hidden]"
+                    style={{
+                      background: c.matched
+                        ? "linear-gradient(135deg,#bbf7d0,#86efac)"
+                        : "linear-gradient(135deg,#fef9c3,#fde68a)",
+                    }}
+                  >
+                    {c.icon}
+                  </span>
+                  <span
+                    className="absolute inset-0 flex items-center justify-center text-4xl md:text-5xl rounded-2xl [backface-visibility:hidden] [transform:rotateY(180deg)] text-white"
+                    style={{ background: "linear-gradient(135deg,#ec4899,#8b5cf6)" }}
+                  >
+                    ❓
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {won && (
+            <GameResultOverlay
+              title="🎉 通关成功！"
+              success={true}
+              stats={[
+                { label: "使用步数", value: steps },
+                { label: "用时", value: `${elapsed} 秒` },
+                { label: "本局得分", value: finalScore },
+              ]}
+              highLabel="最高分"
+              highScore={highScore}
+              newRecord={newRecord}
+              onRestart={restart}
+              primaryColor="from-pink-400 to-purple-500"
+            />
+          )}
+        </div>
+      </div>
+    </FullscreenWrapper>
+  );
+}
+
+// ===================== 数字猜猜猜 =====================
+// 1-100 随机数，输入并提交，提示太大/太小/对了，显示历史记录与次数
+function GameGuessNumber() {
+  const [target, setTarget] = useState(() => Math.floor(Math.random() * 100) + 1);
+  const [input, setInput] = useState("");
+  const [history, setHistory] = useState<{ guess: number; hint: "大" | "小" | "对" }[]>([]);
+  const [won, setWon] = useState(false);
+  const [highScore, setHighScore] = useState(() => getHighScore("game-guess-number"));
+  const [newRecord, setNewRecord] = useState(false);
+  const [finalScore, setFinalScore] = useState(0);
+
+  const restart = () => {
+    setTarget(Math.floor(Math.random() * 100) + 1);
+    setInput("");
+    setHistory([]);
+    setWon(false);
+    setNewRecord(false);
+    setFinalScore(0);
+  };
+
+  const submit = () => {
+    if (won) return;
+    const n = parseInt(input, 10);
+    if (Number.isNaN(n) || n < 1 || n > 100) return;
+    const hint: "大" | "小" | "对" = n > target ? "大" : n < target ? "小" : "对";
+    const newHistory = [{ guess: n, hint }, ...history];
+    setHistory(newHistory);
+    setInput("");
+    if (hint === "对") {
+      setWon(true);
+      const score = Math.max(0, 100 - newHistory.length);
+      setFinalScore(score);
+      const nr = updateHighScore("game-guess-number", score);
+      if (nr) setHighScore(getHighScore("game-guess-number"));
+      setNewRecord(nr);
+    }
+  };
+
+  const guessCount = history.length;
+  const lastHint = history[0];
+  const hiBadges: { label: string; value: string | number; cls: string }[] = [
+    { label: "小范围", value: history.some((h) => h.hint === "小") ? `${Math.max(...history.filter((h) => h.hint === "小").map((h) => h.guess), 0)}+` : "1+", cls: "bg-sky-50 border-sky-200 text-sky-700" },
+    { label: "大范围", value: history.some((h) => h.hint === "大") ? `${Math.min(...history.filter((h) => h.hint === "大").map((h) => h.guess), 101)}-` : "100-", cls: "bg-rose-50 border-rose-200 text-rose-700" },
+  ];
+
+  return (
+    <FullscreenWrapper>
+      <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+        <div className="flex flex-wrap items-center gap-3 mb-5">
+          <div className="rounded-2xl bg-cyan-50 border border-cyan-200 px-4 py-2">
+            <div className="text-[11px] font-semibold text-cyan-600">已猜次数</div>
+            <div className="text-xl font-bold text-cyan-700">{guessCount}</div>
+          </div>
+          {hiBadges.map((b, i) => (
+            <div key={i} className={`rounded-2xl border px-4 py-2 ${b.cls}`}>
+              <div className="text-[11px] font-semibold">{b.label}</div>
+              <div className="text-xl font-bold">{b.value}</div>
+            </div>
+          ))}
+          <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-2">
+            <div className="text-[11px] font-semibold text-amber-600">最高分</div>
+            <div className="text-xl font-bold text-amber-700">{highScore}</div>
+          </div>
+          <button
+            onClick={restart}
+            className="ml-auto rounded-xl bg-gradient-to-r from-cyan-400 to-blue-500 text-white font-semibold px-4 py-2 text-sm shadow-md flex items-center gap-1.5"
+          >
+            <RotateCcw className="w-4 h-4" />
+            重开
+          </button>
+        </div>
+
+        <GameHintBar>
+          <Hint>🔢 范围 1～100</Hint>
+          <Hint>⏎ <Key k="Enter" /> 快速提交</Hint>
+          <Hint>🎯 猜得越少分越高（满分 100）</Hint>
+          <Hint>📱 手机直接输入数字</Hint>
+        </GameHintBar>
+
+        <div className="relative mx-auto max-w-md">
+          <div>
+            <p className="text-center text-slate-600 mb-4">
+              我心里想了一个 <span className="font-bold text-slate-800">1～100</span> 之间的数字，来猜猜看吧！
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="number"
+                min={1}
+                max={100}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && submit()}
+                disabled={won}
+                placeholder="输入 1-100"
+                className="flex-1 rounded-xl border border-slate-200 px-4 py-3 text-lg font-semibold focus:outline-none focus:ring-2 focus:ring-cyan-400 disabled:bg-slate-50"
+              />
+              <button
+                onClick={submit}
+                disabled={won || !input}
+                className="rounded-xl bg-gradient-to-r from-cyan-400 to-blue-500 text-white font-bold px-6 py-3 shadow-md disabled:opacity-50 active:scale-95 transition-all"
+              >
+                猜！
+              </button>
+            </div>
+
+            {lastHint && !won && (
+              <div className="mt-6 text-center">
+                <div className={`inline-block px-6 py-4 rounded-2xl text-xl font-black shadow ${
+                  lastHint.hint === "大"
+                    ? "bg-gradient-to-br from-rose-100 to-pink-100 text-rose-700 border border-rose-200"
+                    : "bg-gradient-to-br from-sky-100 to-cyan-100 text-sky-700 border border-sky-200"
+                }`}>
+                  {lastHint.hint === "大"
+                    ? `📉 ${lastHint.guess} 太大了！往小猜`
+                    : `📈 ${lastHint.guess} 太小了！往大猜`}
+                </div>
+              </div>
+            )}
+
+            {history.length > 0 && (
+              <div className="mt-6">
+                <div className="text-xs font-semibold text-slate-500 mb-2">历史记录</div>
+                <div className="flex flex-wrap gap-2">
+                  {history.map((h, i) => (
+                    <span
+                      key={i}
+                      className={`rounded-lg px-3 py-1.5 text-sm font-bold shadow-sm ${
+                        h.hint === "对"
+                          ? "bg-gradient-to-br from-emerald-400 to-green-500 text-white"
+                          : h.hint === "大"
+                          ? "bg-rose-100 text-rose-700 border border-rose-200"
+                          : "bg-sky-100 text-sky-700 border border-sky-200"
+                      }`}
+                    >
+                      {h.guess}
+                      {h.hint === "大" ? " ↓" : h.hint === "小" ? " ↑" : " ✓"}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {won && (
+            <GameResultOverlay
+              title="🎉 猜对啦！"
+              success={true}
+              stats={[
+                { label: "正确答案", value: target },
+                { label: "猜测次数", value: guessCount },
+                { label: "本局得分", value: finalScore },
+              ]}
+              highLabel="最高分"
+              highScore={highScore}
+              newRecord={newRecord}
+              onRestart={restart}
+              primaryColor="from-cyan-400 to-blue-500"
+            />
+          )}
+        </div>
+      </div>
+    </FullscreenWrapper>
+  );
+}
+
+// ===================== 太空侵略者 =====================
+// Canvas 实现，玩家底部移动射击，5×8 外星人编队左右移动碰边下移，到底则失败
+function GameSpaceInvaders() {
+  const W = 480;
+  const H = 560;
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const keysRef = useRef<Record<string, boolean>>({});
+  const fireCdRef = useRef(0);
+  const touchDirRef = useRef<0 | -1 | 1>(0);
+  const touchShootRef = useRef(false);
+  const particlesRef = useRef(createParticleSystem());
+  const floatsRef = useRef(createFloatTextSystem());
+  type Bullet = { x: number; y: number; vy: number; from: "player" | "alien" };
+  type Alien = { x: number; y: number; alive: boolean };
+  const stateRef = useRef({
+    px: W / 2,
+    bullets: [] as Bullet[],
+    aliens: [] as Alien[],
+    dir: 1,
+    alienCooldown: 0,
+    score: 0,
+    killed: 0,
+    over: false,
+    win: false,
+    paused: false,
+    newRecord: false,
+    ended: false,
+  });
+  const [, force] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const [highScore, setHighScore] = useState(() => getHighScore("game-space-invaders"));
+  const [resultOpen, setResultOpen] = useState(false);
+  const [resultSuccess, setResultSuccess] = useState(false);
+  const [resultScore, setResultScore] = useState(0);
+  const [resultKilled, setResultKilled] = useState(0);
+  const [resultNewRecord, setResultNewRecord] = useState(false);
+
+  const buildAliens = (): Alien[] => {
+    const list: Alien[] = [];
+    for (let r = 0; r < 5; r++) {
+      for (let c = 0; c < 8; c++) {
+        list.push({ x: 40 + c * 44, y: 50 + r * 34, alive: true });
+      }
+    }
+    return list;
+  };
+
+  const restart = () => {
+    const s = stateRef.current;
+    s.px = W / 2;
+    s.bullets = [];
+    s.aliens = buildAliens();
+    s.dir = 1;
+    s.alienCooldown = 0;
+    s.score = 0;
+    s.killed = 0;
+    s.over = false;
+    s.win = false;
+    s.paused = false;
+    s.newRecord = false;
+    s.ended = false;
+    fireCdRef.current = 0;
+    touchDirRef.current = 0;
+    touchShootRef.current = false;
+    particlesRef.current.clear();
+    floatsRef.current.clear();
+    setPaused(false);
+    setResultOpen(false);
+    force((x) => x + 1);
+  };
+
+  const togglePause = () => {
+    const s = stateRef.current;
+    if (s.over || s.win) return;
+    s.paused = !s.paused;
+    setPaused(s.paused);
+  };
+
+  const endGame = (success: boolean) => {
+    const s = stateRef.current;
+    if (s.ended) return;
+    s.ended = true;
+    if (success) {
+      floatsRef.current.spawn(W / 2, H / 2, "🏆 通关！", "#ffffff", 44, 80);
+    }
+    const nr = updateHighScore("game-space-invaders", s.score);
+    s.newRecord = nr;
+    if (nr) setHighScore(getHighScore("game-space-invaders"));
+    setResultSuccess(success);
+    setResultScore(s.score);
+    setResultKilled(s.killed);
+    setResultNewRecord(nr);
+    setTimeout(() => setResultOpen(true), success ? 600 : 300);
+  };
+
+  useEffect(() => {
+    restart();
+    const down = (e: KeyboardEvent) => {
+      const k = e.key.toLowerCase();
+      if (k === "p") {
+        e.preventDefault();
+        togglePause();
+        return;
+      }
+      keysRef.current[k] = true;
+      if (["arrowleft", "arrowright", "arrowup", "arrowdown", " "].includes(k)) {
+        e.preventDefault();
+      }
+    };
+    const up = (e: KeyboardEvent) => (keysRef.current[e.key.toLowerCase()] = false);
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    let raf = 0;
+    const loop = () => {
+      const c = canvasRef.current;
+      if (c) {
+        const ctx = c.getContext("2d")!;
+        const s = stateRef.current;
+        if (!s.over && !s.win && !s.paused) {
+          if (keysRef.current["arrowleft"] || keysRef.current["a"]) s.px = clamp(s.px - 4, 20, W - 20);
+          if (keysRef.current["arrowright"] || keysRef.current["d"]) s.px = clamp(s.px + 4, 20, W - 20);
+          if (touchDirRef.current === -1) s.px = clamp(s.px - 4, 20, W - 20);
+          if (touchDirRef.current === 1) s.px = clamp(s.px + 4, 20, W - 20);
+          fireCdRef.current = Math.max(0, fireCdRef.current - 1);
+          if (
+            ((keysRef.current[" "] || keysRef.current["w"] || keysRef.current["arrowup"]) || touchShootRef.current) &&
+            fireCdRef.current === 0
+          ) {
+            s.bullets.push({ x: s.px, y: H - 40, vy: -7, from: "player" });
+            fireCdRef.current = 18;
+            touchShootRef.current = false;
+          }
+          s.alienCooldown--;
+          if (s.alienCooldown <= 0) {
+            s.alienCooldown = 30;
+            let edge = false;
+            for (const a of s.aliens) {
+              if (!a.alive) continue;
+              if (s.dir > 0 && a.x > W - 50) { edge = true; break; }
+              if (s.dir < 0 && a.x < 30) { edge = true; break; }
+            }
+            if (edge) {
+              s.dir *= -1;
+              for (const a of s.aliens) if (a.alive) a.y += 18;
+            } else {
+              for (const a of s.aliens) if (a.alive) a.x += s.dir * 8;
+            }
+          }
+          if (Math.random() < 0.03) {
+            const alive = s.aliens.filter((a) => a.alive);
+            if (alive.length > 0) {
+              const a = alive[Math.floor(Math.random() * alive.length)];
+              s.bullets.push({ x: a.x, y: a.y + 10, vy: 4, from: "alien" });
+            }
+          }
+          const keep: Bullet[] = [];
+          for (const b of s.bullets) {
+            b.y += b.vy;
+            if (b.y < 0 || b.y > H) continue;
+            if (b.from === "player") {
+              let hit = false;
+              for (const a of s.aliens) {
+                if (!a.alive) continue;
+                if (Math.abs(b.x - a.x) < 16 && Math.abs(b.y - a.y) < 12) {
+                  a.alive = false;
+                  s.score += 10;
+                  s.killed += 1;
+                  hit = true;
+                  particlesRef.current.burst(a.x, a.y, 12, ["#8b5cf6", "#6366f1", "#22d3ee", "#06b6d4"], 4, 32);
+                  floatsRef.current.spawn(a.x, a.y - 10, "+10", "#a78bfa", 18, 44);
+                  break;
+                }
+              }
+              if (!hit) keep.push(b);
+            } else {
+              if (Math.abs(b.x - s.px) < 18 && Math.abs(b.y - (H - 30)) < 12) {
+                if (!s.over) {
+                  s.over = true;
+                  particlesRef.current.burst(s.px, H - 30, 24, ["#ef4444", "#f97316", "#fbbf24", "#f87171", "#fb923c"], 5.5, 44);
+                }
+              } else {
+                keep.push(b);
+              }
+            }
+          }
+          s.bullets = keep;
+          for (const a of s.aliens) {
+            if (a.alive && a.y > H - 60) {
+              if (!s.over) {
+                s.over = true;
+                particlesRef.current.burst(s.px, H - 30, 24, ["#ef4444", "#f97316", "#fbbf24"], 5.5, 44);
+              }
+              break;
+            }
+          }
+          if (s.aliens.every((a) => !a.alive)) {
+            if (!s.win) s.win = true;
+          }
+          if ((s.over || s.win) && !s.ended) {
+            endGame(s.win && !s.over);
+          }
+        }
+        ctx.fillStyle = "#0f172a";
+        ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = "#334155";
+        for (let i = 0; i < 30; i++) {
+          ctx.fillRect((i * 37) % W, (i * 53 + ((Date.now() / 30) | 0)) % H, 1, 1);
+        }
+        for (const a of s.aliens) {
+          if (!a.alive) continue;
+          ctx.fillStyle = "#22d3ee";
+          ctx.fillRect(a.x - 14, a.y - 10, 28, 20);
+          ctx.fillStyle = "#0e7490";
+          ctx.fillRect(a.x - 8, a.y - 6, 5, 5);
+          ctx.fillRect(a.x + 3, a.y - 6, 5, 5);
+        }
+        ctx.fillStyle = "#fde047";
+        ctx.beginPath();
+        ctx.moveTo(s.px, H - 40);
+        ctx.lineTo(s.px - 16, H - 22);
+        ctx.lineTo(s.px + 16, H - 22);
+        ctx.closePath();
+        ctx.fill();
+        for (const b of s.bullets) {
+          ctx.fillStyle = b.from === "player" ? "#f87171" : "#a78bfa";
+          ctx.fillRect(b.x - 2, b.y - 6, 4, 12);
+        }
+        particlesRef.current.step(ctx, 0.1);
+        floatsRef.current.step(ctx);
+        ctx.fillStyle = "#fff";
+        ctx.font = "bold 18px system-ui";
+        ctx.textAlign = "left";
+        ctx.fillText("得分 " + s.score, 12, 24);
+        if (s.paused && !s.over && !s.win) {
+          ctx.fillStyle = "rgba(0,0,0,0.6)";
+          ctx.fillRect(0, 0, W, H);
+          ctx.fillStyle = "#fff";
+          ctx.font = "bold 40px system-ui";
+          ctx.textAlign = "center";
+          ctx.fillText("⏸ 已暂停", W / 2, H / 2 - 10);
+          ctx.font = "16px system-ui";
+          ctx.fillStyle = "#e2e8f0";
+          ctx.fillText("按 P 或点击右上角继续", W / 2, H / 2 + 24);
+        }
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      cancelAnimationFrame(raf);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const s = stateRef.current;
+
+  const onTouchMove = (e: React.TouchEvent) => {
+    e.preventDefault();
+    const canvas = canvasRef.current;
+    if (!canvas || !e.touches[0]) return;
+    const t = e.touches[0];
+    const p = canvasLogicalPoint(canvas, t.clientX, t.clientY, W, H);
+    if (p.x < W / 3) touchDirRef.current = -1;
+    else if (p.x > (2 * W) / 3) touchDirRef.current = 1;
+    else touchDirRef.current = 0;
+  };
+  const onTouchStart = (e: React.TouchEvent) => {
+    e.preventDefault();
+    const canvas = canvasRef.current;
+    if (!canvas || !e.touches[0]) return;
+    const t = e.touches[0];
+    const p = canvasLogicalPoint(canvas, t.clientX, t.clientY, W, H);
+    if (p.x >= W / 3 && p.x <= (2 * W) / 3) {
+      touchShootRef.current = true;
+    }
+    if (p.x < W / 3) touchDirRef.current = -1;
+    else if (p.x > (2 * W) / 3) touchDirRef.current = 1;
+  };
+  const onTouchEnd = (e: React.TouchEvent) => {
+    e.preventDefault();
+    touchDirRef.current = 0;
+  };
+
+  return (
+    <FullscreenWrapper>
+      <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+        <GameHintBar>
+          <Hint><Key k="←" /><Key k="→" /> 移动</Hint>
+          <Hint><Key k="空格" /> 射击</Hint>
+          <Hint><Key k="P" /> 暂停</Hint>
+          <Hint>📱 触摸：左1/3左移 · 右1/3右移 · 中间射击</Hint>
+        </GameHintBar>
+        <div className="flex flex-wrap items-center gap-3 mb-5">
+          <div className="rounded-2xl bg-cyan-50 border border-cyan-200 px-4 py-2">
+            <div className="text-[11px] font-semibold text-cyan-600">得分</div>
+            <div className="text-xl font-bold text-cyan-700">{s.score}</div>
+          </div>
+          <div className="rounded-2xl bg-violet-50 border border-violet-200 px-4 py-2">
+            <div className="text-[11px] font-semibold text-violet-600">消灭</div>
+            <div className="text-xl font-bold text-violet-700">{s.killed}</div>
+          </div>
+          <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-2">
+            <div className="text-[11px] font-semibold text-amber-600">最高分</div>
+            <div className="text-xl font-bold text-amber-700">{highScore}</div>
+          </div>
+          <button
+            onClick={restart}
+            className="ml-auto rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-semibold px-4 py-2 text-sm shadow-md flex items-center gap-1.5"
+          >
+            <RotateCcw className="w-4 h-4" />
+            重开
+          </button>
+        </div>
+        <div className="mx-auto max-w-[480px] relative">
+          <PauseButton paused={paused} toggle={togglePause} />
+          <canvas
+            ref={canvasRef}
+            width={W}
+            height={H}
+            onTouchStart={onTouchStart}
+            onTouchMove={onTouchMove}
+            onTouchEnd={onTouchEnd}
+            className="w-full rounded-2xl shadow-2xl bg-slate-900 block"
+            style={{ aspectRatio: "6 / 7" }}
+          />
+          {resultOpen && (
+            <GameResultOverlay
+              title={resultSuccess ? "全部消灭！" : "任务失败"}
+              success={resultSuccess}
+              stats={[
+                { label: "本局得分", value: resultScore },
+                { label: "消灭外星人", value: resultKilled },
+              ]}
+              highLabel="最高分"
+              highScore={highScore}
+              newRecord={resultNewRecord}
+              onRestart={restart}
+              primaryColor="from-indigo-500 to-purple-700"
+            />
+          )}
+        </div>
+      </div>
+    </FullscreenWrapper>
+  );
+}
+
+// ===================== 弹球消砖 =====================
+// Canvas 实现，6×10 砖块每个 2 点血量（击中变色），挡板控球，球落地则结束
+function GameBrickCrush() {
+  const W = 480;
+  const H = 560;
+  const BW = 42;
+  const BH = 16;
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const keysRef = useRef<Record<string, boolean>>({});
+  const touchPxRef = useRef<number | null>(null);
+  type Brick = { x: number; y: number; hp: number };
+  const stateRef = useRef({
+    bx: W / 2,
+    by: H - 80,
+    bvx: 3,
+    bvy: -3,
+    px: W / 2,
+    bricks: [] as Brick[],
+    score: 0,
+    over: false,
+    win: false,
+    ended: false,
+    broken: 0,
+    newRecord: false,
+  });
+  const [, force] = useState(0);
+  const [highScore, setHighScore] = useState(() => getHighScore("game-brick-crush"));
+  const [showResult, setShowResult] = useState(false);
+  const [newRecord, setNewRecord] = useState(false);
+  const [uiScore, setUiScore] = useState(0);
+
+  const TOTAL_BRICKS = 60;
+
+  const buildBricks = (): Brick[] => {
+    const list: Brick[] = [];
+    const cols = 10;
+    const rows = 6;
+    const padX = 30;
+    const padY = 50;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        list.push({ x: padX + c * BW, y: padY + r * BH, hp: 2 });
+      }
+    }
+    return list;
+  };
+
+  const restart = () => {
+    const s = stateRef.current;
+    s.bx = W / 2;
+    s.by = H - 80;
+    s.bvx = 3 * (Math.random() > 0.5 ? 1 : -1);
+    s.bvy = -3;
+    s.px = W / 2;
+    s.bricks = buildBricks();
+    s.score = 0;
+    s.over = false;
+    s.win = false;
+    s.ended = false;
+    s.broken = 0;
+    s.newRecord = false;
+    touchPxRef.current = null;
+    setShowResult(false);
+    setNewRecord(false);
+    setUiScore(0);
+    force((x) => x + 1);
+  };
+
+  const endGame = (success: boolean) => {
+    const s = stateRef.current;
+    if (s.ended) return;
+    s.ended = true;
+    const nr = updateHighScore("game-brick-crush", s.score);
+    s.newRecord = nr;
+    if (nr) setHighScore(getHighScore("game-brick-crush"));
+    setUiScore(s.score);
+    setNewRecord(nr);
+    setTimeout(() => setShowResult(true), success ? 400 : 300);
+  };
+
+  useEffect(() => {
+    restart();
+    const down = (e: KeyboardEvent) => {
+      keysRef.current[e.key.toLowerCase()] = true;
+      if (["arrowleft", "arrowright"].includes(e.key.toLowerCase())) e.preventDefault();
+    };
+    const up = (e: KeyboardEvent) => (keysRef.current[e.key.toLowerCase()] = false);
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    let raf = 0;
+    const loop = () => {
+      const c = canvasRef.current;
+      if (c) {
+        const ctx = c.getContext("2d")!;
+        const s = stateRef.current;
+        if (!s.over && !s.win) {
+          if (keysRef.current["arrowleft"] || keysRef.current["a"]) s.px = clamp(s.px - 6, 50, W - 50);
+          if (keysRef.current["arrowright"] || keysRef.current["d"]) s.px = clamp(s.px + 6, 50, W - 50);
+          if (touchPxRef.current !== null) {
+            const target = touchPxRef.current;
+            const diff = target - s.px;
+            if (Math.abs(diff) > 2) {
+              s.px = clamp(s.px + Math.sign(diff) * Math.min(7, Math.abs(diff)), 50, W - 50);
+            }
+          }
+          s.bx += s.bvx;
+          s.by += s.bvy;
+          if (s.bx < 8) { s.bx = 8; s.bvx = Math.abs(s.bvx); }
+          if (s.bx > W - 8) { s.bx = W - 8; s.bvx = -Math.abs(s.bvx); }
+          if (s.by < 8) { s.by = 8; s.bvy = Math.abs(s.bvy); }
+          if (s.by > H - 30 && s.by < H - 20 && s.bvy > 0 && Math.abs(s.bx - s.px) < 50) {
+            s.bvy = -Math.abs(s.bvy) - 0.1;
+            s.bvx = (s.bx - s.px) / 8;
+            const sp = Math.sqrt(s.bvx * s.bvx + s.bvy * s.bvy);
+            const maxsp = 7;
+            if (sp > maxsp) { s.bvx = (s.bvx / sp) * maxsp; s.bvy = (s.bvy / sp) * maxsp; }
+          }
+          for (const b of s.bricks) {
+            if (b.hp <= 0) continue;
+            if (s.bx > b.x && s.bx < b.x + BW && s.by > b.y && s.by < b.y + BH) {
+              const prevBy = s.by - s.bvy;
+              if (prevBy <= b.y || prevBy >= b.y + BH) s.bvy = -s.bvy;
+              else s.bvx = -s.bvx;
+              b.hp--;
+              if (b.hp === 0) { s.broken++; s.score += 10; }
+              else s.score += 3;
+              setUiScore(s.score);
+              break;
+            }
+          }
+          if (s.by > H) { s.over = true; endGame(false); }
+          if (s.bricks.every((b) => b.hp <= 0)) { s.win = true; endGame(true); }
+        }
+        ctx.fillStyle = "#450a0a";
+        ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = "rgba(251,113,133,0.08)";
+        for (let i = 0; i < 50; i++) {
+          const sx = (i * 97) % W;
+          const sy = (i * 73 + ((Date.now() / 30) | 0)) % H;
+          ctx.fillRect(sx, sy, 2, 2);
+        }
+        for (const b of s.bricks) {
+          if (b.hp <= 0) continue;
+          if (b.hp === 2) {
+            const g = ctx.createLinearGradient(b.x, b.y, b.x, b.y + BH);
+            g.addColorStop(0, "#60a5fa");
+            g.addColorStop(1, "#3b82f6");
+            ctx.fillStyle = g;
+          } else {
+            const g = ctx.createLinearGradient(b.x, b.y, b.x, b.y + BH);
+            g.addColorStop(0, "#fb923c");
+            g.addColorStop(1, "#ea580c");
+            ctx.fillStyle = g;
+          }
+          ctx.fillRect(b.x + 1, b.y + 1, BW - 2, BH - 2);
+          ctx.strokeStyle = "rgba(255,255,255,0.35)";
+          ctx.lineWidth = 1;
+          ctx.strokeRect(b.x + 1.5, b.y + 1.5, BW - 3, BH - 3);
+        }
+        const pg = ctx.createLinearGradient(s.px - 50, H - 24, s.px + 50, H - 14);
+        pg.addColorStop(0, "#fca5a5");
+        pg.addColorStop(0.5, "#f87171");
+        pg.addColorStop(1, "#ef4444");
+        ctx.fillStyle = pg;
+        ctx.shadowColor = "#ef4444";
+        ctx.shadowBlur = 6;
+        ctx.fillRect(s.px - 50, H - 24, 100, 10);
+        ctx.shadowBlur = 0;
+        const bg = ctx.createRadialGradient(s.bx - 2, s.by - 2, 1, s.bx, s.by, 9);
+        bg.addColorStop(0, "#fff");
+        bg.addColorStop(0.5, "#fecdd3");
+        bg.addColorStop(1, "#f43f5e");
+        ctx.fillStyle = bg;
+        ctx.beginPath();
+        ctx.arc(s.bx, s.by, 7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(255,255,255,0.92)";
+        ctx.font = "bold 18px system-ui";
+        ctx.textAlign = "left";
+        ctx.fillText("得分 " + s.score, 12, 24);
+        ctx.textAlign = "right";
+        ctx.fillText(`剩余 ${TOTAL_BRICKS - s.broken}`, W - 12, 24);
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      cancelAnimationFrame(raf);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const s = stateRef.current;
+
+  const updatePaddleFromTouch = (clientX: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const p = canvasLogicalPoint(canvas, clientX, 0, W, H);
+    touchPxRef.current = clamp(p.x, 50, W - 50);
+  };
+
+  return (
+    <FullscreenWrapper>
+      <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
+        <div className="flex flex-wrap items-center gap-3 mb-5">
+          <div className="rounded-2xl bg-red-50 border border-red-200 px-4 py-2">
+            <div className="text-[11px] font-semibold text-red-600">得分</div>
+            <div className="text-xl font-bold text-red-700">{uiScore || s.score}</div>
+          </div>
+          <div className="rounded-2xl bg-pink-50 border border-pink-200 px-4 py-2">
+            <div className="text-[11px] font-semibold text-pink-600">消除砖块</div>
+            <div className="text-xl font-bold text-pink-700">{s.broken}/{TOTAL_BRICKS}</div>
+          </div>
+          <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-2">
+            <div className="text-[11px] font-semibold text-amber-600">最高分</div>
+            <div className="text-xl font-bold text-amber-700">{highScore}</div>
+          </div>
+          <button
+            onClick={restart}
+            className="ml-auto rounded-xl bg-gradient-to-r from-red-400 to-pink-600 text-white font-semibold px-4 py-2 text-sm shadow-md flex items-center gap-1.5"
+          >
+            <RotateCcw className="w-4 h-4" />
+            重开
+          </button>
+        </div>
+
+        <GameHintBar>
+          <Hint><Key k="←" /><Key k="→" /> / <Key k="A" /><Key k="D" /> 移动挡板</Hint>
+          <Hint>🧱 砖块需击中 2 次消除</Hint>
+          <Hint>🎯 击中挡板位置改变球角度</Hint>
+          <Hint>📱 手指在画布上移动挡板</Hint>
+        </GameHintBar>
+
+        <div className="mx-auto max-w-[480px] relative">
+          <div className="relative rounded-2xl p-1.5 shadow-2xl overflow-hidden" style={{ background: "linear-gradient(135deg,#7f1d1d,#991b1b)" }}>
+            <canvas
+              ref={canvasRef}
+              width={W}
+              height={H}
+              className="w-full rounded-xl block touch-none"
+              style={{ aspectRatio: "6 / 7" }}
+              onTouchStart={(e) => {
+                const t = e.touches[0];
+                if (t) updatePaddleFromTouch(t.clientX);
+              }}
+              onTouchMove={(e) => {
+                e.preventDefault();
+                const t = e.touches[0];
+                if (t) updatePaddleFromTouch(t.clientX);
+              }}
+              onTouchEnd={() => { touchPxRef.current = null; }}
+              onMouseMove={(e) => {
+                if (e.buttons === 1) updatePaddleFromTouch(e.clientX);
+              }}
+              onMouseDown={(e) => updatePaddleFromTouch(e.clientX)}
+              onMouseUp={() => { touchPxRef.current = null; }}
+              onMouseLeave={() => { touchPxRef.current = null; }}
+            />
+            {showResult && (
+              <GameResultOverlay
+                title={s.win ? "🎉 全部砖块消除！" : "球落地啦"}
+                success={s.win}
+                stats={[
+                  { label: "本局得分", value: uiScore || s.score },
+                  { label: "消除砖块", value: `${s.broken}/${TOTAL_BRICKS}` },
+                ]}
+                highLabel="最高分"
+                highScore={highScore}
+                newRecord={newRecord}
+                onRestart={restart}
+                primaryColor="from-red-400 to-pink-600"
+              />
+            )}
+          </div>
+        </div>
+      </div>
+    </FullscreenWrapper>
+  );
+}
+
+// ===================== 青蛙过河 =====================
+// Canvas 实现，青蛙从底部穿越 3 马路 + 3 河道到达顶部，踩浮木随其移动
+function GameFrogCross() {
+  const W = 480;
+  const H = 560;
+  const CELL = 40;
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const keysRef = useRef<Record<string, boolean>>({});
+  const particles = useMemo(() => createParticleSystem(), []);
+  const floats = useMemo(() => createFloatTextSystem(), []);
+
+  type Item = { x: number; w: number; speed: number; baseSpeed: number };
+  type Lane = { y: number; type: "road" | "river"; items: Item[] };
+  const stateRef = useRef({
+    fx: Math.floor(W / 2 / CELL) * CELL,
+    fy: H - 30,
+    lanes: [] as Lane[],
+    paused: false,
+    gameOver: false,
+    jumpCd: 0,
+    lives: 3,
+    score: 0,
+    reached: 0,
+    level: 1,
+    respawnCd: 0,
+    deathType: "" as "car" | "water" | "",
+    newRecord: false,
+  });
+  const [paused, setPaused] = useState(false);
+  const [uiScore, setUiScore] = useState(0);
+  const [uiLives, setUiLives] = useState(3);
+  const [uiReached, setUiReached] = useState(0);
+  const [uiLevel, setUiLevel] = useState(1);
+  const [showResult, setShowResult] = useState(false);
+  const [highScore, setHighScore] = useState(0);
+  const [newRecord, setNewRecord] = useState(false);
+
+  const buildLanes = (level: number): Lane[] => {
+    const lanes: Lane[] = [];
+    const speedMul = 1 + (level - 1) * 0.1;
+    for (let i = 0; i < 3; i++) {
+      const y = 80 + i * CELL;
+      const dir = i % 2 === 0 ? 1 : -1;
+      const items: Item[] = [];
+      for (let k = 0; k < 3; k++) {
+        const sp = dir * (1.2 + i * 0.3) * speedMul;
+        items.push({ x: k * 180, w: 90, speed: sp, baseSpeed: sp });
+      }
+      lanes.push({ y, type: "river", items });
+    }
+    for (let i = 0; i < 3; i++) {
+      const y = 240 + i * CELL;
+      const dir = i % 2 === 0 ? -1 : 1;
+      const items: Item[] = [];
+      for (let k = 0; k < 4; k++) {
+        const sp = dir * (2 + i * 0.5) * speedMul;
+        items.push({ x: k * 140, w: 50, speed: sp, baseSpeed: sp });
+      }
+      lanes.push({ y, type: "road", items });
+    }
+    return lanes;
+  };
+
+  const resetFrog = (s = stateRef.current) => {
+    s.fx = Math.floor(W / 2 / CELL) * CELL;
+    s.fy = H - 30;
+    s.jumpCd = 0;
+    s.deathType = "";
+  };
+
+  const applyLevel = (s = stateRef.current) => {
+    const speedMul = 1 + (s.level - 1) * 0.1;
+    for (const lane of s.lanes) {
+      for (const it of lane.items) {
+        const sign = it.baseSpeed >= 0 ? 1 : -1;
+        it.speed = sign * Math.abs(it.baseSpeed) * speedMul;
+      }
+    }
+  };
+
+  const restart = () => {
+    const s = stateRef.current;
+    s.lives = 3;
+    s.score = 0;
+    s.reached = 0;
+    s.level = 1;
+    s.paused = false;
+    s.gameOver = false;
+    s.newRecord = false;
+    s.lanes = buildLanes(1);
+    resetFrog(s);
+    particles.clear();
+    floats.clear();
+    setPaused(false);
+    setUiScore(0);
+    setUiLives(3);
+    setUiReached(0);
+    setUiLevel(1);
+    setShowResult(false);
+    setHighScore(getHighScore("game-frog-cross"));
+    setNewRecord(false);
+  };
+
+  const togglePause = () => {
+    const s = stateRef.current;
+    if (s.gameOver) return;
+    s.paused = !s.paused;
+    setPaused(s.paused);
+  };
+
+  const endGame = () => {
+    const s = stateRef.current;
+    s.gameOver = true;
+    const nr = updateHighScore("game-frog-cross", s.score);
+    s.newRecord = nr;
+    setHighScore(getHighScore("game-frog-cross"));
+    setNewRecord(nr);
+    setTimeout(() => setShowResult(true), 350);
+  };
+
+  const loseLife = (type: "car" | "water") => {
+    const s = stateRef.current;
+    if (s.respawnCd > 0 || s.gameOver) return;
+    s.lives--;
+    s.deathType = type;
+    if (type === "car") {
+      particles.burst(s.fx, s.fy, 16, ["#ef4444", "#dc2626", "#f87171", "#7f1d1d", "#fecaca"], 4.5, 30);
+    } else {
+      particles.burst(s.fx, s.fy, 16, ["#3b82f6", "#60a5fa", "#1d4ed8", "#bfdbfe", "#2563eb"], 4, 34);
+    }
+    setUiLives(s.lives);
+    if (s.lives <= 0) {
+      endGame();
+    } else {
+      s.respawnCd = 45;
+    }
+  };
+
+  const reachGoal = () => {
+    const s = stateRef.current;
+    s.score += 100;
+    s.reached++;
+    s.level++;
+    particles.burst(s.fx, s.fy, 20, ["#84cc16", "#a3e635", "#65a30d", "#bef264", "#4d7c0f", "#ecfccb"], 5, 36);
+    floats.spawn(s.fx, s.fy - 10, "✨ 到顶！+100", "#f0fdf4", 26, 64);
+    setUiScore(s.score);
+    setUiReached(s.reached);
+    setUiLevel(s.level);
+    s.lanes = buildLanes(s.level);
+    applyLevel(s);
+    resetFrog(s);
+  };
+
+  const doJump = (dir: "up" | "down" | "left" | "right") => {
+    const s = stateRef.current;
+    if (s.paused || s.gameOver || s.respawnCd > 0 || s.jumpCd > 0) return;
+    let moved = false;
+    if (dir === "up") { s.fy -= CELL; moved = true; }
+    else if (dir === "down") { if (s.fy < H - 30) { s.fy += CELL; moved = true; } }
+    else if (dir === "left") { s.fx = clamp(s.fx - CELL, CELL / 2, W - CELL / 2); moved = true; }
+    else if (dir === "right") { s.fx = clamp(s.fx + CELL, CELL / 2, W - CELL / 2); moved = true; }
+    if (moved) s.jumpCd = 8;
+  };
+
+  useEffect(() => {
+    restart();
+    const down = (e: KeyboardEvent) => {
+      const k = e.key.toLowerCase();
+      keysRef.current[k] = true;
+      if (["arrowleft", "arrowright", "arrowup", "arrowdown"].includes(k)) e.preventDefault();
+      if (k === "p" || k === " ") { togglePause(); e.preventDefault(); }
+    };
+    const up = (e: KeyboardEvent) => (keysRef.current[e.key.toLowerCase()] = false);
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    let raf = 0;
+    const loop = () => {
+      const c = canvasRef.current;
+      if (c) {
+        const ctx = c.getContext("2d")!;
+        const s = stateRef.current;
+
+        if (!s.paused && !s.gameOver) {
+          s.jumpCd = Math.max(0, s.jumpCd - 1);
+          if (s.respawnCd > 0) {
+            s.respawnCd--;
+            if (s.respawnCd === 0) resetFrog(s);
+          }
+          if (s.jumpCd === 0 && s.respawnCd === 0) {
+            let moved = false;
+            if (keysRef.current["arrowup"] || keysRef.current["w"]) { s.fy -= CELL; moved = true; }
+            else if (keysRef.current["arrowdown"] || keysRef.current["s"]) { if (s.fy < H - 30) { s.fy += CELL; moved = true; } }
+            else if (keysRef.current["arrowleft"] || keysRef.current["a"]) { s.fx = clamp(s.fx - CELL, CELL / 2, W - CELL / 2); moved = true; }
+            else if (keysRef.current["arrowright"] || keysRef.current["d"]) { s.fx = clamp(s.fx + CELL, CELL / 2, W - CELL / 2); moved = true; }
+            if (moved) s.jumpCd = 8;
+          }
+
+          for (const lane of s.lanes) {
+            for (const it of lane.items) {
+              it.x += it.speed;
+              if (it.speed > 0 && it.x > W + 20) it.x = -it.w - 20;
+              if (it.speed < 0 && it.x < -it.w - 20) it.x = W + 20;
+            }
+          }
+
+          if (s.respawnCd === 0) {
+            let died = false;
+            for (const lane of s.lanes) {
+              if (Math.abs(s.fy - lane.y) > CELL / 2) continue;
+              if (lane.type === "river") {
+                let onLog = false;
+                for (const it of lane.items) {
+                  if (s.fx >= it.x - 10 && s.fx <= it.x + it.w + 10) {
+                    onLog = true;
+                    s.fx += it.speed;
+                    break;
+                  }
+                }
+                if (!onLog) {
+                  loseLife("water");
+                  died = true;
+                  break;
+                }
+              } else if (lane.type === "road") {
+                for (const it of lane.items) {
+                  if (s.fx >= it.x - 10 && s.fx <= it.x + it.w + 10) {
+                    loseLife("car");
+                    died = true;
+                    break;
+                  }
+                }
+                if (died) break;
+              }
+            }
+            if (!died && (s.fx < 0 || s.fx > W)) {
+              loseLife("water");
+            }
+            if (!died && s.fy < 60) {
+              reachGoal();
+            }
+          }
+        }
+
+        const grd = ctx.createLinearGradient(0, 0, 0, H);
+        grd.addColorStop(0, "#022c22");
+        grd.addColorStop(0.5, "#064e3b");
+        grd.addColorStop(1, "#14532d");
+        ctx.fillStyle = grd;
+        ctx.fillRect(0, 0, W, H);
+
+        ctx.fillStyle = "#fde68a";
+        ctx.fillRect(0, 40, W, 6);
+        ctx.fillStyle = "#052e16";
+        ctx.fillRect(0, 0, W, 40);
+        for (let i = 0; i < 8; i++) {
+          const x = 30 + i * 60;
+          ctx.fillStyle = "#22c55e";
+          ctx.beginPath(); ctx.arc(x, 22, 9, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = "#15803d";
+          ctx.beginPath(); ctx.arc(x, 22, 5, 0, Math.PI * 2); ctx.fill();
+        }
+
+        ctx.fillStyle = "#14532d";
+        ctx.fillRect(0, 200, W, CELL);
+        ctx.fillRect(0, 360, W, CELL);
+        ctx.fillRect(0, H - CELL, W, CELL);
+
+        for (const lane of s.lanes) {
+          if (lane.type === "river") {
+            const g = ctx.createLinearGradient(0, lane.y - CELL / 2, 0, lane.y + CELL / 2);
+            g.addColorStop(0, "#1e3a8a");
+            g.addColorStop(0.5, "#1d4ed8");
+            g.addColorStop(1, "#1e40af");
+            ctx.fillStyle = g;
+            ctx.fillRect(0, lane.y - CELL / 2, W, CELL);
+            ctx.strokeStyle = "rgba(191,219,254,0.18)";
+            ctx.lineWidth = 1;
+            for (let i = 0; i < W; i += 32) {
+              const off = (Date.now() / 25 + i) % 32;
+              ctx.beginPath();
+              ctx.moveTo(i + off, lane.y - 6);
+              ctx.quadraticCurveTo(i + off + 8, lane.y - 10, i + off + 16, lane.y - 6);
+              ctx.stroke();
+            }
+          }
+        }
+
+        for (const lane of s.lanes) {
+          if (lane.type === "road") {
+            ctx.fillStyle = "#1f2937";
+            ctx.fillRect(0, lane.y - CELL / 2, W, CELL);
+            ctx.strokeStyle = "#facc15";
+            ctx.setLineDash([16, 14]);
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(0, lane.y);
+            ctx.lineTo(W, lane.y);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
+        }
+
+        for (const lane of s.lanes) {
+          for (const it of lane.items) {
+            if (lane.type === "river") {
+              ctx.fillStyle = "#78350f";
+              ctx.fillRect(it.x, lane.y - 12, it.w, 24);
+              ctx.fillStyle = "#92400e";
+              ctx.fillRect(it.x + 3, lane.y - 9, it.w - 6, 18);
+              ctx.strokeStyle = "#451a03";
+              ctx.lineWidth = 1;
+              for (let k = 0; k < 3; k++) {
+                ctx.beginPath();
+                ctx.moveTo(it.x + 10 + k * 25, lane.y - 7);
+                ctx.lineTo(it.x + 10 + k * 25, lane.y + 7);
+                ctx.stroke();
+              }
+            } else {
+              const carColors = ["#ef4444", "#f97316", "#8b5cf6", "#06b6d4", "#eab308", "#ec4899"];
+              const ci = Math.floor((it.x + it.w) / 140) % carColors.length;
+              ctx.fillStyle = carColors[ci];
+              const r = 5;
+              ctx.beginPath();
+              ctx.moveTo(it.x + r, lane.y - 12);
+              ctx.lineTo(it.x + it.w - r, lane.y - 12);
+              ctx.quadraticCurveTo(it.x + it.w, lane.y - 12, it.x + it.w, lane.y - 12 + r);
+              ctx.lineTo(it.x + it.w, lane.y + 12 - r);
+              ctx.quadraticCurveTo(it.x + it.w, lane.y + 12, it.x + it.w - r, lane.y + 12);
+              ctx.lineTo(it.x + r, lane.y + 12);
+              ctx.quadraticCurveTo(it.x, lane.y + 12, it.x, lane.y + 12 - r);
+              ctx.lineTo(it.x, lane.y - 12 + r);
+              ctx.quadraticCurveTo(it.x, lane.y - 12, it.x + r, lane.y - 12);
+              ctx.fill();
+              ctx.fillStyle = "#0f172a";
+              ctx.fillRect(it.x + 4, lane.y - 9, it.w - 8, 18);
+              ctx.fillStyle = "rgba(255,255,255,0.25)";
+              ctx.fillRect(it.x + 6, lane.y - 7, it.w / 2 - 4, 6);
+              ctx.fillStyle = "#111827";
+              ctx.beginPath(); ctx.arc(it.x + 6, lane.y - 12, 2.5, 0, Math.PI * 2); ctx.fill();
+              ctx.beginPath(); ctx.arc(it.x + it.w - 6, lane.y - 12, 2.5, 0, Math.PI * 2); ctx.fill();
+              ctx.beginPath(); ctx.arc(it.x + 6, lane.y + 12, 2.5, 0, Math.PI * 2); ctx.fill();
+              ctx.beginPath(); ctx.arc(it.x + it.w - 6, lane.y + 12, 2.5, 0, Math.PI * 2); ctx.fill();
+            }
+          }
+        }
+
+        ctx.fillStyle = "rgba(254,240,138,0.18)";
+        ctx.fillRect(0, 40, W, 28);
+
+        if (s.respawnCd === 0) {
+          ctx.fillStyle = "#84cc16";
+          ctx.beginPath();
+          ctx.ellipse(s.fx, s.fy + 8, 13, 6, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "#a3e635";
+          ctx.beginPath();
+          ctx.arc(s.fx, s.fy, 13, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "#fff";
+          ctx.beginPath(); ctx.arc(s.fx - 5, s.fy - 5, 4, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.arc(s.fx + 5, s.fy - 5, 4, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = "#14532d";
+          ctx.beginPath(); ctx.arc(s.fx - 5, s.fy - 5, 2, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.arc(s.fx + 5, s.fy - 5, 2, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = "#4d7c0f";
+          ctx.beginPath(); ctx.arc(s.fx, s.fy + 3, 1.8, 0, Math.PI, false); ctx.fill();
+        } else if (s.deathType === "water") {
+          ctx.fillStyle = "rgba(96,165,250,0.45)";
+          for (let r = 1; r <= 3; r++) {
+            ctx.beginPath();
+            ctx.arc(s.fx, s.fy, 6 + r * 5 + (s.respawnCd % 6), 0, Math.PI * 2);
+            ctx.strokeStyle = `rgba(191,219,254,${0.6 - r * 0.15})`;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+          }
+        } else if (s.deathType === "car") {
+          ctx.save();
+          ctx.globalAlpha = s.respawnCd / 45;
+          ctx.fillStyle = "#b91c1c";
+          ctx.font = "bold 20px system-ui";
+          ctx.textAlign = "center";
+          ctx.fillText("💥 被撞!", s.fx, s.fy - 10);
+          ctx.restore();
+        }
+
+        particles.step(ctx, 0.12);
+        floats.step(ctx);
+
+        for (let i = 0; i < s.lives && s.lives > 0; i++) {
+          const lx = 16 + i * 24, ly = 16;
+          ctx.fillStyle = "#ef4444";
+          ctx.beginPath();
+          ctx.arc(lx - 4, ly, 5, 0, Math.PI * 2);
+          ctx.arc(lx + 4, ly, 5, 0, Math.PI * 2);
+          ctx.moveTo(lx - 8, ly + 1);
+          ctx.lineTo(lx, ly + 11);
+          ctx.lineTo(lx + 8, ly + 1);
+          ctx.closePath();
+          ctx.fill();
+        }
       }
       raf = requestAnimationFrame(loop);
     };
@@ -6362,927 +9595,106 @@ function GamePinball() {
         <div className="flex flex-wrap items-center gap-3 mb-5">
           <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-2">
             <div className="text-[11px] font-semibold text-amber-600">得分</div>
-            <div className="text-xl font-bold text-amber-700">{s.score}</div>
+            <div className="text-xl font-bold text-amber-700">{uiScore}</div>
           </div>
-          <button
-            onClick={restart}
-            className="ml-auto rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-semibold px-4 py-2 text-sm shadow-md flex items-center gap-1.5"
-          >
-            <RotateCcw className="w-4 h-4" />
-            重开
-          </button>
-        </div>
-        <div className="mx-auto max-w-[420px]">
-          <canvas
-            ref={canvasRef}
-            width={W}
-            height={H}
-            className="w-full rounded-2xl shadow-2xl"
-            style={{ aspectRatio: "3 / 4" }}
-          />
-        </div>
-        {s.over && (
-          <div className="mt-4 text-center text-rose-600 font-semibold">
-            球落地！得分：{s.score}，点「重开」再来
+          <div className="rounded-2xl bg-lime-50 border border-lime-200 px-4 py-2">
+            <div className="text-[11px] font-semibold text-lime-600">到达</div>
+            <div className="text-xl font-bold text-lime-700">{uiReached}</div>
           </div>
-        )}
-        <div className="mt-3 text-center text-xs text-slate-500">
-          ← / → 键控制左右挡板，碰钉子 +5，球落地结束
-        </div>
-      </div>
-    </FullscreenWrapper>
-  );
-}
-
-// ===================== 记忆翻牌 =====================
-// 4×4 共 16 张卡片（8 对 emoji），翻两张相同则消除，全部配对即通关，统计步数
-function GameMemory() {
-  // 8 种动物图案，每种 2 张，共 16 张卡片
-  const ICONS = ["🐶", "🐱", "🐰", "🐯", "🦁", "🐼", "🐨", "🐸"];
-  type Card = { id: number; icon: string; flipped: boolean; matched: boolean };
-
-  // 生成洗牌后的卡组
-  const buildDeck = (): Card[] => {
-    const pairs = [...ICONS, ...ICONS];
-    for (let i = pairs.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [pairs[i], pairs[j]] = [pairs[j], pairs[i]];
-    }
-    return pairs.map((icon, id) => ({ id, icon, flipped: false, matched: false }));
-  };
-
-  const [cards, setCards] = useState<Card[]>(buildDeck);
-  const [openIds, setOpenIds] = useState<number[]>([]); // 当前翻开但未配对的卡片索引
-  const [steps, setSteps] = useState(0);
-  const [lock, setLock] = useState(false); // 翻回去的动画期间禁止点击
-  const [won, setWon] = useState(false);
-
-  // 重开：重新洗牌并重置状态
-  const restart = () => {
-    setCards(buildDeck());
-    setOpenIds([]);
-    setSteps(0);
-    setLock(false);
-    setWon(false);
-  };
-
-  // 翻开一张卡片
-  const flip = (idx: number) => {
-    if (lock || won) return;
-    const card = cards[idx];
-    if (card.flipped || card.matched) return;
-    const newCards = cards.map((c, i) => (i === idx ? { ...c, flipped: true } : c));
-    const newOpen = [...openIds, idx];
-    setCards(newCards);
-    setOpenIds(newOpen);
-    // 翻满两张则判定配对
-    if (newOpen.length === 2) {
-      setSteps((s) => s + 1);
-      setLock(true);
-      const [a, b] = newOpen;
-      if (newCards[a].icon === newCards[b].icon) {
-        // 配对成功，保持翻开
-        setTimeout(() => {
-          setCards((cs) => cs.map((c, i) => (i === a || i === b ? { ...c, matched: true } : c)));
-          setOpenIds([]);
-          setLock(false);
-        }, 400);
-      } else {
-        // 配对失败，1 秒后翻回
-        setTimeout(() => {
-          setCards((cs) => cs.map((c, i) => (i === a || i === b ? { ...c, flipped: false } : c)));
-          setOpenIds([]);
-          setLock(false);
-        }, 1000);
-      }
-    }
-  };
-
-  // 全部配对即通关
-  useEffect(() => {
-    if (cards.length > 0 && cards.every((c) => c.matched)) {
-      setWon(true);
-    }
-  }, [cards]);
-
-  return (
-    <FullscreenWrapper>
-      <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
-        <div className="flex flex-wrap items-center gap-3 mb-5">
-          <div className="rounded-2xl bg-fuchsia-50 border border-fuchsia-200 px-4 py-2">
-            <div className="text-[11px] font-semibold text-fuchsia-600">步数</div>
-            <div className="text-xl font-bold text-fuchsia-700">{steps}</div>
+          <div className="rounded-2xl bg-rose-50 border border-rose-200 px-4 py-2">
+            <div className="text-[11px] font-semibold text-rose-600">生命</div>
+            <div className="text-xl font-bold text-rose-700 flex gap-0.5">
+              {Array.from({ length: Math.max(0, uiLives) }).map((_, i) => (
+                <span key={i}>❤️</span>
+              ))}
+              {uiLives <= 0 && <span>💔</span>}
+            </div>
           </div>
-          <button
-            onClick={restart}
-            className="ml-auto rounded-xl bg-gradient-to-r from-fuchsia-500 to-purple-600 text-white font-semibold px-4 py-2 text-sm shadow-md flex items-center gap-1.5"
-          >
-            <RotateCcw className="w-4 h-4" />
-            重开
-          </button>
-        </div>
-        {/* 4×4 卡片网格，带 3D 翻转动画 */}
-        <div
-          className="mx-auto max-w-[420px] grid gap-3"
-          style={{ gridTemplateColumns: "repeat(4, minmax(0,1fr))" }}
-        >
-          {cards.map((c, idx) => {
-            const show = c.flipped || c.matched;
-            return (
-              <button
-                key={c.id}
-                onClick={() => flip(idx)}
-                className="relative aspect-square rounded-2xl [transform-style:preserve-3d] transition-transform duration-500"
-                style={{ transform: show ? "rotateY(0deg)" : "rotateY(180deg)" }}
-              >
-                {/* 正面：图案 */}
-                <span
-                  className="absolute inset-0 flex items-center justify-center text-4xl rounded-2xl [backface-visibility:hidden]"
-                  style={{
-                    background: c.matched
-                      ? "linear-gradient(135deg,#bbf7d0,#86efac)"
-                      : "linear-gradient(135deg,#fef9c3,#fde68a)",
-                  }}
-                >
-                  {c.icon}
-                </span>
-                {/* 背面：问号 */}
-                <span
-                  className="absolute inset-0 flex items-center justify-center text-4xl rounded-2xl [backface-visibility:hidden] [transform:rotateY(180deg)] text-white"
-                  style={{ background: "linear-gradient(135deg,#8b5cf6,#6366f1)" }}
-                >
-                  ❓
-                </span>
-              </button>
-            );
-          })}
-        </div>
-        {won && (
-          <div className="mt-4 text-center text-emerald-600 font-semibold">
-            🎉 通关！用 {steps} 步翻完所有卡片
-          </div>
-        )}
-        <div className="mt-3 text-center text-xs text-slate-500">
-          点击卡片翻面，找到 8 对相同图案
-        </div>
-      </div>
-    </FullscreenWrapper>
-  );
-}
-
-// ===================== 数字猜猜猜 =====================
-// 1-100 随机数，输入并提交，提示太大/太小/对了，显示历史记录与次数
-function GameGuessNumber() {
-  const [target, setTarget] = useState(() => Math.floor(Math.random() * 100) + 1);
-  const [input, setInput] = useState("");
-  const [history, setHistory] = useState<{ guess: number; hint: "大" | "小" | "对" }[]>([]);
-  const [won, setWon] = useState(false);
-
-  // 重开：重新生成目标数并清空历史
-  const restart = () => {
-    setTarget(Math.floor(Math.random() * 100) + 1);
-    setInput("");
-    setHistory([]);
-    setWon(false);
-  };
-
-  // 提交一次猜测
-  const submit = () => {
-    if (won) return;
-    const n = parseInt(input, 10);
-    if (Number.isNaN(n) || n < 1 || n > 100) return;
-    const hint: "大" | "小" | "对" = n > target ? "大" : n < target ? "小" : "对";
-    setHistory((h) => [{ guess: n, hint }, ...h]);
-    setInput("");
-    if (hint === "对") setWon(true);
-  };
-
-  return (
-    <FullscreenWrapper>
-      <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
-        <div className="flex flex-wrap items-center gap-3 mb-5">
           <div className="rounded-2xl bg-sky-50 border border-sky-200 px-4 py-2">
-            <div className="text-[11px] font-semibold text-sky-600">已猜次数</div>
-            <div className="text-xl font-bold text-sky-700">{history.length}</div>
+            <div className="text-[11px] font-semibold text-sky-600">关卡</div>
+            <div className="text-xl font-bold text-sky-700">Lv.{uiLevel}</div>
           </div>
           <button
             onClick={restart}
-            className="ml-auto rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 text-white font-semibold px-4 py-2 text-sm shadow-md flex items-center gap-1.5"
+            className="ml-auto rounded-xl bg-gradient-to-r from-lime-500 to-green-600 text-white font-semibold shadow-md hover:shadow-lg px-4 py-2 text-sm flex items-center gap-1.5"
           >
             <RotateCcw className="w-4 h-4" />
             重开
           </button>
         </div>
-        <div className="mx-auto max-w-md">
-          <p className="text-center text-slate-600 mb-4">
-            我心里想了一个 1～100 之间的数字，来猜猜看吧！
-          </p>
-          <div className="flex gap-2">
-            <input
-              type="number"
-              min={1}
-              max={100}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && submit()}
-              disabled={won}
-              placeholder="输入 1-100"
-              className="flex-1 rounded-xl border border-slate-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-sky-400"
+
+        <GameHintBar>
+          <Hint>🐸 方向键 <Key k="↑" /><Key k="↓" /><Key k="←" /><Key k="→" /> 跳跃</Hint>
+          <Hint>⏸️ <Key k="P" /> / 空格 暂停</Hint>
+          <Hint>📱 下方虚拟按键可操作</Hint>
+        </GameHintBar>
+
+        <div className="mx-auto max-w-[480px] relative">
+          <div className="relative rounded-2xl shadow-2xl overflow-hidden bg-slate-900">
+            <canvas
+              ref={canvasRef}
+              width={W}
+              height={H}
+              className="w-full block"
+              style={{ aspectRatio: `${W} / ${H}` }}
             />
+            <PauseButton paused={paused} toggle={togglePause} />
+            {paused && !s.gameOver && (
+              <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm rounded-2xl">
+                <div className="text-white text-2xl font-bold flex items-center gap-3">
+                  <Play className="w-7 h-7" /> 已暂停
+                </div>
+              </div>
+            )}
+            {showResult && (
+              <GameResultOverlay
+                title="游戏结束"
+                success={false}
+                stats={[
+                  { label: "得分", value: s.score },
+                  { label: "到达次数", value: s.reached },
+                  { label: "剩余生命", value: Math.max(0, s.lives) },
+                  { label: "关卡", value: `Lv.${s.level}` },
+                ]}
+                highLabel="最高分"
+                highScore={highScore}
+                newRecord={newRecord}
+                onRestart={restart}
+                primaryColor="from-green-400 to-lime-600"
+              />
+            )}
+          </div>
+        </div>
+
+        <div className="mt-5 max-w-[320px] mx-auto select-none">
+          <div className="flex justify-center mb-3">
             <button
-              onClick={submit}
-              disabled={won}
-              className="rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 text-white font-semibold px-5 py-2 shadow-md disabled:opacity-50"
+              onClick={() => doJump("up")}
+              className="rounded-xl bg-green-400 hover:bg-green-500 active:bg-green-600 text-white w-16 h-14 font-black text-2xl shadow-md transition-all"
             >
-              猜！
+              ↑
             </button>
           </div>
-          {/* 最近一次提示 */}
-          {history.length > 0 && !won && (
-            <div className="mt-4 text-center text-lg font-bold text-amber-600">
-              {history[0].hint === "大" ? "太大了！往小猜" : "太小了！往大猜"}
-            </div>
-          )}
-          {won && (
-            <div className="mt-4 text-center text-emerald-600 font-bold">
-              🎉 猜对了！就是 {target}，你用了 {history.length} 次
-            </div>
-          )}
-          {/* 历史记录 */}
-          {history.length > 0 && (
-            <div className="mt-6">
-              <div className="text-xs font-semibold text-slate-500 mb-2">历史记录</div>
-              <div className="flex flex-wrap gap-2">
-                {history.map((h, i) => (
-                  <span
-                    key={i}
-                    className={`rounded-lg px-3 py-1 text-sm font-medium ${
-                      h.hint === "对"
-                        ? "bg-emerald-100 text-emerald-700"
-                        : h.hint === "大"
-                        ? "bg-rose-100 text-rose-700"
-                        : "bg-sky-100 text-sky-700"
-                    }`}
-                  >
-                    {h.guess}（{h.hint}）
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </FullscreenWrapper>
-  );
-}
-
-// ===================== 太空侵略者 =====================
-// Canvas 实现，玩家底部移动射击，5×8 外星人编队左右移动碰边下移，到底则失败
-function GameSpaceInvaders() {
-  const W = 480;
-  const H = 560;
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const keysRef = useRef<Record<string, boolean>>({});
-  const fireCdRef = useRef(0);
-  type Bullet = { x: number; y: number; vy: number; from: "player" | "alien" };
-  type Alien = { x: number; y: number; alive: boolean };
-  const stateRef = useRef({
-    px: W / 2, // 玩家飞船 x
-    bullets: [] as Bullet[],
-    aliens: [] as Alien[],
-    dir: 1, // 外星人整体方向 1=右 -1=左
-    alienCooldown: 0, // 外星人移动计时
-    score: 0,
-    over: false,
-    win: false,
-  });
-  const [, force] = useState(0);
-
-  // 生成 5 行 × 8 列外星人编队
-  const buildAliens = (): Alien[] => {
-    const list: Alien[] = [];
-    for (let r = 0; r < 5; r++) {
-      for (let c = 0; c < 8; c++) {
-        list.push({ x: 40 + c * 44, y: 50 + r * 34, alive: true });
-      }
-    }
-    return list;
-  };
-
-  // 重开：重置飞船、外星人、子弹与分数
-  const restart = () => {
-    const s = stateRef.current;
-    s.px = W / 2;
-    s.bullets = [];
-    s.aliens = buildAliens();
-    s.dir = 1;
-    s.alienCooldown = 0;
-    s.score = 0;
-    s.over = false;
-    s.win = false;
-    fireCdRef.current = 0;
-    force((x) => x + 1);
-  };
-
-  useEffect(() => {
-    restart();
-    const down = (e: KeyboardEvent) => {
-      const k = e.key.toLowerCase();
-      keysRef.current[k] = true;
-      // 阻止方向键与空格的页面滚动
-      if (["arrowleft", "arrowright", "arrowup", "arrowdown", " "].includes(k)) {
-        e.preventDefault();
-      }
-    };
-    const up = (e: KeyboardEvent) => (keysRef.current[e.key.toLowerCase()] = false);
-    window.addEventListener("keydown", down);
-    window.addEventListener("keyup", up);
-    let raf = 0;
-    const loop = () => {
-      const c = canvasRef.current;
-      if (c) {
-        const ctx = c.getContext("2d")!;
-        const s = stateRef.current;
-        if (!s.over && !s.win) {
-          // 玩家左右移动
-          if (keysRef.current["arrowleft"] || keysRef.current["a"]) s.px = clamp(s.px - 4, 20, W - 20);
-          if (keysRef.current["arrowright"] || keysRef.current["d"]) s.px = clamp(s.px + 4, 20, W - 20);
-          // 玩家射击（带冷却）
-          fireCdRef.current = Math.max(0, fireCdRef.current - 1);
-          if (
-            (keysRef.current[" "] || keysRef.current["w"] || keysRef.current["arrowup"]) &&
-            fireCdRef.current === 0
-          ) {
-            s.bullets.push({ x: s.px, y: H - 40, vy: -7, from: "player" });
-            fireCdRef.current = 18;
-          }
-          // 外星人整体移动（按计时步进）
-          s.alienCooldown--;
-          if (s.alienCooldown <= 0) {
-            s.alienCooldown = 30;
-            // 检测是否触碰边缘
-            let edge = false;
-            for (const a of s.aliens) {
-              if (!a.alive) continue;
-              if (s.dir > 0 && a.x > W - 50) { edge = true; break; }
-              if (s.dir < 0 && a.x < 30) { edge = true; break; }
-            }
-            if (edge) {
-              s.dir *= -1;
-              for (const a of s.aliens) if (a.alive) a.y += 18;
-            } else {
-              for (const a of s.aliens) if (a.alive) a.x += s.dir * 8;
-            }
-          }
-          // 外星人随机射击
-          if (Math.random() < 0.03) {
-            const alive = s.aliens.filter((a) => a.alive);
-            if (alive.length > 0) {
-              const a = alive[Math.floor(Math.random() * alive.length)];
-              s.bullets.push({ x: a.x, y: a.y + 10, vy: 4, from: "alien" });
-            }
-          }
-          // 子弹移动 + 碰撞判定
-          const keep: Bullet[] = [];
-          for (const b of s.bullets) {
-            b.y += b.vy;
-            if (b.y < 0 || b.y > H) continue;
-            if (b.from === "player") {
-              let hit = false;
-              for (const a of s.aliens) {
-                if (!a.alive) continue;
-                if (Math.abs(b.x - a.x) < 16 && Math.abs(b.y - a.y) < 12) {
-                  a.alive = false;
-                  s.score += 10;
-                  hit = true;
-                  break;
-                }
-              }
-              if (!hit) keep.push(b);
-            } else {
-              // 外星子弹击中玩家则失败
-              if (Math.abs(b.x - s.px) < 18 && Math.abs(b.y - (H - 30)) < 12) {
-                s.over = true;
-              } else {
-                keep.push(b);
-              }
-            }
-          }
-          s.bullets = keep;
-          // 外星人触底 = 失败
-          for (const a of s.aliens) {
-            if (a.alive && a.y > H - 60) { s.over = true; break; }
-          }
-          // 全部消灭 = 胜利
-          if (s.aliens.every((a) => !a.alive)) s.win = true;
-        }
-        // 绘制背景
-        ctx.fillStyle = "#0f172a";
-        ctx.fillRect(0, 0, W, H);
-        // 星空背景
-        ctx.fillStyle = "#334155";
-        for (let i = 0; i < 30; i++) {
-          ctx.fillRect((i * 37) % W, (i * 53 + ((Date.now() / 30) | 0)) % H, 1, 1);
-        }
-        // 外星人
-        for (const a of s.aliens) {
-          if (!a.alive) continue;
-          ctx.fillStyle = "#22d3ee";
-          ctx.fillRect(a.x - 14, a.y - 10, 28, 20);
-          ctx.fillStyle = "#0e7490";
-          ctx.fillRect(a.x - 8, a.y - 6, 5, 5);
-          ctx.fillRect(a.x + 3, a.y - 6, 5, 5);
-        }
-        // 玩家飞船（三角形）
-        ctx.fillStyle = "#fde047";
-        ctx.beginPath();
-        ctx.moveTo(s.px, H - 40);
-        ctx.lineTo(s.px - 16, H - 22);
-        ctx.lineTo(s.px + 16, H - 22);
-        ctx.closePath();
-        ctx.fill();
-        // 子弹
-        for (const b of s.bullets) {
-          ctx.fillStyle = b.from === "player" ? "#f87171" : "#a78bfa";
-          ctx.fillRect(b.x - 2, b.y - 6, 4, 12);
-        }
-        // 分数
-        ctx.fillStyle = "#fff";
-        ctx.font = "bold 18px system-ui";
-        ctx.textAlign = "left";
-        ctx.fillText("得分 " + s.score, 12, 24);
-      }
-      raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
-    return () => {
-      window.removeEventListener("keydown", down);
-      window.removeEventListener("keyup", up);
-      cancelAnimationFrame(raf);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const s = stateRef.current;
-  return (
-    <FullscreenWrapper>
-      <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
-        <div className="flex flex-wrap items-center gap-3 mb-5">
-          <div className="rounded-2xl bg-cyan-50 border border-cyan-200 px-4 py-2">
-            <div className="text-[11px] font-semibold text-cyan-600">得分</div>
-            <div className="text-xl font-bold text-cyan-700">{s.score}</div>
+          <div className="grid grid-cols-3 gap-3">
+            <button
+              onClick={() => doJump("left")}
+              className="rounded-xl bg-green-400 hover:bg-green-500 active:bg-green-600 text-white w-full h-14 font-black text-2xl shadow-md transition-all"
+            >
+              ←
+            </button>
+            <button
+              onClick={() => doJump("down")}
+              className="rounded-xl bg-green-400 hover:bg-green-500 active:bg-green-600 text-white w-full h-14 font-black text-2xl shadow-md transition-all"
+            >
+              ↓
+            </button>
+            <button
+              onClick={() => doJump("right")}
+              className="rounded-xl bg-green-400 hover:bg-green-500 active:bg-green-600 text-white w-full h-14 font-black text-2xl shadow-md transition-all"
+            >
+              →
+            </button>
           </div>
-          <button
-            onClick={restart}
-            className="ml-auto rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-semibold px-4 py-2 text-sm shadow-md flex items-center gap-1.5"
-          >
-            <RotateCcw className="w-4 h-4" />
-            重开
-          </button>
-        </div>
-        <div className="mx-auto max-w-[480px]">
-          <canvas
-            ref={canvasRef}
-            width={W}
-            height={H}
-            className="w-full rounded-2xl shadow-2xl bg-slate-900"
-            style={{ aspectRatio: "6 / 7" }}
-          />
-        </div>
-        {s.over && (
-          <div className="mt-4 text-center text-rose-600 font-semibold">
-            飞船被击毁！得分：{s.score}，点「重开」再战
-          </div>
-        )}
-        {s.win && (
-          <div className="mt-4 text-center text-emerald-600 font-semibold">
-            🎉 全部消灭！得分：{s.score}
-          </div>
-        )}
-        <div className="mt-3 text-center text-xs text-slate-500">
-          ← / → 移动，空格射击，消灭全部外星人
-        </div>
-      </div>
-    </FullscreenWrapper>
-  );
-}
-
-// ===================== 弹球消砖 =====================
-// Canvas 实现，6×10 砖块每个 2 点血量（击中变色），挡板控球，球落地则结束
-function GameBrickCrush() {
-  const W = 480;
-  const H = 560;
-  const BW = 42; // 砖块宽
-  const BH = 16; // 砖块高
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const keysRef = useRef<Record<string, boolean>>({});
-  type Brick = { x: number; y: number; hp: number };
-  const stateRef = useRef({
-    bx: W / 2, // 球 x
-    by: H - 80, // 球 y
-    bvx: 3, // 球水平速度
-    bvy: -3, // 球垂直速度
-    px: W / 2, // 挡板 x
-    bricks: [] as Brick[],
-    score: 0,
-    over: false,
-    win: false,
-  });
-  const [, force] = useState(0);
-
-  // 生成 6 行 × 10 列砖块，每个 2 点血量
-  const buildBricks = (): Brick[] => {
-    const list: Brick[] = [];
-    const cols = 10;
-    const rows = 6;
-    const padX = 30;
-    const padY = 50;
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        list.push({ x: padX + c * BW, y: padY + r * BH, hp: 2 });
-      }
-    }
-    return list;
-  };
-
-  // 重开：重置球、挡板、砖块与分数
-  const restart = () => {
-    const s = stateRef.current;
-    s.bx = W / 2;
-    s.by = H - 80;
-    s.bvx = 3 * (Math.random() > 0.5 ? 1 : -1);
-    s.bvy = -3;
-    s.px = W / 2;
-    s.bricks = buildBricks();
-    s.score = 0;
-    s.over = false;
-    s.win = false;
-    force((x) => x + 1);
-  };
-
-  useEffect(() => {
-    restart();
-    const down = (e: KeyboardEvent) => {
-      keysRef.current[e.key.toLowerCase()] = true;
-      if (["arrowleft", "arrowright"].includes(e.key.toLowerCase())) e.preventDefault();
-    };
-    const up = (e: KeyboardEvent) => (keysRef.current[e.key.toLowerCase()] = false);
-    window.addEventListener("keydown", down);
-    window.addEventListener("keyup", up);
-    let raf = 0;
-    const loop = () => {
-      const c = canvasRef.current;
-      if (c) {
-        const ctx = c.getContext("2d")!;
-        const s = stateRef.current;
-        if (!s.over && !s.win) {
-          // 挡板移动
-          if (keysRef.current["arrowleft"] || keysRef.current["a"]) s.px = clamp(s.px - 6, 50, W - 50);
-          if (keysRef.current["arrowright"] || keysRef.current["d"]) s.px = clamp(s.px + 6, 50, W - 50);
-          // 球移动
-          s.bx += s.bvx;
-          s.by += s.bvy;
-          // 左右墙壁反弹
-          if (s.bx < 8) { s.bx = 8; s.bvx = Math.abs(s.bvx); }
-          if (s.bx > W - 8) { s.bx = W - 8; s.bvx = -Math.abs(s.bvx); }
-          // 顶部反弹
-          if (s.by < 8) { s.by = 8; s.bvy = Math.abs(s.bvy); }
-          // 挡板碰撞，按击中位置改变水平速度
-          if (s.by > H - 30 && s.by < H - 20 && s.bvy > 0 && Math.abs(s.bx - s.px) < 50) {
-            s.bvy = -Math.abs(s.bvy);
-            s.bvx = (s.bx - s.px) / 8;
-          }
-          // 砖块碰撞
-          for (const b of s.bricks) {
-            if (b.hp <= 0) continue;
-            if (s.bx > b.x && s.bx < b.x + BW && s.by > b.y && s.by < b.y + BH) {
-              // 根据上一帧位置判断碰撞方向
-              const prevBy = s.by - s.bvy;
-              if (prevBy <= b.y || prevBy >= b.y + BH) s.bvy = -s.bvy;
-              else s.bvx = -s.bvx;
-              b.hp--;
-              s.score += b.hp === 0 ? 10 : 3;
-              break;
-            }
-          }
-          // 球落地 = 结束
-          if (s.by > H) s.over = true;
-          // 全部消除 = 胜利
-          if (s.bricks.every((b) => b.hp <= 0)) s.win = true;
-        }
-        // 绘制背景
-        ctx.fillStyle = "#1e1b4b";
-        ctx.fillRect(0, 0, W, H);
-        // 砖块：hp=2 蓝色，hp=1 受损橙色
-        for (const b of s.bricks) {
-          if (b.hp <= 0) continue;
-          ctx.fillStyle = b.hp === 2 ? "#60a5fa" : "#fb923c";
-          ctx.fillRect(b.x + 1, b.y + 1, BW - 2, BH - 2);
-          ctx.strokeStyle = "rgba(255,255,255,0.3)";
-          ctx.strokeRect(b.x + 1, b.y + 1, BW - 2, BH - 2);
-        }
-        // 挡板
-        ctx.fillStyle = "#fde047";
-        ctx.fillRect(s.px - 50, H - 24, 100, 10);
-        // 球
-        ctx.fillStyle = "#fff";
-        ctx.beginPath();
-        ctx.arc(s.bx, s.by, 7, 0, Math.PI * 2);
-        ctx.fill();
-        // 分数
-        ctx.fillStyle = "rgba(255,255,255,0.9)";
-        ctx.font = "bold 18px system-ui";
-        ctx.textAlign = "left";
-        ctx.fillText("得分 " + s.score, 12, 24);
-      }
-      raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
-    return () => {
-      window.removeEventListener("keydown", down);
-      window.removeEventListener("keyup", up);
-      cancelAnimationFrame(raf);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const s = stateRef.current;
-  return (
-    <FullscreenWrapper>
-      <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
-        <div className="flex flex-wrap items-center gap-3 mb-5">
-          <div className="rounded-2xl bg-blue-50 border border-blue-200 px-4 py-2">
-            <div className="text-[11px] font-semibold text-blue-600">得分</div>
-            <div className="text-xl font-bold text-blue-700">{s.score}</div>
-          </div>
-          <button
-            onClick={restart}
-            className="ml-auto rounded-xl bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-semibold px-4 py-2 text-sm shadow-md flex items-center gap-1.5"
-          >
-            <RotateCcw className="w-4 h-4" />
-            重开
-          </button>
-        </div>
-        <div className="mx-auto max-w-[480px]">
-          <canvas
-            ref={canvasRef}
-            width={W}
-            height={H}
-            className="w-full rounded-2xl shadow-2xl"
-            style={{ aspectRatio: "6 / 7" }}
-          />
-        </div>
-        {s.over && (
-          <div className="mt-4 text-center text-rose-600 font-semibold">
-            球落地了！得分：{s.score}，点「重开」再来
-          </div>
-        )}
-        {s.win && (
-          <div className="mt-4 text-center text-emerald-600 font-semibold">
-            🎉 全部消砖完成！得分：{s.score}
-          </div>
-        )}
-        <div className="mt-3 text-center text-xs text-slate-500">
-          ← / → 控制挡板，砖块需击中 2 次才能消除
-        </div>
-      </div>
-    </FullscreenWrapper>
-  );
-}
-
-// ===================== 青蛙过河 =====================
-// Canvas 实现，青蛙从底部穿越 3 马路 + 3 河道到达顶部，踩浮木随其移动
-function GameFrogCross() {
-  const W = 480;
-  const H = 560;
-  const CELL = 40; // 每格高度 / 跳跃距离
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const keysRef = useRef<Record<string, boolean>>({});
-  type Item = { x: number; w: number; speed: number };
-  type Lane = { y: number; type: "road" | "river"; items: Item[] };
-  const stateRef = useRef({
-    fx: Math.floor(W / 2 / CELL) * CELL, // 青蛙 x
-    fy: H - 30, // 青蛙 y
-    lanes: [] as Lane[],
-    over: false,
-    win: false,
-    overMsg: "",
-    jumpCd: 0, // 跳跃冷却
-  });
-  const [, force] = useState(0);
-
-  // 生成 3 条河道 + 3 条马路，含浮木与车辆
-  const buildLanes = (): Lane[] => {
-    const lanes: Lane[] = [];
-    // 3 条河道（上方）
-    for (let i = 0; i < 3; i++) {
-      const y = 80 + i * CELL; // 80, 120, 160
-      const dir = i % 2 === 0 ? 1 : -1;
-      const items: Item[] = [];
-      for (let k = 0; k < 3; k++) {
-        items.push({ x: k * 180, w: 90, speed: dir * (1.2 + i * 0.3) });
-      }
-      lanes.push({ y, type: "river", items });
-    }
-    // 3 条马路（下方）
-    for (let i = 0; i < 3; i++) {
-      const y = 240 + i * CELL; // 240, 280, 320
-      const dir = i % 2 === 0 ? -1 : 1;
-      const items: Item[] = [];
-      for (let k = 0; k < 4; k++) {
-        items.push({ x: k * 140, w: 50, speed: dir * (2 + i * 0.5) });
-      }
-      lanes.push({ y, type: "road", items });
-    }
-    return lanes;
-  };
-
-  // 重开：重置青蛙位置与车道
-  const restart = () => {
-    const s = stateRef.current;
-    s.fx = Math.floor(W / 2 / CELL) * CELL;
-    s.fy = H - 30;
-    s.lanes = buildLanes();
-    s.over = false;
-    s.win = false;
-    s.overMsg = "";
-    s.jumpCd = 0;
-    force((x) => x + 1);
-  };
-
-  useEffect(() => {
-    restart();
-    const down = (e: KeyboardEvent) => {
-      const k = e.key.toLowerCase();
-      keysRef.current[k] = true;
-      if (["arrowleft", "arrowright", "arrowup", "arrowdown"].includes(k)) e.preventDefault();
-    };
-    const up = (e: KeyboardEvent) => (keysRef.current[e.key.toLowerCase()] = false);
-    window.addEventListener("keydown", down);
-    window.addEventListener("keyup", up);
-    let raf = 0;
-    const loop = () => {
-      const c = canvasRef.current;
-      if (c) {
-        const ctx = c.getContext("2d")!;
-        const s = stateRef.current;
-        if (!s.over && !s.win) {
-          // 青蛙跳跃（带冷却，按格移动）
-          s.jumpCd = Math.max(0, s.jumpCd - 1);
-          if (s.jumpCd === 0) {
-            let moved = false;
-            if (keysRef.current["arrowup"] || keysRef.current["w"]) {
-              s.fy -= CELL;
-              moved = true;
-            } else if (keysRef.current["arrowdown"] || keysRef.current["s"]) {
-              if (s.fy < H - 30) { s.fy += CELL; moved = true; }
-            } else if (keysRef.current["arrowleft"] || keysRef.current["a"]) {
-              s.fx = clamp(s.fx - CELL, CELL / 2, W - CELL / 2);
-              moved = true;
-            } else if (keysRef.current["arrowright"] || keysRef.current["d"]) {
-              s.fx = clamp(s.fx + CELL, CELL / 2, W - CELL / 2);
-              moved = true;
-            }
-            if (moved) s.jumpCd = 8;
-          }
-          // 移动所有浮木与车辆，循环出界
-          for (const lane of s.lanes) {
-            for (const it of lane.items) {
-              it.x += it.speed;
-              if (it.speed > 0 && it.x > W + 20) it.x = -it.w - 20;
-              if (it.speed < 0 && it.x < -it.w - 20) it.x = W + 20;
-            }
-          }
-          // 判断青蛙所在车道：河道须踩浮木，马路须躲车
-          for (const lane of s.lanes) {
-            if (Math.abs(s.fy - lane.y) > CELL / 2) continue;
-            if (lane.type === "river") {
-              let onLog = false;
-              for (const it of lane.items) {
-                if (s.fx >= it.x - 10 && s.fx <= it.x + it.w + 10) {
-                  onLog = true;
-                  s.fx += it.speed; // 站在浮木上跟随移动
-                  break;
-                }
-              }
-              if (!onLog) {
-                s.over = true;
-                s.overMsg = "掉进水里了！";
-              }
-            } else if (lane.type === "road") {
-              for (const it of lane.items) {
-                if (s.fx >= it.x - 10 && s.fx <= it.x + it.w + 10) {
-                  s.over = true;
-                  s.overMsg = "被车撞了！";
-                  break;
-                }
-              }
-            }
-          }
-          // 被浮木带出边界 = 落水
-          if (s.fx < 0 || s.fx > W) {
-            s.over = true;
-            s.overMsg = "掉进水里了！";
-          }
-          // 到达顶部 = 通关
-          if (s.fy < 60) s.win = true;
-        }
-        // 绘制草地背景
-        ctx.fillStyle = "#064e3b";
-        ctx.fillRect(0, 0, W, H);
-        // 河道
-        for (const lane of s.lanes) {
-          if (lane.type === "river") {
-            ctx.fillStyle = "#1e3a8a";
-            ctx.fillRect(0, lane.y - 16, W, CELL);
-          }
-        }
-        // 马路
-        for (const lane of s.lanes) {
-          if (lane.type === "road") {
-            ctx.fillStyle = "#334155";
-            ctx.fillRect(0, lane.y - 16, W, CELL);
-          }
-        }
-        // 浮木与车辆
-        for (const lane of s.lanes) {
-          for (const it of lane.items) {
-            if (lane.type === "river") {
-              ctx.fillStyle = "#92400e";
-              ctx.fillRect(it.x, lane.y - 10, it.w, 20);
-            } else {
-              ctx.fillStyle = "#ef4444";
-              ctx.fillRect(it.x, lane.y - 12, it.w, 24);
-              ctx.fillStyle = "#1e293b";
-              ctx.fillRect(it.x + 5, lane.y - 8, it.w - 10, 16);
-            }
-          }
-        }
-        // 终点线
-        ctx.fillStyle = "#fbbf24";
-        ctx.fillRect(0, 40, W, 4);
-        // 青蛙
-        ctx.fillStyle = "#84cc16";
-        ctx.beginPath();
-        ctx.arc(s.fx, s.fy, 14, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = "#1a2e05";
-        ctx.beginPath();
-        ctx.arc(s.fx - 5, s.fy - 3, 3, 0, Math.PI * 2);
-        ctx.arc(s.fx + 5, s.fy - 3, 3, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
-    return () => {
-      window.removeEventListener("keydown", down);
-      window.removeEventListener("keyup", up);
-      cancelAnimationFrame(raf);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const s = stateRef.current;
-  return (
-    <FullscreenWrapper>
-      <div className="rounded-3xl bg-white/80 backdrop-blur border border-pink-100 p-5 md:p-8">
-        <div className="flex flex-wrap items-center gap-3 mb-5">
-          <div className="rounded-2xl bg-lime-50 border border-lime-200 px-4 py-2">
-            <div className="text-[11px] font-semibold text-lime-600">状态</div>
-            <div className="text-xl font-bold text-lime-700">
-              {s.over ? "失败" : s.win ? "通关" : "前进中"}
-            </div>
-          </div>
-          <button
-            onClick={restart}
-            className="ml-auto rounded-xl bg-gradient-to-r from-lime-500 to-green-600 text-white font-semibold px-4 py-2 text-sm shadow-md flex items-center gap-1.5"
-          >
-            <RotateCcw className="w-4 h-4" />
-            重开
-          </button>
-        </div>
-        <div className="mx-auto max-w-[480px]">
-          <canvas
-            ref={canvasRef}
-            width={W}
-            height={H}
-            className="w-full rounded-2xl shadow-2xl"
-            style={{ aspectRatio: "6 / 7" }}
-          />
-        </div>
-        {s.over && (
-          <div className="mt-4 text-center text-rose-600 font-semibold">
-            {s.overMsg}点「重开」再来
-          </div>
-        )}
-        {s.win && (
-          <div className="mt-4 text-center text-emerald-600 font-semibold">
-            🎉 成功过河！
-          </div>
-        )}
-        <div className="mt-3 text-center text-xs text-slate-500">
-          方向键控制青蛙，过马路躲车，过河道踩浮木
         </div>
       </div>
     </FullscreenWrapper>
