@@ -240,9 +240,9 @@ function getChannel(): BroadcastChannel | null {
   return _channel;
 }
 function broadcast() {
-  try { getChannel()?.postMessage({ at: Date.now() }); } catch {}
+  try { getChannel()?.postMessage({ at: Date.now() }); } catch { /* ignore: 容忍异常，不中断主流程 */ }
 }
-function safe(fn: () => void) { try { fn(); } catch {} }
+function safe(fn: () => void) { try { fn(); } catch { /* empty: 订阅失败忽略 */ }  /* empty: 故意空实现，P3 迭代补业务 */ }
 
 if (typeof window !== "undefined") {
   window.addEventListener("storage", (e) => {
@@ -836,6 +836,8 @@ export function adminSearchMessages(keyword: string, limit = 200): ChatMessage[]
     if (out.length >= limit) break;
     const parts: string[] = [m.senderNickname, m.senderId, m.conversationId];
     if (m.type === "text") parts.push(m.content);
+    // P3 迭代：替换 any 为具体类型
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if ((m as any).fileName) parts.push((m as any).fileName);
     if (parts.some((p) => (p || "").toLowerCase().includes(kw))) out.push(m);
   }

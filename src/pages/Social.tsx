@@ -41,7 +41,6 @@ import {
   disbandGroup,
   muteGroupMember,
   type ChatGroup,
-  type FriendEdge,
   type GroupRole,
 } from "@/lib/socialStore";
 import { isLoggedIn } from "@/lib/authClient";
@@ -574,7 +573,7 @@ function GroupCard(props: {
   const copied = () => {
     try {
       navigator.clipboard?.writeText(g.inviteCode);
-    } catch {}
+    } catch { /* 剪贴板权限被拒或不可用：静默忽略 */ }
   };
 
   return (
@@ -704,7 +703,8 @@ function GroupManageModal(props: {
               <div className="text-slate-600">邀请码</div>
               <div
                 onClick={() => {
-                  try { navigator.clipboard?.writeText(live.inviteCode); onToast("success", "邀请码已复制"); } catch {}
+                  try { navigator.clipboard?.writeText(live.inviteCode); onToast("success", "邀请码已复制"); }
+                  catch { /* 剪贴板复制失败：静默 */ }
                 }}
                 className="font-mono font-bold tracking-wider text-violet-700 bg-white border border-violet-200 rounded-lg px-2 py-1 cursor-pointer hover:bg-violet-100"
               >

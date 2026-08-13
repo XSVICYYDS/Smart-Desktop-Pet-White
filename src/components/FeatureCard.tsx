@@ -94,7 +94,7 @@ export function FeatureCard({
   useEffect(() => {
     const off = subscribeSocial(() => setLikes(getFeatureLikes(meta.id)));
     return off;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [meta.id]);
 
   /**

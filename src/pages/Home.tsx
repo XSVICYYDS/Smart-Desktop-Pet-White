@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { useScrollReveal } from "@/hooks/useScrollReveal";
 import SectionTitle from "@/components/SectionTitle";
+import OnboardingSpotlight from "@/components/OnboardingSpotlight";
 import StatCounter from "@/components/StatCounter";
 import DownloadButton from "@/components/DownloadButton";
 import { LucideIcon } from "lucide-react";
@@ -581,6 +582,9 @@ export default function Home() {
             </div>
           </div>
         </div>
+
+      {/* ===== 新手引导 Spotlight（首次访问显示） ===== */}
+      <OnboardingSpotlight />
       </section>
     </div>
   );

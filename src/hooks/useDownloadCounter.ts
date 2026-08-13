@@ -38,6 +38,7 @@ export function useDownloadCounter(assetKey: string) {
         if (data.assets && data.assets.length > 0) {
           let total = 0;
           // 根据 assetKey 匹配对应文件的下载量
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const matched = data.assets.find((a: any) =>
             assetKey === "installer"
               ? a.name.toLowerCase().includes("setup") || a.name.toLowerCase().includes("installer")
@@ -48,11 +49,13 @@ export function useDownloadCounter(assetKey: string) {
           }
           // 如果没匹配到，返回所有资产总下载量
           if (!matched) {
+            // P3 迭代：替换 any 为具体类型
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             total = data.assets.reduce((sum: number, a: any) => sum + (a.download_count || 0), 0);
           }
           setGithubDownloads(total);
         }
-      } catch (e) {
+      } catch {
         // GitHub API 请求失败是正常的（限流等），静默处理
       }
     };

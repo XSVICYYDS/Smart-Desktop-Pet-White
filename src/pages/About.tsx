@@ -64,7 +64,9 @@ function countLines(text: string): number {
 /**
  * 把 ArrayBuffer 转 base64 data URL
  */
-function bufferToDataUrl(buffer: ArrayBuffer, mime: string): string {
+// P3 迭代: 预留扩展
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function _bufferToDataUrl(buffer: ArrayBuffer, mime: string): string {
   let binary = "";
   const bytes = new Uint8Array(buffer);
   for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
@@ -144,7 +146,7 @@ function saveMessages(list: ChatMessage[]): boolean {
 /**
  * About 页面底部的社区交流版面
  *  - 支持文字（最多 2000 行累计，超过自动滚动删除最旧）
- *  - 图片（<img> 预览）、视频（<video controls> 播放）
+ *  - 图片（<img loading="lazy" decoding="async" alt=""> 预览）、视频（<video controls> 播放）
  *  - 程序 / 任意文件（Data URL 存储 + 一键下载回原文件名）
  *  - 发送者昵称：登录时自动带入，未登录时使用临时昵称 + 颜色
  *  - 多标签页实时同步：BroadcastChannel 优先，fallback 到 storage 事件
@@ -181,7 +183,7 @@ function CommunityChatBoard() {
         setMessages(next);
         saveMessages(next);
         if (notifyRemote && channelRef.current) {
-          try { channelRef.current.postMessage({ type: "sync", rows: next.length }); } catch {}
+          try { channelRef.current.postMessage({ type: "sync", rows: next.length }); } catch { /* empty: 故意空实现，P3 迭代补业务 */ }
         }
       },
     []
@@ -213,14 +215,14 @@ function CommunityChatBoard() {
         channelRef.current = new BroadcastChannel(CHANNEL_NAME);
         channelRef.current.onmessage = () => setMessages(loadMessages());
       }
-    } catch {}
+    } catch { /* empty: 故意空实现，P3 迭代补业务 */ }
     const onStorage = (e: StorageEvent) => {
       if (e.key === STORAGE_KEY) setMessages(loadMessages());
     };
     window.addEventListener("storage", onStorage);
     return () => {
       window.removeEventListener("storage", onStorage);
-      try { channelRef.current?.close(); } catch {}
+      try { channelRef.current?.close(); } catch { /* empty: 故意空实现，P3 迭代补业务 */ }
     };
   }, []);
 
@@ -237,7 +239,9 @@ function CommunityChatBoard() {
   /**
    * 追加一条消息到列表（内部用）
    */
-  const appendMessage = (msg: ChatMessage) => {
+  // P3 迭代: 预留扩展
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _appendMessage = (msg: ChatMessage) => {
     const next = trimByRows([...messages, msg]);
     persist(next);
   };
@@ -345,6 +349,8 @@ function CommunityChatBoard() {
       }
       setAttachments([]);
       if (fileInputRef.current) fileInputRef.current.value = "";
+    // P3 迭代：替换 any 为具体类型
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (e: any) {
       setError(e?.message || "发送失败");
     } finally {

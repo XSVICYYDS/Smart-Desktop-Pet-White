@@ -117,7 +117,7 @@ export default function DownloadPage() {
             {/* Installer */}
             <div className="glass rounded-3xl p-8 text-center hover:shadow-xl hover:shadow-pink-100/50 transition-all hover:-translate-y-1 dark:bg-white/[0.04]">
               <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-brand-pink to-brand-pink-dark flex items-center justify-center mx-auto mb-6 shadow-lg shadow-pink-200/40">
-                <img src={installerIcon} alt="安装包图标" className="w-12 h-12 object-contain" />
+                <img src={installerIcon} alt="安装包图标" className="w-12 h-12 object-contain"  loading="lazy" decoding="async"/>
               </div>
               <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-brand-pink/10 text-brand-pink text-[11px] font-semibold border border-brand-pink/20 mb-2">
                 <Sparkles size={11} /> 推荐
@@ -154,7 +154,7 @@ export default function DownloadPage() {
             {/* Portable */}
             <div className="glass rounded-3xl p-8 text-center hover:shadow-xl hover:shadow-pink-100/50 transition-all hover:-translate-y-1 dark:bg-white/[0.04]">
               <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-400 to-indigo-400 flex items-center justify-center mx-auto mb-6 shadow-lg shadow-indigo-200/40">
-                <img src={portableIcon} alt="便携版图标" className="w-12 h-12 object-contain" />
+                <img src={portableIcon} alt="便携版图标" className="w-12 h-12 object-contain"  loading="lazy" decoding="async"/>
               </div>
               <h3 className="font-serif text-2xl font-bold text-brand-dark dark:text-gray-100 mb-2">便携版 · Windows</h3>
               <p className="text-brand-gray dark:text-gray-400 text-sm mb-4">U 盘随身带，双击即可用</p>

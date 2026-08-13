@@ -1,25 +1,22 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import {
-  Github,
+import {  Github,
   Menu,
   X,
   LogIn,
   LogOut,
   CloudUpload,
   User as UserIcon,
+  ImagePlus as ImageIcon,
   CheckCircle,
   ChevronDown,
   ShieldCheck,
-  MessageCircle,
   Users,
   Sun,
   Moon,
   Search,
   ArrowRight,
-  ImagePlus as ImageIcon,
-  X as XIcon,
-} from "lucide-react";
+  X as XIcon,} from "lucide-react";
 import { siteConfig, games, tools, aiTools } from "@/data/content";
 import xiaobaiLogo from "@/assets/xiaobai-logo.gif";
 import {
@@ -482,7 +479,7 @@ export default function Navbar() {
       <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
         <Link to="/" className="flex items-center gap-2 group">
           <div className="w-10 h-10 rounded-full bg-white shadow-md flex items-center justify-center overflow-hidden group-hover:scale-110 transition-transform border-2 border-brand-pink/20">
-            <img src={xiaobaiLogo} alt="小白" className="w-full h-full object-contain" />
+            <img src={xiaobaiLogo} alt="小白" className="w-full h-full object-contain"  loading="lazy" decoding="async"/>
           </div>
           <span className="font-serif text-xl font-bold text-brand-dark">
             {siteConfig.shortName}

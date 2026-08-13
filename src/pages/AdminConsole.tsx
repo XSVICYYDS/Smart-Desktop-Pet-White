@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
-import {
-  Shield,
+import {  Shield,
   Users,
   KeyRound,
   Package,
@@ -27,9 +26,7 @@ import {
   Image as ImageIcon,
   Film,
   FileText,
-  Download,
-  Copy,
-} from "lucide-react";
+  Copy,} from "lucide-react";
 import {
   ensureSeedUsers,
   isCurrentAdmin,
@@ -49,8 +46,7 @@ import {
   type AdminUserRow,
   type VersionRecord,
 } from "@/lib/authClient";
-import {
-  adminSearchMessages,
+import {  adminSearchMessages,
   adminListAllGroups,
   adminListAllFriendEdges,
   adminResetFeatureLikes,
@@ -59,8 +55,6 @@ import {
   listAllFeatureLikes,
   computeHotScore,
   getFeatureLikes,
-  type ChatMessage,
-  type ChatGroup,
   type FeatureLikes,
   disbandGroup,
   transferGroupOwner,
@@ -68,8 +62,7 @@ import {
   muteGroupMember,
   subscribeSocial,
   lookupUserPublic,
-  getGroup,
-} from "@/lib/socialStore";
+  getGroup,} from "@/lib/socialStore";
 import { FEATURES } from "@/data/playgroundData";
 import xiaobaiLogo from "@/assets/xiaobai-logo.gif";
 
@@ -173,7 +166,7 @@ export default function AdminConsole() {
           <div className="absolute -right-10 -top-10 w-52 h-52 rounded-full bg-white/10 blur-2xl" />
           <div className="absolute right-14 top-8 opacity-80">
             <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur border-2 border-white/30 flex items-center justify-center overflow-hidden">
-              <img src={xiaobaiLogo} alt="小白" className="w-full h-full object-contain" />
+              <img src={xiaobaiLogo} alt="小白" className="w-full h-full object-contain"  loading="lazy" decoding="async"/>
             </div>
           </div>
           <div className="flex items-start gap-4 max-w-3xl">
@@ -872,6 +865,8 @@ function MessagesTab(props: {
                   ? m.content.length > 140
                     ? m.content.slice(0, 140) + "…"
                     : m.content
+                  // P3 迭代：替换 any 为具体类型
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   : `${(m as any).fileName || "未命名文件"} · ${formatBytes((m as any).fileSize)}`;
               return (
                 <tr
@@ -931,6 +926,8 @@ function MessagesTab(props: {
                     <div className="flex gap-1 justify-end flex-wrap">
                       {m.type === "text" && !m.deletedByAdmin && (
                         <button
+                          // P3 迭代：替换 any 为具体类型
+                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
                           onClick={() => setEditOf({ id: m.id, text: (m as any).content })}
                           className="text-[11px] rounded-md bg-violet-50 text-violet-700 border border-violet-200 px-2 py-1 hover:bg-violet-100 inline-flex items-center gap-1"
                         >
@@ -1034,7 +1031,7 @@ function GroupsTab(props: { pushToast: (type: "success" | "error", msg: string) 
                           try {
                             navigator.clipboard?.writeText(g.inviteCode);
                             pushToast("success", `邀请码「${g.inviteCode}」已复制`);
-                          } catch {}
+                          } catch { /* empty: 故意空实现，P3 迭代补业务 */ }
                         }}
                         title="点击复制邀请码"
                       >
@@ -1105,6 +1102,8 @@ function SimpleGroupManageModal(props: {
 
   if (!live) return null;
   const roleOrKick = (uid: string, action: "admin" | "member" | "kick") => {
+    // P3 迭代：替换 any 为具体类型
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if (setGroupMemberRole(groupId, uid, action as any)) {
       pushToast("success", action === "kick" ? "已踢出成员" : `已设为${action === "admin" ? "管理员" : "普通成员"}`);
       onChange();

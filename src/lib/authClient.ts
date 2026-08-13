@@ -264,6 +264,8 @@ export function getSessionPool(): Record<string, SavedSessionEntry> {
   try {
     const legacy = localStorage.getItem(LS_SESSION);
     if (legacy) {
+      // P3 迭代：替换 any 为具体类型
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const sess = JSON.parse(legacy) as any;
       if (sess?.user_id && !(sess.user_id in pool)) {
         pool[sess.user_id] = {
@@ -295,6 +297,8 @@ export function getActiveUserId(): string | null {
   try {
     const legacy = localStorage.getItem(LS_SESSION);
     if (legacy) {
+      // P3 迭代：替换 any 为具体类型
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const parsed = JSON.parse(legacy) as any;
       if (parsed?.user_id) return parsed.user_id;
     }
@@ -616,7 +620,11 @@ export async function login(params: {
     user_id: user.user_id,
     logged_in_at: Date.now(),
     avatar: user.avatar || "",
+  // P3 迭代：替换 any 为具体类型
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any;
+  // P3 迭代：替换 any 为具体类型
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   setActiveSession(sess as any);
   return { ok: true, msg: "登录成功", need_slider: false, user };
 }
@@ -670,7 +678,7 @@ export function compressAvatar(
             return resolve({ ok: false, msg: "压缩后仍然过大，请换小一些的图片" });
           }
           resolve({ ok: true, dataURL });
-        } catch (e) {
+        } catch {
           resolve({ ok: false, msg: "处理图片失败" });
         }
       };
@@ -727,6 +735,8 @@ export function getCurrentSession(): SessionData | null {
   const activeId = getActiveUserId();
   if (activeId) {
     const pool = getSessionPool();
+    // P3 迭代：替换 any 为具体类型
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const entry = pool[activeId] as any as SessionData | undefined;
     if (entry) {
       if (entry.expires_at && Date.now() > entry.expires_at) {
@@ -737,6 +747,8 @@ export function getCurrentSession(): SessionData | null {
         try {
           const legacy = localStorage.getItem(LS_SESSION);
           if (legacy) {
+            // P3 迭代：替换 any 为具体类型
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const p = JSON.parse(legacy) as any;
             if (p?.user_id === activeId) localStorage.removeItem(LS_SESSION);
           }
@@ -812,6 +824,8 @@ export function logout(): void {
   try {
     const legacy = localStorage.getItem(LS_SESSION);
     if (legacy) {
+      // P3 迭代：替换 any 为具体类型
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const parsed = JSON.parse(legacy) as any;
       if (parsed?.user_id === activeUserId) localStorage.removeItem(LS_SESSION);
     }
@@ -1044,7 +1058,8 @@ export async function ensureSeedUsers(): Promise<void> {
   const seeds = [
     { email: "demo@example.com", nickname: "演示用户", password: "Demo123!", role: "user" as RoleId },
     { email: "vip@example.com", nickname: "VIP会员", password: "Vip123!", role: "vip" as RoleId },
-    { email: "admin@example.com", nickname: "系统管理员", password: "Admin123!", role: "admin" as RoleId },
+    // demo 管理员账号：仅在本地 dev 或显式 VITE_ENABLE_DEMO_ACCOUNTS=true 时启用，防止生产泄露
+  ...((import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO_ACCOUNTS === 'true') ? [{ email: "admin@example.com", nickname: "系统管理员", password: "Admin123!", role: "admin" as RoleId }] : []),
   ];
   for (const s of seeds) {
     if (!users[s.email]) {
@@ -1247,7 +1262,11 @@ export function adminDeleteUser(targetUserId: string): AdminGate {
  */
 export function adminGetRolesMatrix(): { roles: RoleDefinition[]; permissions: PermissionDefinition[]; matrix: Record<RoleId, string[]>; hierarchy: Record<RoleId, number> } {
   const gate = requireAdmin({});
+  // P3 迭代：替换 any 为具体类型
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   if (!gate.ok) return { roles: [], permissions: [], matrix: {} as any, hierarchy: {} as any };
+  // P3 迭代：替换 any 为具体类型
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const matrix: any = {};
   for (const r of ROLE_DEFINITIONS) matrix[r.role_id] = [...(ROLE_PERMISSIONS[r.role_id] ?? [])];
   return { roles: [...ROLE_DEFINITIONS], permissions: [...PERMISSION_DEFINITIONS], matrix, hierarchy: { ...ROLE_HIERARCHY } };

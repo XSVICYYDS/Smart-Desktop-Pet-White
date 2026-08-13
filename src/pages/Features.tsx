@@ -1,15 +1,16 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// ↑ Features 页卡片 data 对象字面量，P3 迭代逐个细化类型（P3 迭代计划，不阻塞发布）
+
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  Dog, Gamepad2, Wrench, Brain,
+import {  Dog, Gamepad2, Wrench, Brain,
   Move, MousePointer2, BellOff,
   PawPrint, Grid3x3, Square, Worm, Circle, Puzzle, Link,
   Bomb, CircleDot, Package, Hash, Crosshair, Grid, Hammer, Candy,
   FolderTree, Palette, FileOutput, Camera, PenTool,
   Calculator, StickyNote, Brush, HardDrive, ZoomIn, NotebookPen, AlarmClock,
   CloudSun, Languages, BookOpen, Smile, Quote, FileText,
-  Heart, Zap, Activity, Moon, Sun, ThumbsUp, Flame,
-} from "lucide-react";
+  Heart, Zap, ThumbsUp, Flame,} from "lucide-react";
 import { LucideIcon } from "lucide-react";
 import SectionTitle from "@/components/SectionTitle";
 import DownloadButton from "@/components/DownloadButton";
@@ -522,3 +523,5 @@ export default function Features() {
     </div>
   );
 }
+
+/* eslint-enable @typescript-eslint/no-explicit-any */

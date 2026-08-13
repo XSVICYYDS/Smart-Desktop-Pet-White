@@ -99,12 +99,12 @@ function AvatarUploader(props: {
             className="w-full h-full rounded-full object-cover border-2 border-brand-pink/30 shadow-sm"
           />
         ) : (
-          <span className="flex items-center justify-center w-full h-full rounded-full bg-gradient-to-br from-brand-pink to-brand-pink-dark text-white text-2xl font-bold border-2 border-white shadow-sm">
+          <span className="rounded-full bg-gradient-to-br from-brand-pink to-brand-pink-dark text-white text-2xl font-bold border-2 border-white shadow-sm btn-touchable">
             {String.fromCodePoint(0x1f436)}
           </span>
         )}
         {processing && (
-          <span className="absolute inset-0 rounded-full bg-black/30 text-white text-xs flex items-center justify-center">
+          <span className="rounded-full bg-black/30 text-white text-xs flex items-center justify-center btn-touchable">
             处理中…
           </span>
         )}

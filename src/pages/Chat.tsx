@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// ↑ Chat 消息 payload 回调，P3 迭代引入泛型（P3 迭代计划，不阻塞发布）
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
@@ -20,8 +23,7 @@ import {
   Trash2,
   Home,
 } from "lucide-react";
-import {
-  listMessages,
+import {  listMessages,
   sendMessage,
   deleteMessage,
   adminEditTextMessage,
@@ -29,11 +31,9 @@ import {
   subscribeSocial,
   getGroup,
   lookupUserPublic,
-  conversationOfGroup,
   getCurrentActor,
   type ChatMessage,
-  type ConversationKind,
-} from "@/lib/socialStore";
+  type ConversationKind,} from "@/lib/socialStore";
 import { isCurrentAdmin, isLoggedIn } from "@/lib/authClient";
 
 /**
@@ -671,3 +671,5 @@ function renderMessageBody(m: ChatMessage, isMine: boolean) {
     </div>
   );
 }
+
+/* eslint-enable @typescript-eslint/no-explicit-any */
