@@ -63,7 +63,10 @@ export interface BossRuntime {
   alive: boolean;
 }
 
-export type SkillId = "s1_nuke" | "s2_shield" | "s3_haste" | "p1_power" | "p2_regen";
+export type SkillId =
+  | "s1_nuke" | "s2_shield" | "s3_haste"
+  | "s4_cruise" | "s5_emp" | "s6_timewarp"
+  | "p1_power" | "p2_regen" | "p3_maxhp" | "p4_maxenergy" | "p5_crit" | "p6_lifesteal" | "p7_armor";
 export type SkillSlot = 0 | 1 | 2; // 主动技能槽
 export type SkillLevel = 0 | 1 | 2 | 3;
 

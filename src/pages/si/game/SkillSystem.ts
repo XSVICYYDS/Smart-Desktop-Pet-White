@@ -3,7 +3,7 @@ import { BALANCE, SKILLS, ACTIVE_SKILL_ORDER } from "../config";
 import type { PlayerRuntime, SkillId, SkillLevel, SkillRuntimeState, SkillSlot } from "../types";
 
 const LEVELS: SkillLevel[] = [0, 1, 2, 3];
-const ALL_IDS: SkillId[] = ["s1_nuke", "s2_shield", "s3_haste", "p1_power", "p2_regen"];
+const ALL_IDS: SkillId[] = ["s1_nuke", "s2_shield", "s3_haste", "s4_cruise", "s5_emp", "s6_timewarp", "p1_power", "p2_regen", "p3_maxhp", "p4_maxenergy", "p5_crit", "p6_lifesteal", "p7_armor"];
 
 /** 初始化：默认全 Lv0。 */
 export function createInitialSkillState(): SkillRuntimeState {
@@ -50,6 +50,7 @@ export function tickSkills(
     const healPerSec = (player.maxHp * p2Cfg.regenPctPer10s) / 10;
     player.hp = Math.min(player.maxHp, player.hp + healPerSec * dt);
   }
+  // 被动：吸血在造成伤害时处理，无需 tick
   // 护盾/加速 到期自动清理
   if (player.shieldUntilMs && nowMs > player.shieldUntilMs) {
     player.shieldUntilMs = 0;
@@ -83,6 +84,7 @@ export function tryCastActive(
   if (skill === "s3_haste") {
     player.speedBoostUntilMs = nowMs + (cfg.durationMs || 0);
   }
+  // s4_cruise/s5_emp/s6_timewarp 效果在 index.tsx 中处理
   return { ok: true, skill, level: lv, cfg };
 }
 

@@ -1,62 +1,120 @@
+```gitignore
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+*.js.map
+*.tsbuildinfo
+
+# Environment variables
+.env
+.env.local
+*.env.*
+
+# IDE specific
+.vscode/
+.idea/
+*.swp
+*.swo
+
 # Logs
-logs
 *.log
+
+# Coverage reports
+coverage/
+htmlcov/
+.coverage
+
+# Temporary files
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+
+# Python specific (if applicable)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg-info/
+.eggs/
+
+# Node.js specific (if applicable)
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
 
-# Dependencies
-node_modules
-dist-ssr
-*.local
+# TypeScript specific (if applicable)
+*.tsbuildinfo
+.next/
+.nuxt/
 
-# Build output (GitHub Actions will build)
-dist/
+# Rust specific (if applicable)
+target/
 
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-*.egg-info/
-*.egg
+# Java specific (if applicable)
+*.class
+*.jar
+*.war
+*.ear
+*.war
+*.ear
+*.har
+*.hpi
+*.jpi
+*.sar
+*.iml
+*.ipr
+*.iws
+.classpath
+.project
+.settings/
 
-# Build artifacts (Python)
-小白-源代码/build/
-小白-源代码/dist/
-小白-源代码/__pycache__/
-小白-源代码/*/__pycache__/
-小白-源代码/*/*/__pycache__/
-
-# Binary / installer artifacts
+# C/C++ specific (if applicable)
+*.o
+*.obj
 *.exe
-*.msi
+*.dll
+*.so
+*.a
+*.lib
+*.dylib
+*.plist
+*.bin
+*.out
+*.pid
+*.seed
+*.prof
+
+# Go specific (if applicable)
+*.out
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Compressed files
+*.zip
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.gz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
 *.cab
-*.aip
-*.iss
-
-# Installer cache directories
-小白-安装包/
-小白-源代码/智能桌面宠物-小白-cache/
-小白-源代码/智能桌面宠物-小白.back(23.5.1)-cache/
-小白-源代码/智能桌面宠物-小白-SetupFiles/
-
-# Trae internal
-.trae/
-
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-
-# OS files
-Thumbs.db
-desktop.ini
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
+```
