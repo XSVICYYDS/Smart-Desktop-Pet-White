@@ -1,5 +1,5 @@
 /** 游戏常量配置中心：敌人/技能/关卡/成就集中管理（平衡性调参只改这里）。 */
-import type { Achievement, EnemyKind, LevelClearResult, SkillDefinition } from "./types";
+import type { Achievement, BossKind, EnemyKind, LevelClearResult, SkillDefinition } from "./types";
 
 export const WORLD = {
   WIDTH: 1080,
@@ -102,9 +102,10 @@ export interface LevelBlock { x: number; y: number; w: number; h: number; hp: nu
 export interface LevelDef {
   id: number;
   name: string;
-  theme: "nebula" | "crimson" | "asteroid" | "void" | "forge";
+  theme: "nebula" | "crimson" | "asteroid" | "void" | "forge"
+  | "aurora" | "storm" | "magma" | "frost" | "abyss" | "galaxy" | "pulse" | "solitude";
   isBoss: boolean;
-  boss?: "guardian" | "corruptor" | "mothership" | "fuhrer";
+  boss?: BossKind;
   waves: WaveSpawn[][];
   blocks: LevelBlock[];
   recommendedTimeMs: number;
@@ -126,7 +127,23 @@ export const LEVELS: LevelDef[] = (
       }
       return [out];
     };
-    return [
+    /** 更复杂的关卡：生成多波次（N 波逐波出现）。 */
+    const multiWave = (blocks: EnemyKind[][], pad = 72, startX = 160, startY = 220): WaveSpawn[][] => {
+      return blocks.map((mix) => {
+        const rowsN = mix.length;
+        const colsN = 8;
+        const out: WaveSpawn[] = [];
+        for (let r = 0; r < rowsN; r++) {
+          for (let c = 0; c < colsN; c++) {
+            const kind = mix[r] as EnemyKind;
+            out.push({ kind, x: startX + c * pad, y: startY + r * (pad - 12) });
+          }
+        }
+        return out;
+      });
+    };
+
+    const L1_10: LevelDef[] = [
       mk(1, "前哨侦察", "nebula", () => rows(4, 8, 78, 156, 220, [0, 0, 1, 0])),
       mk(2, "前线交火", "nebula", () => rows(5, 8, 78, 156, 200, [0, 1, 0, 4]), [
         { x: 320, y: 900, w: 120, h: 24, hp: 60 },
@@ -145,42 +162,171 @@ export const LEVELS: LevelDef[] = (
       mk(9, "元首母舰", "forge", () => [], [], { isBoss: true, boss: "mothership", recommendedTimeMs: 240_000 }),
       mk(10, "元首本体·地球解放", "crimson", () => [], [], { isBoss: true, boss: "fuhrer", recommendedTimeMs: 300_000 }),
     ];
+
+    // ===== L11-L30：月球→火星→木星→银河深空，每 3 关一个 BOSS =====
+    const L11_30: LevelDef[] = [
+      // 11-13 轨道轰炸（hunter BOSS）
+      mk(11, "月球轨道哨站", "aurora", () => multiWave([
+        [1, 0, 4, 6, 0, 1],
+        [0, 5, 1, 2, 6, 0, 3],
+      ], 76, 160, 220), [
+        { x: 180, y: 820, w: 160, h: 28, hp: 90 },
+        { x: 740, y: 820, w: 160, h: 28, hp: 90 },
+      ]),
+      mk(12, "月影反击", "storm", () => multiWave([
+        [3, 6, 5, 1, 4],
+        [7, 0, 8, 2, 0, 6],
+        [5, 7, 3, 1, 0, 2, 8],
+      ], 72, 156, 210), [
+        { x: 260, y: 720, w: 120, h: 120, hp: 160 },
+        { x: 700, y: 720, w: 120, h: 120, hp: 160 },
+      ], { recommendedTimeMs: 105_000 }),
+      mk(13, "幽影猎手·月面", "abyss", () => [], [], { isBoss: true, boss: "hunter", recommendedTimeMs: 220_000 }),
+
+      // 14-15 火星沙漠（desolator BOSS）
+      mk(14, "赤色沙丘", "magma", () => multiWave([
+        [2, 4, 0, 5, 6, 2],
+        [1, 7, 8, 3, 1, 0, 7],
+      ], 70, 160, 220), [
+        { x: 300, y: 900, w: 480, h: 26, hp: 200 },
+      ], { gravity: 0.15 }),
+      mk(15, "肃清者·红色沙尘", "magma", () => [], [], { isBoss: true, boss: "desolator", recommendedTimeMs: 240_000 }),
+
+      // 16-18 木卫（overlord BOSS）
+      mk(16, "冰盖破碎", "frost", () => multiWave([
+        [4, 2, 6, 3, 1, 5],
+        [0, 8, 7, 2, 4, 6, 1],
+        [5, 3, 0, 7, 8, 2, 1, 6],
+      ], 70, 154, 210), [
+        { x: 200, y: 780, w: 100, h: 200, hp: 180 },
+        { x: 780, y: 780, w: 100, h: 200, hp: 180 },
+      ], { recommendedTimeMs: 110_000 }),
+      mk(17, "木星大红斑", "storm", () => multiWave([
+        [3, 6, 2, 7, 5, 8],
+        [7, 1, 0, 3, 6, 2, 8],
+      ], 70, 150, 220)),
+      mk(18, "木星霸主·碾压", "forge", () => [], [], { isBoss: true, boss: "overlord", recommendedTimeMs: 260_000 }),
+
+      // 19-21 土星环（dragon BOSS）
+      mk(19, "光环风暴", "aurora", () => multiWave([
+        [5, 6, 1, 4, 7, 3, 2],
+        [8, 3, 7, 1, 6, 0, 5, 2],
+      ], 72, 150, 220)),
+      mk(20, "泰坦前线", "abyss", () => multiWave([
+        [2, 6, 3, 7, 5, 1, 8, 4],
+        [7, 4, 8, 0, 3, 6, 2, 7, 1],
+        [5, 8, 2, 1, 7, 6, 3, 4, 5],
+      ], 68, 144, 210), [
+        { x: 260, y: 860, w: 96, h: 96, hp: 220 },
+        { x: 480, y: 780, w: 120, h: 96, hp: 240 },
+        { x: 720, y: 860, w: 96, h: 96, hp: 220 },
+      ], { recommendedTimeMs: 120_000 }),
+      mk(21, "星环神龙", "galaxy", () => [], [], { isBoss: true, boss: "dragon", recommendedTimeMs: 280_000 }),
+
+      // 22-24 超新星遗迹（sentinel/warlord BOSS）
+      mk(22, "超新星残响", "pulse", () => multiWave([
+        [6, 7, 5, 3, 8, 2, 1],
+        [8, 2, 7, 4, 6, 1, 5, 3],
+      ], 68, 148, 220)),
+      mk(23, "湮灭要塞", "void", () => multiWave([
+        [3, 6, 2, 8, 5, 7, 1, 4],
+        [7, 5, 8, 3, 1, 6, 4, 2, 7],
+        [6, 8, 4, 7, 2, 5, 1, 3, 8],
+      ], 64, 144, 210), [
+        { x: 160, y: 600, w: 100, h: 380, hp: 260 },
+        { x: 820, y: 600, w: 100, h: 380, hp: 260 },
+      ], { recommendedTimeMs: 130_000 }),
+      mk(24, "壁垒守卫·要塞之心", "crimson", () => [], [], { isBoss: true, boss: "sentinel", recommendedTimeMs: 300_000 }),
+
+      // 25-27 银河深渊（warlord/devourer BOSS）
+      mk(25, "星界军阀·远征", "galaxy", () => multiWave([
+        [7, 6, 4, 2, 8, 5, 1, 3],
+        [8, 5, 7, 3, 6, 2, 4, 7, 1],
+        [6, 8, 7, 5, 3, 1, 4, 2, 8, 5],
+      ], 60, 140, 210), [
+        { x: 260, y: 880, w: 560, h: 24, hp: 300 },
+      ], { recommendedTimeMs: 135_000 }),
+      mk(26, "吞噬之环", "abyss", () => multiWave([
+        [3, 7, 8, 6, 5, 2, 1, 4],
+        [8, 6, 5, 7, 3, 4, 2, 1, 7],
+        [7, 8, 6, 5, 4, 3, 2, 1, 8, 6],
+      ], 60, 138, 210)),
+      mk(27, "虚无饕餮·深渊吞噬", "crimson", () => [], [], { isBoss: true, boss: "devourer", recommendedTimeMs: 330_000 }),
+
+      // 28-30 终焉（leviathan BOSS）
+      mk(28, "寂静尽头", "solitude", () => multiWave([
+        [8, 7, 6, 5, 4, 3, 2, 1],
+        [7, 8, 6, 5, 4, 3, 2, 1, 8],
+        [8, 7, 6, 5, 4, 3, 2, 1, 7, 8],
+        [8, 7, 6, 5, 4, 3, 2, 1, 7, 8, 6],
+      ], 58, 136, 200), [
+        { x: 160, y: 620, w: 96, h: 360, hp: 300 },
+        { x: 468, y: 640, w: 144, h: 340, hp: 340 },
+        { x: 824, y: 620, w: 96, h: 360, hp: 300 },
+      ], { recommendedTimeMs: 150_000 }),
+      mk(29, "寂灭之光", "pulse", () => multiWave([
+        [6, 8, 7, 5, 4, 3, 2, 1, 7],
+        [8, 7, 6, 5, 4, 3, 2, 1, 6, 8],
+        [7, 8, 6, 5, 4, 3, 2, 1, 8, 7, 6],
+      ], 56, 132, 200), [], { recommendedTimeMs: 160_000 }),
+      mk(30, "星海皇者·终极利维坦", "forge", () => [], [], { isBoss: true, boss: "leviathan", recommendedTimeMs: 420_000 }),
+    ];
+
+    return [...L1_10, ...L11_30];
   }
 )();
 
-/** 15 成就（id 作为解锁键）。 */
+/** 30 成就（id 作为解锁键），L11-L30 新增 15 项。 */
 export const ACHIEVEMENTS: Achievement[] = [
   { id: "first_blood", name: "首杀", desc: "首次消灭任意一名外星单位。", icon: "🩸" },
   { id: "score_10k", name: "十连击人", desc: "单局累计得分达到 10,000 分。", icon: "🏅" },
   { id: "score_50k", name: "王牌飞行员", desc: "单局累计得分达到 50,000 分。", icon: "🎖️" },
   { id: "score_100k", name: "星空传奇", desc: "单局累计得分达到 100,000 分。", icon: "🏆" },
+  { id: "score_250k", name: "银河之巅", desc: "单局累计得分达到 250,000 分。", icon: "👑" },
+  { id: "score_500k", name: "星海传说", desc: "单局累计得分达到 500,000 分。", icon: "🌟" },
   { id: "clear_lv3", name: "首战告捷", desc: "击败第 3 关 BOSS：外星护卫者。", icon: "🛡️" },
   { id: "clear_lv6", name: "毒菌克星", desc: "击败第 6 关 BOSS：腐蚀者。", icon: "🧪" },
   { id: "clear_lv9", name: "击穿舰队", desc: "击败第 9 关 BOSS：元首母舰。", icon: "🚀" },
   { id: "clear_lv10", name: "解放地球", desc: "通关第 10 关元首本体。", icon: "🌍" },
+  { id: "clear_lv13", name: "猎杀时刻", desc: "击败第 13 关 BOSS：幽影猎手。", icon: "🌙" },
+  { id: "clear_lv15", name: "火星征服", desc: "击败第 15 关 BOSS：肃清者。", icon: "🔴" },
+  { id: "clear_lv18", name: "木卫霸主", desc: "击败第 18 关 BOSS：木星霸主。", icon: "🟤" },
+  { id: "clear_lv21", name: "星环屠龙", desc: "击败第 21 关 BOSS：星环神龙。", icon: "🐉" },
+  { id: "clear_lv24", name: "要塞攻陷", desc: "击败第 24 关 BOSS：壁垒守卫。", icon: "🏰" },
+  { id: "clear_lv27", name: "深渊猎人", desc: "击败第 27 关 BOSS：虚无饕餮。", icon: "🕳️" },
+  { id: "clear_lv30", name: "星海皇者", desc: "通关第 30 关终极利维坦。", icon: "🐋" },
   { id: "flawless", name: "无伤破关", desc: "任意普通关卡以 100% 剩余生命通关。", icon: "💯" },
+  { id: "flawless_boss", name: "神乎其技", desc: "任意 BOSS 战以 100% 剩余生命通关。", icon: "🔥" },
   { id: "grade_s", name: "完美节奏", desc: "任意关卡获得 S 级评分。", icon: "✨" },
+  { id: "grade_s_10", name: "双 S 收藏家", desc: "累计 10 个关卡获得 S 级评分。", icon: "💫" },
   { id: "skill_master", name: "技能大师", desc: "单局释放 10 次主动技能。", icon: "🎯" },
+  { id: "skill_overload", name: "过载引擎", desc: "单局释放 30 次主动技能。", icon: "⚙️" },
   { id: "upgrade_any", name: "初次强化", desc: "使用技能点升级任意 1 个技能。", icon: "🛠️" },
   { id: "all_upgrade_max", name: "全技能满级", desc: "5 个技能全部达到 Lv3。", icon: "💎" },
   { id: "bullet_dodger", name: "弹道芭蕾", desc: "单局累计承受伤害 < 25 且通关任意 BOSS 战。", icon: "💃" },
+  { id: "bullet_phantom", name: "幻影步法", desc: "单局累计承受伤害 < 10 且通关任意 L13+ BOSS。", icon: "👣" },
   { id: "no_powerups", name: "赤手空拳", desc: "不使用主动技能通关任意 1 个普通关卡。", icon: "🥋" },
+  { id: "no_powerups_boss", name: "剑道至尊", desc: "不使用主动技能通关任意 1 个 BOSS 关卡。", icon: "⚔️" },
+  { id: "level_clear_30", name: "30 关达成", desc: "完成所有 30 个关卡。", icon: "🎊" },
 ];
 
-/** S/A/B/C 综合评分规则。 */
-export function calcGrade(params: { timeMs: number; recommendedMs: number; hpPct: number; skillsUsed: number; boss?: boolean }): { grade: LevelClearResult["grade"]; skillPointReward: number; score: number } {
-  const { timeMs, recommendedMs, hpPct, skillsUsed, boss } = params;
-  const ratio = Math.max(0.3, Math.min(1.6, timeMs / Math.max(1, recommendedMs)));
-  const timeScore = ratio <= 0.8 ? 40 : ratio <= 1.0 ? 34 : ratio <= 1.25 ? 28 : ratio <= 1.5 ? 20 : 14;
+/** S/A/B/C 综合评分规则（BOSS 倍率随关卡进度提升，技能点奖励上限更高）。 */
+export function calcGrade(params: { timeMs: number; recommendedMs: number; hpPct: number; skillsUsed: number; boss?: boolean; levelId?: number }): { grade: LevelClearResult["grade"]; skillPointReward: number; score: number } {
+  const { timeMs, recommendedMs, hpPct, skillsUsed, boss, levelId = 1 } = params;
+  const ratio = Math.max(0.3, Math.min(1.8, timeMs / Math.max(1, recommendedMs)));
+  const timeScore = ratio <= 0.8 ? 40 : ratio <= 1.0 ? 34 : ratio <= 1.25 ? 28 : ratio <= 1.5 ? 20 : ratio <= 1.7 ? 14 : 10;
   const hpScore = hpPct >= 1 ? 40 : hpPct >= 0.75 ? 34 : hpPct >= 0.5 ? 28 : hpPct >= 0.25 ? 20 : 10;
-  const skillBonus = Math.max(0, 20 - skillsUsed * 3); // 少用技能评分更高
+  const skillBonus = Math.max(0, 20 - skillsUsed * 3);
   const total = timeScore + hpScore + skillBonus;
   let grade: LevelClearResult["grade"] = "C";
   if (total >= 92) grade = "S";
   else if (total >= 78) grade = "A";
   else if (total >= 58) grade = "B";
   const baseSp = grade === "S" ? 5 : grade === "A" ? 3 : grade === "B" ? 2 : 1;
-  const bossMul = boss ? 2 : 1;
+  // BOSS ×2，L16+ 额外 +1，L25+ 再额外 +1
+  let bossMul = boss ? 2 : 1;
+  if (levelId >= 16 && boss) bossMul += 1;
+  if (levelId >= 25 && boss) bossMul += 1;
   return { grade, skillPointReward: baseSp * bossMul, score: total };
 }
 

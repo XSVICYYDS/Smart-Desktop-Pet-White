@@ -3,7 +3,10 @@ import type { QualityTier } from "./engine/HardwareDetect";
 
 export type EnemyKind = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 // 0 基础小兵 1 快速兵 2 重装兵 3 分裂兵 4 护盾兵 5 远程狙击手 6 激光兵 7 冲锋兵 8 治疗兵
-export type BossKind = "guardian" | "corruptor" | "mothership" | "fuhrer";
+export type BossKind =
+  | "guardian" | "corruptor" | "mothership" | "fuhrer"
+  | "hunter" | "desolator" | "overlord" | "dragon"
+  | "sentinel" | "warlord" | "devourer" | "leviathan";
 export type InputMode = "keyboard" | "mouse" | "touch";
 export type ScreenState = "menu" | "playing" | "paused" | "cleared" | "gameover" | "victory";
 export type Grade = "S" | "A" | "B" | "C";

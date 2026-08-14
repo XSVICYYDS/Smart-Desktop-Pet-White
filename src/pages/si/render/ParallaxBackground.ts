@@ -39,7 +39,9 @@ export function drawParallax(
   ctx: CanvasRenderingContext2D,
   p: ParallaxState,
   profile: QualityProfile,
-  themeBg: "nebula" | "crimson" | "asteroid" | "void" | "forge",
+  themeBg:
+  | "nebula" | "crimson" | "asteroid" | "void" | "forge"
+  | "aurora" | "storm" | "magma" | "frost" | "abyss" | "galaxy" | "pulse" | "solitude",
 ): void {
   const GRADS: Record<string, [string, string]> = {
     nebula:   ["#0b1026", "#221649"],
@@ -47,6 +49,14 @@ export function drawParallax(
     asteroid: ["#0b1321", "#1a2740"],
     void:     ["#05060f", "#160b33"],
     forge:    ["#1a0b00", "#4c2400"],
+    aurora:   ["#03242a", "#075973"],
+    storm:    ["#0a0f1f", "#1e3a8a"],
+    magma:    ["#2a0b06", "#7c2d12"],
+    frost:    ["#05212c", "#0e7490"],
+    abyss:    ["#050314", "#1e1b4b"],
+    galaxy:   ["#0b0226", "#4c1d95"],
+    pulse:    ["#170a2e", "#831843"],
+    solitude: ["#020617", "#1e293b"],
   };
   const [cA, cB] = GRADS[themeBg] || GRADS.void;
   const g = ctx.createLinearGradient(0, 0, 0, WORLD.HEIGHT);

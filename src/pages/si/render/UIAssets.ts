@@ -126,6 +126,7 @@ export function drawBoss(ctx: CanvasRenderingContext2D, b: BossRuntime, nowMs: n
   if (!b.alive) return;
   ctx.save();
   ctx.translate(b.x, b.y);
+  const phaseGlow = 0.6 + 0.4 * (b.phase / 2);
   switch (b.kind) {
     case "guardian":
       ctx.fillStyle = "#7c3aed";
@@ -161,6 +162,217 @@ export function drawBoss(ctx: CanvasRenderingContext2D, b: BossRuntime, nowMs: n
       ctx.fillStyle = `rgba(248,113,113,${0.6 + 0.3 * Math.sin(nowMs * 0.01)})`;
       ctx.beginPath(); ctx.arc(0, 0, 50, 0, Math.PI * 2); ctx.fill();
       break;
+    case "hunter": {
+      // 幽影猎手：黑色菱形猎鹰 + 青色尾焰
+      ctx.fillStyle = "#0f172a";
+      ctx.beginPath();
+      ctx.moveTo(0, -150); ctx.lineTo(170, 0); ctx.lineTo(100, 120); ctx.lineTo(0, 60); ctx.lineTo(-100, 120); ctx.lineTo(-170, 0);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = `rgba(103,232,249,${0.5 + 0.3 * phaseGlow})`; ctx.lineWidth = 4; ctx.stroke();
+      ctx.fillStyle = "#22d3ee";
+      for (let s = -1; s <= 1; s += 2) {
+        ctx.beginPath();
+        ctx.moveTo(s * 140, -10); ctx.lineTo(s * 220, 0); ctx.lineTo(s * 140, 20);
+        ctx.closePath(); ctx.fill();
+      }
+      ctx.fillStyle = `rgba(34,211,238,${0.5 + 0.3 * Math.sin(nowMs * 0.02)})`;
+      ctx.beginPath(); ctx.arc(0, 0, 28, 0, Math.PI * 2); ctx.fill();
+      break;
+    }
+    case "desolator": {
+      // 肃清者：红色坦克状堡垒 + 旋转炮塔
+      ctx.fillStyle = "#991b1b";
+      roundedRectBody(ctx, "#b91c1c", "#450a0a");
+      ctx.fillRect(-220, -60, 440, 120);
+      ctx.fillStyle = "#ef4444";
+      ctx.beginPath(); ctx.arc(0, 0, 80, 0, Math.PI * 2); ctx.fill();
+      ctx.save(); ctx.rotate(nowMs * 0.0008);
+      ctx.fillStyle = "#fca5a5";
+      for (let i = 0; i < 4; i++) {
+        ctx.save(); ctx.rotate((i / 4) * Math.PI * 2);
+        ctx.fillRect(-10, -140, 20, 120);
+        ctx.restore();
+      }
+      ctx.restore();
+      break;
+    }
+    case "overlord": {
+      // 木星霸主：巨型六边形战舰 + 多层甲板
+      ctx.fillStyle = "#78350f";
+      hexagon(ctx, 0, 0, 220); ctx.fill();
+      ctx.fillStyle = "#92400e"; hexagon(ctx, 0, 0, 180); ctx.fill();
+      ctx.fillStyle = "#f59e0b"; hexagon(ctx, 0, 0, 100); ctx.fill();
+      ctx.fillStyle = "#fff7ed";
+      for (let s = -1; s <= 1; s += 2) {
+        ctx.save(); ctx.translate(s * 240, 0);
+        for (let i = 0; i < 5; i++) {
+          ctx.fillRect(-6, -110 + i * 50, 12, 30);
+        }
+        ctx.restore();
+      }
+      ctx.fillStyle = `rgba(252,211,77,${0.5 + 0.3 * Math.sin(nowMs * 0.012)})`;
+      hexagon(ctx, 0, 0, 60); ctx.fill();
+      break;
+    }
+    case "dragon": {
+      // 星环神龙：蛇形龙身 + 光环
+      ctx.fillStyle = "#065f46";
+      for (let i = 5; i >= 0; i--) {
+        const tx = Math.cos(nowMs * 0.002 + i * 0.7) * (160 - i * 20);
+        const ty = Math.sin(nowMs * 0.0025 + i * 0.6) * (60 - i * 8) - 40 + i * 30;
+        ctx.beginPath(); ctx.arc(tx, ty, 42 - i * 4, 0, Math.PI * 2); ctx.fill();
+      }
+      // 龙头
+      ctx.fillStyle = "#10b981";
+      ctx.beginPath();
+      ctx.moveTo(-60, -80); ctx.quadraticCurveTo(0, -160, 60, -80);
+      ctx.lineTo(80, 0); ctx.quadraticCurveTo(0, 40, -80, 0);
+      ctx.closePath(); ctx.fill();
+      // 龙角
+      ctx.fillStyle = "#fbbf24";
+      for (let s = -1; s <= 1; s += 2) {
+        ctx.beginPath();
+        ctx.moveTo(s * 30, -120); ctx.lineTo(s * 10, -180); ctx.lineTo(s * 46, -140);
+        ctx.closePath(); ctx.fill();
+      }
+      // 龙眼
+      ctx.fillStyle = "#fde68a"; ctx.beginPath(); ctx.arc(-24, -80, 8, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(24, -80, 8, 0, Math.PI * 2); ctx.fill();
+      // 光环
+      ctx.strokeStyle = `rgba(52,211,153,${0.3 + 0.2 * Math.sin(nowMs * 0.01)})`;
+      ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.ellipse(0, 20, 260, 80, 0, 0, Math.PI * 2); ctx.stroke();
+      break;
+    }
+    case "sentinel": {
+      // 壁垒守卫：双柱城堡 + 中央能量核
+      ctx.fillStyle = "#334155";
+      // 侧塔
+      ctx.fillRect(-300, -140, 120, 260);
+      ctx.fillRect(180, -140, 120, 260);
+      ctx.fillStyle = "#64748b";
+      ctx.fillRect(-280, -120, 80, 220);
+      ctx.fillRect(200, -120, 80, 220);
+      // 城垛
+      ctx.fillStyle = "#0f172a";
+      for (let i = 0; i < 4; i++) {
+        ctx.fillRect(-300 + i * 30, -160, 24, 22);
+        ctx.fillRect(180 + i * 30, -160, 24, 22);
+      }
+      // 中央能量核
+      ctx.fillStyle = "#1e293b";
+      roundedRectBody(ctx, "#334155", "#0f172a");
+      ctx.fillStyle = `rgba(251,191,36,${0.6 + 0.3 * Math.sin(nowMs * 0.014)})`;
+      ctx.beginPath(); ctx.arc(0, 0, 70, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = `rgba(253,224,71,0.8)`; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.arc(0, 0, 90, 0, Math.PI * 2); ctx.stroke();
+      break;
+    }
+    case "warlord": {
+      // 军阀：战争机器 + 多炮管
+      ctx.fillStyle = "#450a0a";
+      ctx.beginPath();
+      ctx.moveTo(-320, 80); ctx.lineTo(-200, -120); ctx.lineTo(200, -120); ctx.lineTo(320, 80);
+      ctx.lineTo(180, 140); ctx.lineTo(-180, 140);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#b91c1c";
+      ctx.fillRect(-200, -100, 400, 60);
+      ctx.fillStyle = "#ef4444";
+      // 多炮管
+      for (let i = -2; i <= 2; i++) {
+        ctx.fillRect(i * 60 - 6, -160, 12, 80);
+      }
+      for (let s = -1; s <= 1; s += 2) {
+        ctx.fillRect(s * 280 - 6, -60, 12, 100);
+        ctx.fillRect(s * 260 - 6, -40, 12, 90);
+      }
+      // 指挥中心
+      ctx.fillStyle = "#fde68a";
+      ctx.beginPath(); ctx.arc(0, -40, 40, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = `rgba(248,113,113,${0.6 + 0.3 * Math.sin(nowMs * 0.015)})`;
+      ctx.beginPath(); ctx.arc(0, -40, 22, 0, Math.PI * 2); ctx.fill();
+      break;
+    }
+    case "devourer": {
+      // 饕餮：巨型圆嘴 + 环状触手
+      const t = nowMs * 0.002;
+      ctx.fillStyle = "#3b0764";
+      ctx.beginPath(); ctx.arc(0, 0, 240, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#6b21a8";
+      ctx.beginPath(); ctx.arc(0, 0, 200, 0, Math.PI * 2); ctx.fill();
+      // 环齿
+      ctx.fillStyle = "#111827";
+      ctx.beginPath(); ctx.arc(0, 0, 120, 0, Math.PI * 2); ctx.fill();
+      for (let i = 0; i < 20; i++) {
+        const a = (i / 20) * Math.PI * 2 + t;
+        const tx = Math.cos(a) * 130; const ty = Math.sin(a) * 130;
+        ctx.fillStyle = "#fefce8";
+        ctx.save(); ctx.translate(tx, ty); ctx.rotate(a);
+        ctx.beginPath();
+        ctx.moveTo(-8, 0); ctx.lineTo(0, -30); ctx.lineTo(8, 0); ctx.closePath(); ctx.fill();
+        ctx.restore();
+      }
+      // 触手
+      ctx.strokeStyle = "#c084fc"; ctx.lineWidth = 10; ctx.lineCap = "round";
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2 + t * 0.5;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a) * 220, Math.sin(a) * 220);
+        for (let j = 1; j <= 6; j++) {
+          const r = 220 + j * 22;
+          const aa = a + Math.sin(t * 2 + j) * 0.4;
+          ctx.lineTo(Math.cos(aa) * r, Math.sin(aa) * r);
+        }
+        ctx.stroke();
+      }
+      // 中心引力核心
+      ctx.fillStyle = `rgba(250,204,21,${0.5 + 0.3 * Math.sin(t * 3)})`;
+      ctx.beginPath(); ctx.arc(0, 0, 50, 0, Math.PI * 2); ctx.fill();
+      break;
+    }
+    case "leviathan": {
+      // 终极利维坦：星海中的皇者——三段鲸鱼状巨体 + 巨炮
+      const t = nowMs * 0.0012;
+      // 尾部
+      ctx.fillStyle = "#0c4a6e";
+      for (let s = -1; s <= 1; s += 2) {
+        ctx.save();
+        ctx.translate(s * 260, 120 + Math.sin(t * 2) * 30);
+        ctx.rotate(s * 0.4);
+        ctx.beginPath();
+        ctx.moveTo(0, -40); ctx.lineTo(220, -120); ctx.lineTo(220, 120); ctx.lineTo(0, 40);
+        ctx.closePath(); ctx.fill();
+        ctx.restore();
+      }
+      // 主体椭圆
+      ctx.fillStyle = "#082f49";
+      ctx.beginPath(); ctx.ellipse(0, 0, 420, 220, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#0ea5e9";
+      ctx.beginPath(); ctx.ellipse(0, -40, 360, 150, 0, 0, Math.PI * 2); ctx.fill();
+      // 甲板光带
+      ctx.fillStyle = "#7dd3fc";
+      for (let i = -4; i <= 4; i++) {
+        ctx.fillRect(i * 70 - 10, -40, 20, 24);
+      }
+      // 主炮
+      ctx.fillStyle = "#0369a1";
+      ctx.fillRect(-40, -180, 80, 120);
+      ctx.fillStyle = "#38bdf8";
+      ctx.beginPath(); ctx.arc(0, -180, 50, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = `rgba(191,219,254,${0.6 + 0.3 * Math.sin(t * 4)})`;
+      ctx.beginPath(); ctx.arc(0, -180, 28, 0, Math.PI * 2); ctx.fill();
+      // 巨眼
+      ctx.fillStyle = "#fef9c3";
+      ctx.beginPath(); ctx.arc(-150, -40, 30, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(150, -40, 30, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#0f172a";
+      ctx.beginPath(); ctx.arc(-150 + Math.sin(t) * 6, -40, 14, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(150 + Math.sin(t) * 6, -40, 14, 0, Math.PI * 2); ctx.fill();
+      // 底部装甲
+      ctx.fillStyle = "#075985";
+      ctx.fillRect(-320, 140, 640, 40);
+      break;
+    }
   }
   // 弱点发光
   const pulse = 0.5 + 0.5 * Math.sin(nowMs * 0.012);
@@ -189,6 +401,14 @@ function bossTitle(k: BossRuntime["kind"]): string {
     case "corruptor": return "腐蚀者";
     case "mothership": return "元首母舰";
     case "fuhrer": return "元首本体";
+    case "hunter": return "幽影猎手";
+    case "desolator": return "肃清者";
+    case "overlord": return "木星霸主";
+    case "dragon": return "星环神龙";
+    case "sentinel": return "壁垒守卫";
+    case "warlord": return "星界军阀";
+    case "devourer": return "虚无饕餮";
+    case "leviathan": return "终极利维坦";
   }
 }
 

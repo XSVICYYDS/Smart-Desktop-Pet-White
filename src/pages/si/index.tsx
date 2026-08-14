@@ -155,11 +155,14 @@ export const Container: React.FC<ContainerProps> = (props) => {
 
   const keysRef = useRef<Record<string, boolean>>({});
   const inputDirRef = useRef<-1 | 0 | 1>(0);
+  const inputDirYRef = useRef<-1 | 0 | 1>(0);
   const shootBtnRef = useRef(false);
   const mouseXRef = useRef<number | null>(null);
+  const mouseYRef = useRef<number | null>(null);
   const mouseDownRef = useRef(false);
   const shootHoldRef = useRef(false);
   void shootHoldRef;
+  void inputDirYRef;
 
   const [currentLevelIndex, setCurrentLevelIndex] = useState(Math.max(0, save.level - 1));
   const [hudTick, setHudTick] = useState(0);
@@ -260,7 +263,14 @@ export const Container: React.FC<ContainerProps> = (props) => {
       const r = c.getBoundingClientRect();
       return ((clientX - r.left) / r.width) * WORLD.WIDTH;
     };
-    const onMouseMove = (e: MouseEvent) => { mouseXRef.current = toLogicalX(e.clientX); };
+    const toLogicalY = (clientY: number) => {
+      const r = c.getBoundingClientRect();
+      return ((clientY - r.top) / r.height) * WORLD.HEIGHT;
+    };
+    const onMouseMove = (e: MouseEvent) => {
+      mouseXRef.current = toLogicalX(e.clientX);
+      mouseYRef.current = toLogicalY(e.clientY);
+    };
     const onDown = (e: MouseEvent) => { if (e.button === 0) mouseDownRef.current = true; ensureAudio(); };
     const onUp = (e: MouseEvent) => { if (e.button === 0) mouseDownRef.current = false; };
     const onWheel = (e: WheelEvent) => {
@@ -375,7 +385,11 @@ export const Container: React.FC<ContainerProps> = (props) => {
     playSFX("shoot");
   }
 
-  const onTouchMove = useCallback((dx: -1 | 0 | 1, _dy: number) => { void _dy; inputDirRef.current = dx; }, []);
+  const onTouchMove = useCallback((dx: -1 | 0 | 1, dy: -1 | 0 | 1) => {
+    void dx; void dy;
+    inputDirRef.current = dx;
+    inputDirYRef.current = dy;
+  }, []);
   const onTouchBtn = useCallback((which: "shoot" | "s1" | "s2" | "s3", pressed: boolean) => {
     if (which === "shoot") { shootBtnRef.current = pressed; return; }
     if (pressed) {
@@ -397,32 +411,66 @@ export const Container: React.FC<ContainerProps> = (props) => {
     const lr = levelRuntimeRef.current;
     if (!lr) return;
 
-    lr.dynamicMul = computeDynamicMul(p, now - lr.startedAtMs);
+    lr.dynamicMul = computeDynamicMul(p, now - lr.startedAtMs, lr.index);
+
+    // ===== 多波次触发：若有剩余波次且场上敌人清空，则放出下一波 =====
+    if (!lr.spawnedAll && lr.wavesRemaining > 0 && lr.enemies.every((e) => !e.alive)) {
+      const def = LEVELS[lr.index];
+      if (def) {
+        const waveIndex = def.waves.length - lr.wavesRemaining;
+        const nextWave = def.waves[waveIndex];
+        if (nextWave && nextWave.length) {
+          const mul = lr.dynamicMul;
+          for (const w of nextWave) lr.enemies.push(spawnEnemy(w.kind, w.x, w.y, mul));
+        }
+      }
+      lr.wavesRemaining -= 1;
+      if (lr.wavesRemaining <= 0) lr.spawnedAll = true;
+    }
 
     const baseSpd = p.baseSpeed * (p.speedBoostUntilMs > now ? skillLevelCfg("s3_haste", skills.levels.s3_haste).valuePct ?? 1.5 : 1);
     let dirX: -1 | 0 | 1 = 0;
+    let dirY: -1 | 0 | 1 = 0;
     if (inputMode !== "mouse") {
       const k = keysRef.current;
       if (k["arrowleft"] || k["a"]) dirX = -1;
       else if (k["arrowright"] || k["d"]) dirX = 1;
+      if (k["arrowup"] || k["w"]) dirY = -1;
+      else if (k["arrowdown"] || k["s"]) dirY = 1;
       if (dirX === 0) dirX = inputDirRef.current;
+      if (dirY === 0) dirY = inputDirYRef.current;
     }
+    const stepPx = baseSpd * (dtMs / 1000);
     if (inputMode === "mouse" && mouseXRef.current != null) {
-      const target = mouseXRef.current;
-      const delta = target - p.x;
-      const step = baseSpd * (dtMs / 1000);
-      if (Math.abs(delta) <= step) p.x = target;
-      else p.x += Math.sign(delta) * step;
+      const tX = mouseXRef.current;
+      const tY = mouseYRef.current ?? p.y;
+      const dX = tX - p.x;
+      const dY = tY - p.y;
+      // 双轴同步移动：直接朝目标点按步进逼近
+      const dist = Math.hypot(dX, dY);
+      if (dist <= stepPx) {
+        p.x = tX;
+        p.y = tY;
+      } else {
+        p.x += (dX / dist) * stepPx;
+        p.y += (dY / dist) * stepPx;
+      }
     } else {
-      p.x += dirX * baseSpd * (dtMs / 1000);
+      // 斜向速度归一化
+      const len = (dirX === 0 || dirY === 0) ? 1 : Math.SQRT2;
+      p.x += (dirX / len) * stepPx;
+      p.y += (dirY / len) * stepPx;
     }
+    // X/Y 轴边界钳制：底部保留玩家活动空间，顶部避开出生区
     p.x = Math.max(56, Math.min(WORLD.WIDTH - 56, p.x));
+    p.y = Math.max(WORLD.HEIGHT * 0.50, Math.min(WORLD.HEIGHT - 90, p.y));
 
     tickSkills(skills, p, dtMs, now);
 
     p.fireCooldownMs -= dtMs;
+    const k2 = keysRef.current;
     const actuallyShoot =
-      keysRef.current[" "] || keysRef.current["w"] || keysRef.current["arrowup"] ||
+      k2[" "] || k2["j"] || k2["k"] || k2["r"] || k2["enter"] ||
       mouseDownRef.current || shootBtnRef.current;
     if (actuallyShoot && p.fireCooldownMs <= 0) {
       p.fireCooldownMs = BALANCE.FIRE_INTERVAL_MS;
