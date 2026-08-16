@@ -6,36 +6,45 @@ export interface GameOverScreenProps {
   victory: boolean;
   score: number;
   level: number;
+  totalLevels: number;
   cleared: LevelClearResult | null;
   stats: { killed: number; skillsUsed: number; totalDamageTaken: number };
   onRestartLevel: () => void;
   onNextLevel: () => void;
+  onSelectLevel: () => void;
   onBackToMenu: () => void;
   onOpenSkillTree: () => void;
 }
 
 /** 通关 / 失败结算界面：S/A/B/C 等级 + 技能点奖励 + 下一步按钮。 */
 export const GameOverScreen: React.FC<GameOverScreenProps> = ({
-  open, victory, score, level, cleared, stats, onRestartLevel, onNextLevel, onBackToMenu, onOpenSkillTree,
+  open, victory, score, level, totalLevels, cleared, stats,
+  onRestartLevel, onNextLevel, onSelectLevel, onBackToMenu, onOpenSkillTree,
 }) => {
   if (!open) return null;
   const grade = cleared?.grade;
   const gradeColor = grade === "S" ? "from-amber-300 to-orange-500" :
     grade === "A" ? "from-emerald-300 to-cyan-500" :
     grade === "B" ? "from-sky-300 to-indigo-500" : "from-slate-300 to-slate-500";
-  const last = level >= 10;
+  // 最终关判定改为动态：第 totalLevels 关为最终关（支持 30 关）
+  const last = level >= totalLevels;
+  const clearedAll = victory && last;
   return (
     <div className="fixed inset-0 z-40 grid place-items-center bg-black/70 backdrop-blur-sm p-4">
       <div className="w-full max-w-3xl rounded-3xl bg-gradient-to-br from-slate-900 to-indigo-950 text-white border border-white/15 shadow-2xl overflow-hidden">
         <header className="p-6 md:p-7 text-center">
-          <div className="text-xs md:text-sm text-white/70 tracking-widest">{victory ? (last ? "★ 最终胜利 ★" : "关卡完成") : "任务失败"}</div>
+          <div className="text-xs md:text-sm text-white/70 tracking-widest">
+            {victory ? (clearedAll ? "★ 全关卡通关 · 最终胜利 ★" : "关卡完成") : "任务失败"}
+          </div>
           <div className={"mt-2 text-5xl md:text-7xl font-black bg-gradient-to-br bg-clip-text text-transparent " +
             (victory ? gradeColor : "from-rose-300 to-rose-600")}>
             {victory ? (grade ? `${grade} 级` : "通过") : "GAME OVER"}
           </div>
           <p className="mt-3 text-sm md:text-base text-white/85">
             {victory
-              ? (last ? "你击败了元首本体，解放了整个人类文明！" : `第 ${level} 关扫荡完毕，进入奖励结算。`)
+              ? (clearedAll
+                ? `恭喜征服全部 ${totalLevels} 关！你击败了终极利维坦，成为星海皇者！`
+                : `第 ${level} / ${totalLevels} 关扫荡完毕，进入奖励结算。`)
               : "战机被摧毁，但仍可从当前关卡重新挑战。"}
           </p>
         </header>
@@ -71,9 +80,13 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({
           {victory && !last && (
             <button onClick={onNextLevel}
               className="rounded-2xl bg-gradient-to-r from-emerald-400 to-cyan-500 text-slate-900 font-black px-5 py-3 shadow-lg hover:brightness-105">
-              ▶ 下一关
+              ▶ 下一关（第 {level + 1} 关）
             </button>
           )}
+          <button onClick={onSelectLevel}
+            className="rounded-2xl bg-gradient-to-r from-sky-400 to-indigo-500 text-white font-bold px-5 py-3 shadow-lg hover:brightness-105">
+            🗺️ 选关
+          </button>
           <button onClick={onOpenSkillTree}
             className="rounded-2xl bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white font-bold px-5 py-3 shadow-lg hover:brightness-105">
             🎯 技能升级

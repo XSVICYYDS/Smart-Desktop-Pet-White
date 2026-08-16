@@ -227,16 +227,17 @@ export const LEVELS: LevelDef[] = (
       mk(22, "超新星残响", "pulse", () => multiWave([
         [6, 7, 5, 3, 8, 2, 1],
         [8, 2, 7, 4, 6, 1, 5, 3],
-      ], 68, 148, 220)),
+        [5, 3, 8, 6, 7, 2, 1, 4],
+      ], 68, 148, 220), [], { recommendedTimeMs: 110_000 }),
       mk(23, "湮灭要塞", "void", () => multiWave([
         [3, 6, 2, 8, 5, 7, 1, 4],
         [7, 5, 8, 3, 1, 6, 4, 2, 7],
         [6, 8, 4, 7, 2, 5, 1, 3, 8],
       ], 64, 144, 210), [
-        { x: 160, y: 600, w: 100, h: 380, hp: 260 },
-        { x: 820, y: 600, w: 100, h: 380, hp: 260 },
-      ], { recommendedTimeMs: 130_000 }),
-      mk(24, "壁垒守卫·要塞之心", "crimson", () => [], [], { isBoss: true, boss: "sentinel", recommendedTimeMs: 300_000 }),
+        { x: 160, y: 600, w: 100, h: 380, hp: 220 },
+        { x: 820, y: 600, w: 100, h: 380, hp: 220 },
+      ], { recommendedTimeMs: 140_000 }),
+      mk(24, "壁垒守卫·要塞之心", "crimson", () => [], [], { isBoss: true, boss: "sentinel", recommendedTimeMs: 320_000 }),
 
       // 25-27 银河深渊（warlord/devourer BOSS）
       mk(25, "星界军阀·远征", "galaxy", () => multiWave([
@@ -244,14 +245,17 @@ export const LEVELS: LevelDef[] = (
         [8, 5, 7, 3, 6, 2, 4, 7, 1],
         [6, 8, 7, 5, 3, 1, 4, 2, 8, 5],
       ], 60, 140, 210), [
-        { x: 260, y: 880, w: 560, h: 24, hp: 300 },
-      ], { recommendedTimeMs: 135_000 }),
+        { x: 260, y: 880, w: 560, h: 24, hp: 260 },
+      ], { recommendedTimeMs: 145_000 }),
       mk(26, "吞噬之环", "abyss", () => multiWave([
         [3, 7, 8, 6, 5, 2, 1, 4],
         [8, 6, 5, 7, 3, 4, 2, 1, 7],
         [7, 8, 6, 5, 4, 3, 2, 1, 8, 6],
-      ], 60, 138, 210)),
-      mk(27, "虚无饕餮·深渊吞噬", "crimson", () => [], [], { isBoss: true, boss: "devourer", recommendedTimeMs: 330_000 }),
+      ], 60, 138, 210), [
+        { x: 340, y: 720, w: 120, h: 120, hp: 200 },
+        { x: 620, y: 720, w: 120, h: 120, hp: 200 },
+      ], { recommendedTimeMs: 125_000 }),
+      mk(27, "虚无饕餮·深渊吞噬", "crimson", () => [], [], { isBoss: true, boss: "devourer", recommendedTimeMs: 360_000 }),
 
       // 28-30 终焉（leviathan BOSS）
       mk(28, "寂静尽头", "solitude", () => multiWave([
@@ -260,16 +264,16 @@ export const LEVELS: LevelDef[] = (
         [8, 7, 6, 5, 4, 3, 2, 1, 7, 8],
         [8, 7, 6, 5, 4, 3, 2, 1, 7, 8, 6],
       ], 58, 136, 200), [
-        { x: 160, y: 620, w: 96, h: 360, hp: 300 },
-        { x: 468, y: 640, w: 144, h: 340, hp: 340 },
-        { x: 824, y: 620, w: 96, h: 360, hp: 300 },
-      ], { recommendedTimeMs: 150_000 }),
+        { x: 160, y: 620, w: 96, h: 360, hp: 220 },
+        { x: 468, y: 640, w: 144, h: 340, hp: 260 },
+        { x: 824, y: 620, w: 96, h: 360, hp: 220 },
+      ], { recommendedTimeMs: 165_000 }),
       mk(29, "寂灭之光", "pulse", () => multiWave([
         [6, 8, 7, 5, 4, 3, 2, 1, 7],
         [8, 7, 6, 5, 4, 3, 2, 1, 6, 8],
         [7, 8, 6, 5, 4, 3, 2, 1, 8, 7, 6],
-      ], 56, 132, 200), [], { recommendedTimeMs: 160_000 }),
-      mk(30, "星海皇者·终极利维坦", "forge", () => [], [], { isBoss: true, boss: "leviathan", recommendedTimeMs: 420_000 }),
+      ], 56, 132, 200), [], { recommendedTimeMs: 175_000 }),
+      mk(30, "星海皇者·终极利维坦", "forge", () => [], [], { isBoss: true, boss: "leviathan", recommendedTimeMs: 480_000 }),
     ];
 
     return [...L1_10, ...L11_30];

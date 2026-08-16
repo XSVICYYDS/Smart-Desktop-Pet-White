@@ -4,9 +4,13 @@ export interface MainMenuProps {
   tab: "play" | "settings" | "skills" | "leaderboard" | "help";
   onTab: (t: MainMenuProps["tab"]) => void;
   onStart: (slot: 0 | 1 | 2) => void;
+  onOpenLevelSelect: () => void;
   highScore: number;
   skillPoints: number;
   unlockedAchievements: number;
+  totalAchievements: number;
+  unlockedLevel: number;
+  totalLevels: number;
 }
 
 const TABS: { id: MainMenuProps["tab"]; label: string; icon: string }[] = [
@@ -17,8 +21,12 @@ const TABS: { id: MainMenuProps["tab"]; label: string; icon: string }[] = [
   { id: "help", label: "帮助说明", icon: "📘" },
 ];
 
-/** 主菜单：5 Tab 切换 + 3 存档槽快速开始 + 顶部信息。 */
-export const MainMenu: React.FC<MainMenuProps> = ({ tab, onTab, onStart, highScore, skillPoints, unlockedAchievements }) => {
+/** 主菜单：5 Tab 切换 + 3 存档槽快速开始 + 选关入口 + 顶部信息。 */
+export const MainMenu: React.FC<MainMenuProps> = ({
+  tab, onTab, onStart, onOpenLevelSelect,
+  highScore, skillPoints, unlockedAchievements, totalAchievements,
+  unlockedLevel, totalLevels,
+}) => {
   const slots = useMemo(() => ([0, 1, 2] as const), []);
   return (
     <div className="w-full mx-auto max-w-5xl rounded-2xl bg-gradient-to-br from-indigo-950/95 via-slate-900/95 to-purple-950/95 border border-indigo-500/30 text-white p-5 md:p-7 shadow-2xl">
@@ -29,7 +37,8 @@ export const MainMenu: React.FC<MainMenuProps> = ({ tab, onTab, onStart, highSco
         <div className="flex flex-wrap items-center gap-2 ml-auto text-xs md:text-sm">
           <Chip label="最高分" value={highScore.toLocaleString()} color="from-amber-400 to-orange-500" />
           <Chip label="技能点" value={String(skillPoints)} color="from-emerald-400 to-cyan-500" />
-          <Chip label="成就" value={`${unlockedAchievements}/15`} color="from-pink-400 to-rose-500" />
+          <Chip label="成就" value={`${unlockedAchievements}/${totalAchievements}`} color="from-pink-400 to-rose-500" />
+          <Chip label="关卡进度" value={`${unlockedLevel}/${totalLevels}`} color="from-sky-400 to-indigo-500" />
         </div>
       </header>
 
@@ -52,23 +61,40 @@ export const MainMenu: React.FC<MainMenuProps> = ({ tab, onTab, onStart, highSco
 
       <section className="mt-5">
         {tab === "play" && (
-          <div className="grid md:grid-cols-3 gap-3 md:gap-4">
-            {slots.map((i) => (
-              <button
-                key={i}
-                onClick={() => onStart(i)}
-                className="group text-left rounded-2xl p-4 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-cyan-400/50 transition"
-              >
-                <div className="text-sm text-cyan-300/90 font-semibold">存档槽 {i + 1}</div>
-                <div className="mt-2 text-lg font-bold">▶ 开始 / 继续</div>
-                <p className="mt-2 text-xs text-slate-300/80 leading-5">
-                  点击该存档槽开始游戏。通关、技能等级、成就、最高分都会自动写入本槽。
-                </p>
-                <div className="mt-3 text-[11px] text-white/60 group-hover:text-cyan-200 transition">
-                  推荐：首次游玩选 槽 1，挑战旧存档可直接读取进度。
+          <div className="space-y-4">
+            <div className="grid md:grid-cols-3 gap-3 md:gap-4">
+              {slots.map((i) => (
+                <button
+                  key={i}
+                  onClick={() => onStart(i)}
+                  className="group text-left rounded-2xl p-4 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-cyan-400/50 transition"
+                >
+                  <div className="text-sm text-cyan-300/90 font-semibold">存档槽 {i + 1}</div>
+                  <div className="mt-2 text-lg font-bold">▶ 开始 / 继续</div>
+                  <p className="mt-2 text-xs text-slate-300/80 leading-5">
+                    点击该存档槽开始游戏。通关、技能等级、成就、最高分都会自动写入本槽。
+                  </p>
+                  <div className="mt-3 text-[11px] text-white/60 group-hover:text-cyan-200 transition">
+                    推荐：首次游玩选 槽 1，挑战旧存档可直接读取进度。
+                  </div>
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={onOpenLevelSelect}
+              className="w-full text-left rounded-2xl p-4 bg-gradient-to-r from-sky-500/15 to-indigo-500/15 hover:from-sky-500/25 hover:to-indigo-500/25 border border-sky-400/30 hover:border-sky-400/60 transition group"
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">🗺️</span>
+                <div className="flex-1">
+                  <div className="text-base md:text-lg font-bold text-sky-200">关卡选择</div>
+                  <p className="mt-1 text-xs text-slate-300/80 leading-5">
+                    已解锁 <b className="text-cyan-300">{unlockedLevel}</b> / {totalLevels} 关。点击进入选关界面，可重玩任意已解锁关卡或选择下一关继续推进。
+                  </p>
                 </div>
-              </button>
-            ))}
+                <span className="text-sky-300 group-hover:translate-x-1 transition">→</span>
+              </div>
+            </button>
           </div>
         )}
         {tab !== "play" && (

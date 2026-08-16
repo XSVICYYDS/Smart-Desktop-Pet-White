@@ -1,6 +1,6 @@
 /** 太空侵略者终极版顶层 Container：把 28 模块组合起来对外以单组件暴露。 */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BALANCE, ENEMY_STATS, LEVELS, WORLD } from "./config";
+import { ACHIEVEMENTS, BALANCE, ENEMY_STATS, LEVELS, WORLD } from "./config";
 import { useGameLoop } from "./game/useGameLoop";
 import {
   computeDynamicMul, finalizeClear, startLevel, tickLevelEnemies, bossKindOfLevel, type LevelRuntime,
@@ -32,6 +32,7 @@ import { AchievementBoard } from "./ui/AchievementBoard";
 import { TransitionOverlay, type TransitionKind } from "./ui/TransitionOverlay";
 import { TouchControls } from "./ui/TouchControls";
 import { GameOverScreen } from "./ui/GameOverScreen";
+import { LevelSelect } from "./ui/LevelSelect";
 
 import type { InputMode, LevelClearResult, PlayerRuntime, ScreenState, SkillId, SkillLevel, SkillRuntimeState } from "./types";
 import type { BossRuntime, BulletRuntime, EnemyRuntime } from "./types";
@@ -92,6 +93,7 @@ export const Container: React.FC<ContainerProps> = (props) => {
   const [skillsOpen, setSkillsOpen] = useState(false);
   const [savesOpen, setSavesOpen] = useState(false);
   const [achOpen, setAchOpen] = useState(false);
+  const [levelSelectOpen, setLevelSelectOpen] = useState(false);
   const [screen, setScreen] = useState<ScreenState>("menu");
   const paused = screen === "paused";
 
@@ -750,9 +752,13 @@ export const Container: React.FC<ContainerProps> = (props) => {
       <div className="w-full">
         {screen === "menu" && (
           <MainMenu tab={tab} onTab={setTab} onStart={handleStartSlot}
+            onOpenLevelSelect={() => { ensureAudio(); playSFX("click"); setLevelSelectOpen(true); }}
             highScore={save.bestScore}
             skillPoints={save.skillPoints}
-            unlockedAchievements={save.unlockedAchievements.length} />
+            unlockedAchievements={save.unlockedAchievements.length}
+            totalAchievements={ACHIEVEMENTS.length}
+            unlockedLevel={save.level}
+            totalLevels={LEVELS.length} />
         )}
 
         {screen !== "menu" && (
@@ -818,12 +824,22 @@ export const Container: React.FC<ContainerProps> = (props) => {
         victory={screen === "cleared" || screen === "victory"}
         score={scoreRef.current}
         level={currentLevelIndex + 1}
+        totalLevels={LEVELS.length}
         cleared={clearResultRef.current}
         stats={{ ...statsRef.current }}
         onRestartLevel={restart}
         onNextLevel={nextLevel}
+        onSelectLevel={() => { ensureAudio(); playSFX("click"); setLevelSelectOpen(true); }}
         onBackToMenu={onMenuBack}
         onOpenSkillTree={() => setSkillsOpen(true)}
+      />
+
+      <LevelSelect
+        open={levelSelectOpen}
+        unlockedLevel={save.level}
+        currentLevel={currentLevelIndex + 1}
+        onPick={(idx) => { setLevelSelectOpen(false); bootLevel(idx); }}
+        onClose={() => setLevelSelectOpen(false)}
       />
 
       {screen !== "menu" && (
@@ -832,6 +848,7 @@ export const Container: React.FC<ContainerProps> = (props) => {
           <GamePill onClick={() => { ensureAudio(); playSFX("click"); setSkillsOpen(true); }}>🎯 技能</GamePill>
           <GamePill onClick={() => { ensureAudio(); playSFX("click"); setSavesOpen(true); }}>💾 存档</GamePill>
           <GamePill onClick={() => { ensureAudio(); playSFX("click"); setAchOpen(true); }}>🏅 成就</GamePill>
+          <GamePill onClick={() => { ensureAudio(); playSFX("click"); setLevelSelectOpen(true); }}>🗺️ 选关</GamePill>
           {(screen === "playing" || screen === "paused") && (
             <GamePill onClick={() => { ensureAudio(); playSFX("click"); restart(); }}>🔁 重玩</GamePill>
           )}

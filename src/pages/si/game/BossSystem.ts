@@ -227,7 +227,7 @@ export function tickBoss(b: BossRuntime, dtMs: number, playerX: number, playerY:
     }
     case "dragon": {
       // 星环神龙：龙头吐息 + 双环逆向
-      b.cooldownMs = Math.max(180, 760 / phaseMul);
+      b.cooldownMs = Math.max(200, 800 / phaseMul);
       out.push(...fanTowardsPlayer(b, playerX, playerY, 9, 0.12, 440, 12, "normal"));
       const N = 18 + b.phase * 4;
       out.push(...radialRing(b, N, 260, 10, b.patternT, "spread"));
@@ -236,7 +236,7 @@ export function tickBoss(b: BossRuntime, dtMs: number, playerX: number, playerY:
     }
     case "sentinel": {
       // 壁垒守卫：慢速重炮 + 8 方向墙 + 追踪巨型弹
-      b.cooldownMs = Math.max(260, 1060 / phaseMul);
+      b.cooldownMs = Math.max(290, 1120 / phaseMul);
       for (let i = 0; i < 10; i++) {
         const a = (-Math.PI / 2) + (i - 4.5) * 0.18;
         out.push(bossBullet(b.x, b.y + 40, Math.cos(a) * 320, Math.sin(a) * 320 + 140, 13, "big"));
@@ -249,7 +249,7 @@ export function tickBoss(b: BossRuntime, dtMs: number, playerX: number, playerY:
     }
     case "warlord": {
       // 星界军阀：高射速三联扇形 + 环形 + 激光连射
-      b.cooldownMs = Math.max(150, 640 / phaseMul);
+      b.cooldownMs = Math.max(170, 680 / phaseMul);
       out.push(...fanTowardsPlayer(b, playerX, playerY, 7, 0.15, 460, 12, "normal"));
       out.push(...fanTowardsPlayer(b, playerX, playerY, 5, 0.10, 560, 15, "laser"));
       if (b.phase >= 2) {
@@ -260,7 +260,7 @@ export function tickBoss(b: BossRuntime, dtMs: number, playerX: number, playerY:
     }
     case "devourer": {
       // 虚无饕餮：巨大吸力环 + 多向扩散 + 追踪重力弹
-      b.cooldownMs = Math.max(230, 980 / phaseMul);
+      b.cooldownMs = Math.max(260, 1040 / phaseMul);
       const N1 = 22 + b.phase * 6;
       const N2 = 14 + b.phase * 4;
       out.push(...radialRing(b, N1, 200, 10, b.patternT * 0.25, "spread"));
@@ -273,7 +273,7 @@ export function tickBoss(b: BossRuntime, dtMs: number, playerX: number, playerY:
     }
     case "leviathan": {
       // 终极利维坦：超重型弹幕——四环混合 + 追踪激光 + 主炮
-      b.cooldownMs = Math.max(160, 720 / phaseMul);
+      b.cooldownMs = Math.max(190, 780 / phaseMul);
       const R1 = 18 + b.phase * 6;
       const R2 = 24 + b.phase * 6;
       out.push(...radialRing(b, R1, 200, 10, b.patternT * 0.4, "spread"));
