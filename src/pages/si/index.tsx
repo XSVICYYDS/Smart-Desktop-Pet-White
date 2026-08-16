@@ -322,6 +322,40 @@ export const Container: React.FC<ContainerProps> = (props) => {
     } else if (r.skill === "s3_haste") {
       playSFX("haste");
       fireTransition("skill-haste", "引擎过载", `速度倍率 ×${(r.cfg.valuePct ?? 0).toFixed(2)}，持续 ${((r.cfg.durationMs || 0) / 1000).toFixed(1)} 秒`);
+    } else if (r.skill === "s4_cruise") {
+      playSFX("missile");
+      const targetCount = r.cfg.valuePct ?? 3;
+      const targets = (lr?.enemies || []).filter(e => e.alive).slice(0, targetCount);
+      for (const e of targets) {
+        applyEnemyDamage(e, BALANCE.PLAYER_BULLET_DMG * (r.cfg.dmgBonus ?? 2.0), e.x, e.y);
+        spawnBurst(particlesRef.current, e.x, e.y, 20, ["#f97316", "#ef4444", "#fde047"], 5, 3, 500);
+      }
+      const b = bossRef.current;
+      if (b && b.alive) {
+        const d = Math.max(1, Math.round(b.maxHp * 0.15 * (r.cfg.dmgBonus ?? 2.0)));
+        const final = applyBossDamage(b, d, b.weakX, b.weakY);
+        spawnFloatText(floatsRef.current, b.weakX, b.weakY - 30, `-${final}`, "#fde68a", 28, 900);
+      }
+      fireTransition("skill-cruise", "巡航导弹", `锁定 ${targets.length} 个目标`);
+    } else if (r.skill === "s5_emp") {
+      playSFX("emp");
+      const radius = r.cfg.radius ?? 200;
+      const duration = r.cfg.durationMs ?? 3000;
+      for (const e of lr?.enemies || []) {
+        if (!e.alive) continue;
+        const dist = Math.hypot(e.x - (playerRef.current?.x || WORLD.WIDTH/2), e.y - (playerRef.current?.y || WORLD.PLAYER_Y));
+        if (dist < radius) {
+          e.cooldownMs = Math.max(e.cooldownMs, duration);
+          spawnFloatText(floatsRef.current, e.x, e.y - 20, "眩晕", "#a78bfa", 16, duration);
+        }
+      }
+      fireTransition("skill-emp", "电磁脉冲", `半径 ${radius}px 内敌人眩晕 ${(duration/1000).toFixed(1)}s`);
+    } else if (r.skill === "s6_timewarp") {
+      playSFX("timewarp");
+      const duration = r.cfg.durationMs ?? 5000;
+      if (lr) lr.timeScale = r.cfg.slowPct ?? 0.50;
+      fireTransition("skill-timewarp", "时间扭曲", `时间减缓 50%，持续 ${(duration/1000).toFixed(1)}s`);
+      setTimeout(() => { if (lr) lr.timeScale = 1.0; }, duration);
     }
     if (statsRef.current.skillsUsed >= 10) unlockAchs(["skill_master"]);
   }
@@ -502,7 +536,8 @@ export const Container: React.FC<ContainerProps> = (props) => {
     });
     const boss = bossRef.current;
     if (boss && boss.alive) {
-      const bShots = tickBoss(boss, dtMs, p.x, p.y);
+      const timeScale = lr.timeScale || 1.0;
+      const bShots = tickBoss(boss, dtMs * timeScale, p.x, p.y);
       if (bShots.length) bulletsRef.current.push(...bShots);
     }
 

@@ -1,6 +1,6 @@
 /** AudioContext 程序化 BGM + 事件音效（无外链资源）。 */
 export type BGMKind = "menu" | "battle" | "boss";
-export type SFXKind = "shoot" | "hit" | "boom" | "shield" | "haste" | "nuke" | "heal" | "levelup" | "click" | "achievement";
+export type SFXKind = "shoot" | "hit" | "boom" | "shield" | "haste" | "nuke" | "heal" | "levelup" | "click" | "achievement" | "missile" | "emp" | "timewarp";
 
 interface AudioCtx {
   ctx: AudioContext | null;
@@ -57,6 +57,9 @@ export function playSFX(kind: SFXKind): void {
     case "levelup": freq = 1046; dur = 0.3; type = "triangle"; vol = 0.18; break;
     case "click": freq = 520; dur = 0.04; type = "square"; vol = 0.08; break;
     case "achievement": freq = 1318; dur = 0.5; type = "triangle"; vol = 0.18; break;
+    case "missile": freq = 600; dur = 0.15; type = "sawtooth"; vol = 0.14; break;
+    case "emp": freq = 300; dur = 0.35; type = "square"; vol = 0.18; break;
+    case "timewarp": freq = 440; dur = 0.4; type = "sine"; vol = 0.15; break;
   }
   o.type = type;
   o.frequency.setValueAtTime(freq, now);

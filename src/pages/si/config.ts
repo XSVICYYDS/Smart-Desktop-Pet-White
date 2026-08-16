@@ -74,6 +74,36 @@ export const SKILLS: Record<string, SkillDefinition> = {
       { energyCost: 50, cooldownMs: 20_100, durationMs: 21_000, valuePct: 2.00 },
     ],
   },
+  s4_cruise: {
+    id: "s4_cruise", name: "巡航导弹", icon: "🚀", isActive: true,
+    desc: "发射追踪导弹，自动锁定并消灭 3-6 个敌人，对 BOSS 造成额外伤害。",
+    levels: [
+      { energyCost: 60, cooldownMs: 25_000, valuePct: 3, dmgBonus: 2.0 },
+      { energyCost: 60, cooldownMs: 22_000, valuePct: 4, dmgBonus: 2.5 },
+      { energyCost: 60, cooldownMs: 19_500, valuePct: 5, dmgBonus: 3.0 },
+      { energyCost: 60, cooldownMs: 17_000, valuePct: 6, dmgBonus: 3.5 },
+    ],
+  },
+  s5_emp: {
+    id: "s5_emp", name: "电磁脉冲", icon: "🔮", isActive: true,
+    desc: "释放 EMP 冲击波，眩晕周围敌人 3-6 秒，并使其护盾失效。",
+    levels: [
+      { energyCost: 70, cooldownMs: 35_000, durationMs: 3_000, radius: 200 },
+      { energyCost: 70, cooldownMs: 30_000, durationMs: 4_000, radius: 250 },
+      { energyCost: 70, cooldownMs: 26_000, durationMs: 5_000, radius: 300 },
+      { energyCost: 70, cooldownMs: 22_000, durationMs: 6_000, radius: 350 },
+    ],
+  },
+  s6_timewarp: {
+    id: "s6_timewarp", name: "时间扭曲", icon: "⏰", isActive: true,
+    desc: "减缓时间流速 50%，持续 5-8 秒，玩家不受影响。",
+    levels: [
+      { energyCost: 80, cooldownMs: 50_000, durationMs: 5_000, slowPct: 0.50 },
+      { energyCost: 80, cooldownMs: 45_000, durationMs: 6_000, slowPct: 0.50 },
+      { energyCost: 80, cooldownMs: 40_000, durationMs: 7_000, slowPct: 0.50 },
+      { energyCost: 80, cooldownMs: 35_000, durationMs: 8_000, slowPct: 0.50 },
+    ],
+  },
   p1_power: {
     id: "p1_power", name: "攻击强化", icon: "🔫", isActive: false,
     desc: "基础武器伤害永久提升 20%~50%。",
@@ -92,6 +122,56 @@ export const SKILLS: Record<string, SkillDefinition> = {
       { energyCost: 0, cooldownMs: 0, regenPctPer10s: 0.08 },
       { energyCost: 0, cooldownMs: 0, regenPctPer10s: 0.12 },
       { energyCost: 0, cooldownMs: 0, regenPctPer10s: 0.15 },
+    ],
+  },
+  p3_maxhp: {
+    id: "p3_maxhp", name: "最大生命", icon: "💪", isActive: false,
+    desc: "永久提升最大生命值 15%~40%。",
+    levels: [
+      { energyCost: 0, cooldownMs: 0, maxHpBonusPct: 0.15 },
+      { energyCost: 0, cooldownMs: 0, maxHpBonusPct: 0.25 },
+      { energyCost: 0, cooldownMs: 0, maxHpBonusPct: 0.32 },
+      { energyCost: 0, cooldownMs: 0, maxHpBonusPct: 0.40 },
+    ],
+  },
+  p4_maxenergy: {
+    id: "p4_maxenergy", name: "最大能量", icon: "🔋", isActive: false,
+    desc: "永久提升最大能量值 15%~40%。",
+    levels: [
+      { energyCost: 0, cooldownMs: 0, maxEnergyBonusPct: 0.15 },
+      { energyCost: 0, cooldownMs: 0, maxEnergyBonusPct: 0.25 },
+      { energyCost: 0, cooldownMs: 0, maxEnergyBonusPct: 0.32 },
+      { energyCost: 0, cooldownMs: 0, maxEnergyBonusPct: 0.40 },
+    ],
+  },
+  p5_crit: {
+    id: "p5_crit", name: "暴击率", icon: "🎯", isActive: false,
+    desc: "攻击有 10%~25% 概率造成 200%-300% 伤害。",
+    levels: [
+      { energyCost: 0, cooldownMs: 0, critChance: 0.10, critMultiplier: 2.0 },
+      { energyCost: 0, cooldownMs: 0, critChance: 0.15, critMultiplier: 2.3 },
+      { energyCost: 0, cooldownMs: 0, critChance: 0.20, critMultiplier: 2.6 },
+      { energyCost: 0, cooldownMs: 0, critChance: 0.25, critMultiplier: 3.0 },
+    ],
+  },
+  p6_lifesteal: {
+    id: "p6_lifesteal", name: "吸血", icon: "🩸", isActive: false,
+    desc: "造成伤害的 5%~15% 转化为生命值。",
+    levels: [
+      { energyCost: 0, cooldownMs: 0, lifestealPct: 0.05 },
+      { energyCost: 0, cooldownMs: 0, lifestealPct: 0.08 },
+      { energyCost: 0, cooldownMs: 0, lifestealPct: 0.12 },
+      { energyCost: 0, cooldownMs: 0, lifestealPct: 0.15 },
+    ],
+  },
+  p7_armor: {
+    id: "p7_armor", name: "护甲", icon: "🛡️", isActive: false,
+    desc: "减少受到的伤害 10%~30%。",
+    levels: [
+      { energyCost: 0, cooldownMs: 0, dmgReductionPct: 0.10 },
+      { energyCost: 0, cooldownMs: 0, dmgReductionPct: 0.18 },
+      { energyCost: 0, cooldownMs: 0, dmgReductionPct: 0.24 },
+      { energyCost: 0, cooldownMs: 0, dmgReductionPct: 0.30 },
     ],
   },
 };
@@ -330,5 +410,5 @@ export function calcGrade(params: { timeMs: number; recommendedMs: number; hpPct
   return { grade, skillPointReward: baseSp * bossMul, score: total };
 }
 
-export const ACTIVE_SKILL_ORDER = ["s1_nuke", "s2_shield", "s3_haste"] as const;
-export const PASSIVE_SKILL_ORDER = ["p1_power", "p2_regen"] as const;
+export const ACTIVE_SKILL_ORDER = ["s1_nuke", "s2_shield", "s3_haste", "s4_cruise", "s5_emp", "s6_timewarp"] as const;
+export const PASSIVE_SKILL_ORDER = ["p1_power", "p2_regen", "p3_maxhp", "p4_maxenergy", "p5_crit", "p6_lifesteal", "p7_armor"] as const;

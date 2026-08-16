@@ -63,7 +63,10 @@ export interface BossRuntime {
   alive: boolean;
 }
 
-export type SkillId = "s1_nuke" | "s2_shield" | "s3_haste" | "p1_power" | "p2_regen";
+export type SkillId =
+  | "s1_nuke" | "s2_shield" | "s3_haste"
+  | "s4_cruise" | "s5_emp" | "s6_timewarp"
+  | "p1_power" | "p2_regen" | "p3_maxhp" | "p4_maxenergy" | "p5_crit" | "p6_lifesteal" | "p7_armor";
 export type SkillSlot = 0 | 1 | 2; // 主动技能槽
 export type SkillLevel = 0 | 1 | 2 | 3;
 
@@ -80,6 +83,15 @@ export interface SkillDefinition {
     valuePct?: number; // 主效果数值（比例），主动技能通常需要
     dmgBonusPct?: number; // p1_power 被动
     regenPctPer10s?: number; // p2_regen 被动
+    maxHpBonusPct?: number; // p3_maxhp 被动
+    maxEnergyBonusPct?: number; // p4_maxenergy 被动
+    critChance?: number; // p5_crit 被动
+    critMultiplier?: number; // p5_crit 被动
+    lifestealPct?: number; // p6_lifesteal 被动
+    dmgReductionPct?: number; // p7_armor 被动
+    dmgBonus?: number; // s4_cruise 主动 - 导弹伤害倍率
+    radius?: number; // s5_emp 主动 - 冲击波半径
+    slowPct?: number; // s6_timewarp 主动 - 时间减缓比例
   }>;
 }
 
