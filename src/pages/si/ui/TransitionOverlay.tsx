@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 
-export type TransitionKind = "level-start" | "level-clear" | "pause" | "skill-nuke" | "skill-shield" | "skill-haste";
+export type TransitionKind = "level-start" | "level-clear" | "pause" | "skill-nuke" | "skill-shield" | "skill-haste" | "skill-cruise" | "skill-emp" | "skill-timewarp";
 
 export interface TransitionOverlayProps {
   trigger: number; // 通过改变该数字触发一次动画
@@ -27,6 +27,9 @@ export const TransitionOverlay: React.FC<TransitionOverlayProps> = ({ trigger, k
     kind === "skill-nuke" ? "from-orange-500/70 via-red-500/70 to-fuchsia-600/70" :
     kind === "skill-shield" ? "from-sky-400/70 to-indigo-600/70" :
     kind === "skill-haste" ? "from-yellow-300/70 to-emerald-400/70" :
+    kind === "skill-cruise" ? "from-orange-500/70 via-amber-500/70 to-red-600/70" :
+    kind === "skill-emp" ? "from-violet-500/70 via-purple-500/70 to-fuchsia-600/70" :
+    kind === "skill-timewarp" ? "from-cyan-400/70 via-blue-500/70 to-indigo-600/70" :
     kind === "pause" ? "from-slate-900/80 to-indigo-950/80" :
     kind === "level-clear" ? "from-emerald-400/70 via-cyan-400/60 to-violet-500/70" :
     "from-indigo-500/60 via-violet-500/60 to-fuchsia-500/60";
@@ -59,6 +62,9 @@ function defaultTitle(k: TransitionKind): string {
     case "skill-nuke": return "全屏攻击 · 引爆";
     case "skill-shield": return "护盾展开";
     case "skill-haste": return "引擎过载";
+    case "skill-cruise": return "巡航导弹 · 锁定目标";
+    case "skill-emp": return "电磁脉冲 · 瘫痪敌军";
+    case "skill-timewarp": return "时间扭曲 · 时空凝滞";
   }
 }
 
@@ -70,5 +76,8 @@ function defaultSubtitle(k: TransitionKind): string {
     case "skill-nuke": return "清场弹雨 · 对 BOSS 造成重创";
     case "skill-shield": return "抵挡接下来的若干次敌方攻击";
     case "skill-haste": return "移动速度大幅提升";
+    case "skill-cruise": return "自动追踪并消灭多个敌人";
+    case "skill-emp": return "眩晕周围敌人并使其护盾失效";
+    case "skill-timewarp": return "减缓时间流速，玩家不受影响";
   }
 }

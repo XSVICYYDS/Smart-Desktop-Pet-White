@@ -14,6 +14,7 @@ export interface LevelRuntime {
   totalDamageTaken: number;
   dynamicMul: { hp: number; speed: number; freq: number };
   enemies: EnemyRuntime[];
+  timeScale: number; // 时间流速比例（用于时间扭曲技能）
 }
 
 function clamp(a: number, b: number, v: number): number { return Math.max(a, Math.min(b, v)); }
@@ -50,6 +51,7 @@ export function startLevel(index: number, nowMs: number): LevelRuntime {
     totalDamageTaken: 0,
     dynamicMul: { hp: 1, speed: 1, freq: 1 },
     enemies,
+    timeScale: 1.0,
   };
 }
 
@@ -59,10 +61,12 @@ export function tickLevelEnemies(
   dtMs: number,
   shootCallback: (e: EnemyRuntime) => void,
 ): void {
+  const timeScale = lr.timeScale || 1.0;
+  const scaledDt = dtMs * timeScale;
   for (let i = 0; i < lr.enemies.length; i++) {
     const e = lr.enemies[i];
     if (!e.alive) continue;
-    const shouldFire = stepEnemy(e, dtMs, lr.dynamicMul);
+    const shouldFire = stepEnemy(e, scaledDt, lr.dynamicMul);
     if (shouldFire) shootCallback(e);
   }
 }
