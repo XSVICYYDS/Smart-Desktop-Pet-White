@@ -29,6 +29,9 @@ export function spawnEnemy(
     phaseT: Math.random() * Math.PI * 2,
     alive: true,
     scoreValue: Math.round(s.score),
+    // EMP 状态初始化（>0 表示生效中，0 表示无效果）
+    stunnedUntilMs: 0,
+    shieldDisabledUntilMs: 0,
   };
 }
 

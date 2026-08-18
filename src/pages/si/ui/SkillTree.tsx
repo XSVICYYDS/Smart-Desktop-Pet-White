@@ -25,7 +25,7 @@ export const SkillTree: React.FC<SkillTreeProps> = ({ open, onClose, levels, ski
         </header>
 
         <div className="p-5 space-y-6">
-          <SkillGroup title="主动技能" subtitle="Q 大招 / E 护盾 / Shift 加速（可冷却）" order={ACTIVE_SKILL_ORDER as unknown as SkillId[]}
+          <SkillGroup title="主动技能" subtitle="Q 巡航导弹 / E 电磁脉冲 / Shift 时间扭曲（含冷却）" order={ACTIVE_SKILL_ORDER as unknown as SkillId[]}
             levels={levels} skillPoints={skillPoints} onUpgrade={onUpgrade} tagColor="from-cyan-500 to-blue-600" />
           <SkillGroup title="被动技能" subtitle="永久生效，升级即获得加成" order={PASSIVE_SKILL_ORDER as unknown as SkillId[]}
             levels={levels} skillPoints={skillPoints} onUpgrade={onUpgrade} tagColor="from-rose-500 to-orange-500" />
@@ -96,11 +96,30 @@ const EffectBlock: React.FC<{ id: SkillId; lv: SkillLevel }> = ({ id, lv }) => {
   if (cfg.energyCost && id.startsWith("s")) lines.push(`能量消耗：${cfg.energyCost}`);
   if (cfg.cooldownMs && cfg.cooldownMs > 0) lines.push(`冷却时间：${(cfg.cooldownMs / 1000).toFixed(1)}s`);
   if (cfg.durationMs) lines.push(`持续时间：${(cfg.durationMs / 1000).toFixed(1)}s`);
-  if (id === "s1_nuke") lines.push(`对 BOSS 伤害：${Math.round(cfg.valuePct * 100)}%`);
-  if (id === "s2_shield") lines.push(`可抵挡次数：${Math.round(cfg.valuePct)} 次`);
-  if (id === "s3_haste") lines.push(`速度倍率：${cfg.valuePct.toFixed(2)}x`);
+  // 主动技能效果
+  if (id === "s1_missile") {
+    if (cfg.missileCount) lines.push(`导弹数量：${cfg.missileCount} 枚`);
+    if (cfg.missileDmg) lines.push(`单发伤害：${cfg.missileDmg}`);
+  }
+  if (id === "s2_emp") {
+    if (cfg.empRadius) lines.push(`作用半径：${cfg.empRadius}px`);
+    if (cfg.empStunMs) lines.push(`眩晕时长：${(cfg.empStunMs / 1000).toFixed(1)}s`);
+    if (cfg.empShieldBreakMs) lines.push(`护盾失效：${(cfg.empShieldBreakMs / 1000).toFixed(1)}s`);
+  }
+  if (id === "s3_timewarp") {
+    if (cfg.timeScale) lines.push(`时间流速：×${cfg.timeScale.toFixed(2)}`);
+  }
+  // 被动技能效果
   if (id === "p1_power" && cfg.dmgBonusPct) lines.push(`基础伤害 +${Math.round(cfg.dmgBonusPct * 100)}%`);
   if (id === "p2_regen" && cfg.regenPctPer10s) lines.push(`每 10s 恢复生命：${Math.round(cfg.regenPctPer10s * 100)}%`);
+  if (id === "p3_maxhp" && cfg.maxHpPct) lines.push(`最大生命 +${Math.round(cfg.maxHpPct * 100)}%`);
+  if (id === "p4_maxenergy" && cfg.maxEnergyPct) lines.push(`最大能量 +${Math.round(cfg.maxEnergyPct * 100)}%`);
+  if (id === "p5_crit") {
+    if (cfg.critRate) lines.push(`暴击率：${Math.round(cfg.critRate * 100)}%`);
+    if (cfg.critMul) lines.push(`暴击倍率：×${cfg.critMul.toFixed(1)}`);
+  }
+  if (id === "p6_lifesteal" && cfg.lifestealPct) lines.push(`吸血比例：${Math.round(cfg.lifestealPct * 100)}%`);
+  if (id === "p7_armor" && cfg.armorPct) lines.push(`伤害减免：${Math.round(cfg.armorPct * 100)}%`);
   return (
     <ul className="mt-3 space-y-1 text-xs text-slate-200/90">
       {lines.map((l, i) => <li key={i}>• {l}</li>)}

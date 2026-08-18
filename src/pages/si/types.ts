@@ -26,6 +26,11 @@ export interface PlayerRuntime {
   speedBoostUntilMs: number;
   fireCooldownMs: number;
   invulnUntilMs: number;
+  // 被动技能运行时属性
+  critRate: number;       // p5_crit 暴击率 0..1
+  critMul: number;        // p5_crit 暴击倍率 2.0..3.0
+  lifestealPct: number;   // p6_lifesteal 吸血比例 0.05..0.15
+  armorPct: number;       // p7_armor 减伤比例 0.10..0.30
 }
 
 export interface EnemyRuntime {
@@ -39,6 +44,23 @@ export interface EnemyRuntime {
   phaseT: number; // 移动模式相位
   alive: boolean;
   scoreValue: number;
+  // EMP 眩晕状态
+  stunnedUntilMs: number;     // > now 表示被眩晕
+  shieldDisabledUntilMs: number; // > now 表示护盾失效
+}
+
+/** 巡航导弹运行时实体：追踪目标并爆炸。 */
+export interface MissileRuntime {
+  id: number;
+  x: number; y: number;
+  vx: number; vy: number;
+  targetId: number;    // 目标敌人 ID（-1 = 无目标/自由飞行）
+  dmg: number;
+  speed: number;
+  turnRate: number;    // 追踪转向速率（弧度/秒）
+  lifeMs: number;
+  alive: boolean;
+  trail: Array<{ x: number; y: number; alpha: number }>;
 }
 
 export interface BulletRuntime {
@@ -63,7 +85,12 @@ export interface BossRuntime {
   alive: boolean;
 }
 
-export type SkillId = "s1_nuke" | "s2_shield" | "s3_haste" | "p1_power" | "p2_regen";
+export type SkillId =
+  // 主动技能（3）
+  | "s1_missile" | "s2_emp" | "s3_timewarp"
+  // 被动技能（7）
+  | "p1_power" | "p2_regen" | "p3_maxhp" | "p4_maxenergy"
+  | "p5_crit" | "p6_lifesteal" | "p7_armor";
 export type SkillSlot = 0 | 1 | 2; // 主动技能槽
 export type SkillLevel = 0 | 1 | 2 | 3;
 
@@ -77,17 +104,31 @@ export interface SkillDefinition {
     energyCost: number;
     cooldownMs: number;
     durationMs?: number;
-    valuePct?: number; // 主效果数值（比例），主动技能通常需要
-    dmgBonusPct?: number; // p1_power 被动
-    regenPctPer10s?: number; // p2_regen 被动
+    valuePct?: number;       // 主效果数值（比例）
+    dmgBonusPct?: number;   // p1_power 攻击强化
+    regenPctPer10s?: number; // p2_regen 生命恢复
+    maxHpPct?: number;       // p3_maxhp 最大生命
+    maxEnergyPct?: number;    // p4_maxenergy 最大能量
+    critRate?: number;        // p5_crit 暴击率 0..1
+    critMul?: number;         // p5_crit 暴击倍率
+    lifestealPct?: number;   // p6_lifesteal 吸血
+    armorPct?: number;       // p7_armor 护甲减伤
+    missileCount?: number;   // s1_missile 导弹数量
+    missileDmg?: number;     // s1_missile 导弹伤害
+    empRadius?: number;      // s2_emp 作用半径（px）
+    empStunMs?: number;      // s2_emp 眩晕时长
+    empShieldBreakMs?: number; // s2_emp 护盾失效时长
+    timeScale?: number;       // s3_timewarp 时间流速倍率
   }>;
 }
 
 export interface SkillRuntimeState {
-  // 主动：冷却剩余 / 等级
   cooldowns: Record<SkillSlot, number>;
   levels: Record<SkillId, SkillLevel>;
   lastCastAt: Record<SkillId, number>;
+  // 时间扭曲运行时
+  timeWarpUntilMs: number;
+  timeWarpScale: number;
 }
 
 export interface SaveSlot {

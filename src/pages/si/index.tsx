@@ -3,13 +3,15 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ACHIEVEMENTS, BALANCE, ENEMY_STATS, LEVELS, WORLD } from "./config";
 import { useGameLoop } from "./game/useGameLoop";
 import {
-  computeDynamicMul, finalizeClear, startLevel, tickLevelEnemies, bossKindOfLevel, type LevelRuntime,
+  computeDynamicMul, finalizeClear, startLevel, bossKindOfLevel, type LevelRuntime,
 } from "./game/LevelSystem";
 import { applyBossDamage, createBoss, resetBossBulletIds, tickBoss } from "./game/BossSystem";
 import {
-  clampLv, computePlayerBulletDamage, createInitialSkillState, skillLevelCfg, tickSkills, tryBlock, tryCastActive,
+  clampLv, computePlayerBulletDamage, createInitialSkillState, tickSkills, tryCastActive,
+  applyPassiveSkills, spawnMissiles, tickMissiles, applyEmp, applyLifesteal, applyArmorReduction,
+  getEnemyTimeScale, isEnemyStunned,
 } from "./game/SkillSystem";
-import { resetEnemyIds, spawnEnemy } from "./game/EnemyFactory";
+import { resetEnemyIds, spawnEnemy, stepEnemy } from "./game/EnemyFactory";
 
 import { BatchRenderer } from "./engine/BatchRenderer";
 import { detectHardware, selectQualityProfile, type QualityProfile } from "./engine/HardwareDetect";
@@ -35,7 +37,7 @@ import { GameOverScreen } from "./ui/GameOverScreen";
 import { LevelSelect } from "./ui/LevelSelect";
 
 import type { InputMode, LevelClearResult, PlayerRuntime, ScreenState, SkillId, SkillLevel, SkillRuntimeState } from "./types";
-import type { BossRuntime, BulletRuntime, EnemyRuntime } from "./types";
+import type { BossRuntime, BulletRuntime, EnemyRuntime, MissileRuntime } from "./types";
 
 import {
   createAchievementState, onAchievementUnlock, unlockAchievement,
@@ -63,6 +65,19 @@ function bossTitle(k: NonNullable<BossRuntime>["kind"]): string {
     case "mothership": return "元首母舰";
     case "fuhrer": return "元首本体";
   }
+}
+
+/**
+ * 护盾格挡判定：当玩家护盾处于激活状态且剩余次数 > 0 时，消耗一次格挡并返回 true。
+ * 当前技能系统未提供护盾技能，此函数保留作为未来扩展接入点（如掉落物/道具）。
+ */
+function tryBlock(p: PlayerRuntime, nowMs: number): boolean {
+  if (p.shieldUntilMs > nowMs && p.shieldHits > 0) {
+    p.shieldHits -= 1;
+    if (p.shieldHits <= 0) p.shieldUntilMs = 0;
+    return true;
+  }
+  return false;
 }
 
 /** 顶层组件：组合 si/* 下所有模块，完成单组件封装。 */
@@ -133,6 +148,7 @@ export const Container: React.FC<ContainerProps> = (props) => {
     energy: BALANCE.BASE_ENERGY, maxEnergy: BALANCE.BASE_ENERGY,
     shieldHits: 0, shieldUntilMs: 0, speedBoostUntilMs: 0,
     fireCooldownMs: 0, invulnUntilMs: 0,
+    critRate: 0, critMul: 2.0, lifestealPct: 0, armorPct: 0,
   });
 
   const makeSkills = (s: SaveSlot): SkillRuntimeState => ({
@@ -143,6 +159,7 @@ export const Container: React.FC<ContainerProps> = (props) => {
   const playerRef = useRef<PlayerRuntime>(makePlayer());
   const skillsRef = useRef<SkillRuntimeState>(makeSkills(save));
   const bulletsRef = useRef<BulletRuntime[]>([]);
+  const missilesRef = useRef<MissileRuntime[]>([]);
   const levelRuntimeRef = useRef<LevelRuntime | null>(null);
   const bossRef = useRef<BossRuntime | null>(null);
   const scoreRef = useRef<number>(0);
@@ -186,6 +203,7 @@ export const Container: React.FC<ContainerProps> = (props) => {
     const lv = startLevel(safe, now);
     skillsRef.current = makeSkills(save);
     playerRef.current = makePlayer();
+    applyPassiveSkills(skillsRef.current, playerRef.current);
     const bossKind = bossKindOfLevel(safe);
     if (bossKind) {
       resetBossBulletIds();
@@ -195,6 +213,7 @@ export const Container: React.FC<ContainerProps> = (props) => {
       bossRef.current = null;
     }
     bulletsRef.current = [];
+    missilesRef.current = [];
     levelRuntimeRef.current = lv;
     clearResultRef.current = null;
     statsRef.current = { killed: 0, skillsUsed: 0, totalDamageTaken: 0 };
@@ -302,37 +321,38 @@ export const Container: React.FC<ContainerProps> = (props) => {
     const lr = levelRuntimeRef.current;
     if (lr) lr.skillsUsed += 1;
     statsRef.current.skillsUsed += 1;
-    if (r.skill === "s1_nuke") {
+    const p = playerRef.current;
+
+    if (r.skill === "s1_missile") {
+      // 巡航导弹：生成追踪导弹实体
       playSFX("nuke");
-      fireTransition("skill-nuke");
-      for (const e of lr?.enemies || []) {
-        if (!e.alive) continue;
-        applyEnemyDamage(e, e.maxHp + 1, e.x, e.y);
-      }
-      const b = bossRef.current;
-      if (b && b.alive) {
-        const d = Math.max(1, Math.round(b.maxHp * (r.cfg.valuePct ?? 0.5)));
-        const final = applyBossDamage(b, d, b.weakX, b.weakY);
-        spawnFloatText(floatsRef.current, b.weakX, b.weakY - 30, `-${final}`, "#fde68a", 28, 900);
-        spawnBurst(particlesRef.current, b.x, b.y, 60, ["#fde047", "#f59e0b", "#ef4444", "#fca5a5"], 6, 4, 900);
-        if (profile.enableLighting) addLight(lightingRef.current, b.x, b.y, 600, "#fde68a", 0.8);
-      }
-      for (const bl of bulletsRef.current) { if (bl.from !== "player") bl.alive = false; }
-    } else if (r.skill === "s2_shield") {
+      const enemies = lr?.enemies || [];
+      const newMissiles = spawnMissiles(skillsRef.current, p, enemies);
+      missilesRef.current.push(...newMissiles);
+      fireTransition("skill-nuke", "巡航导弹发射", `锁定 ${r.cfg.missileCount ?? 3} 个目标`);
+    } else if (r.skill === "s2_emp") {
+      // 电磁脉冲：范围眩晕 + 护盾失效
       playSFX("shield");
-      fireTransition("skill-shield", "护盾展开", `可抵挡 ${Math.round(r.cfg.valuePct ?? 0)} 次，持续 ${((r.cfg.durationMs || 0) / 1000).toFixed(1)} 秒`);
-    } else if (r.skill === "s3_haste") {
+      const empResult = applyEmp(skillsRef.current, p, lr?.enemies || [], now);
+      // EMP 视觉特效
+      spawnBurst(particlesRef.current, empResult.x, empResult.y, 40, ["#22d3ee", "#67e8f9", "#a5f3fc", "#06b6d4"], 8, 5, 800);
+      if (profile.enableLighting) addLight(lightingRef.current, empResult.x, empResult.y, empResult.radius * 2, "#22d3ee", 0.7);
+      fireTransition("skill-shield", "电磁脉冲", `眩晕 ${empResult.hitIds.length} 个敌人 · 半径 ${empResult.radius}px`);
+    } else if (r.skill === "s3_timewarp") {
+      // 时间扭曲：减缓敌人时间流速
       playSFX("haste");
-      fireTransition("skill-haste", "引擎过载", `速度倍率 ×${(r.cfg.valuePct ?? 0).toFixed(2)}，持续 ${((r.cfg.durationMs || 0) / 1000).toFixed(1)} 秒`);
+      fireTransition("skill-haste", "时间扭曲", `时间流速 ×${r.cfg.timeScale ?? 0.5}，持续 ${((r.cfg.durationMs || 0) / 1000).toFixed(1)} 秒`);
     }
     if (statsRef.current.skillsUsed >= 10) unlockAchs(["skill_master"]);
   }
 
-  /** 对敌人施加伤害（先扣护盾），处理死亡/分裂/治疗。 */
+  /** 对敌人施加伤害（先扣护盾，EMP 期间护盾失效），处理死亡/分裂/治疗。 */
   function applyEnemyDamage(e: EnemyRuntime, dmg: number, hx: number, hy: number): void {
     if (!e.alive) return;
+    const now = performance.now();
     let d = Math.max(1, Math.round(dmg));
-    if (e.shieldHp > 0) {
+    // EMP 护盾失效期间，护盾不参与吸收
+    if (e.shieldHp > 0 && e.shieldDisabledUntilMs <= now) {
       const absorb = Math.min(e.shieldHp, d);
       e.shieldHp -= absorb; d -= absorb;
     }
@@ -376,15 +396,18 @@ export const Container: React.FC<ContainerProps> = (props) => {
     }
   }
 
-  /** 按玩家操作开火。 */
-  function firePlayerBullet(dmg: number): void {
+  /** 按玩家操作开火；isCrit 控制暴击弹道颜色与尺寸。 */
+  function firePlayerBullet(dmg: number, isCrit: boolean): void {
     const p = playerRef.current;
     bulletsRef.current.push({
       id: BULLET_ID++, x: p.x, y: p.y - 44,
       vx: 0, vy: -BALANCE.PLAYER_BULLET_SPEED, dmg,
-      from: "player", kind: "normal", lifeMs: 3500, alive: true,
+      from: "player", kind: isCrit ? "big" : "normal", lifeMs: 3500, alive: true,
     });
     playSFX("shoot");
+    if (isCrit) {
+      spawnBurst(particlesRef.current, p.x, p.y - 44, 6, ["#fde047", "#facc15"], 2.5, 2, 300);
+    }
   }
 
   const onTouchMove = useCallback((dx: -1 | 0 | 1, dy: -1 | 0 | 1) => {
@@ -430,7 +453,8 @@ export const Container: React.FC<ContainerProps> = (props) => {
       if (lr.wavesRemaining <= 0) lr.spawnedAll = true;
     }
 
-    const baseSpd = p.baseSpeed * (p.speedBoostUntilMs > now ? skillLevelCfg("s3_haste", skills.levels.s3_haste).valuePct ?? 1.5 : 1);
+    // 速度加成：当前技能系统未提供速度技能，保留 speedBoostUntilMs 作为未来道具接入点
+    const baseSpd = p.baseSpeed * (p.speedBoostUntilMs > now ? 1.5 : 1);
     let dirX: -1 | 0 | 1 = 0;
     let dirY: -1 | 0 | 1 = 0;
     if (inputMode !== "mouse") {
@@ -476,10 +500,13 @@ export const Container: React.FC<ContainerProps> = (props) => {
       mouseDownRef.current || shootBtnRef.current;
     if (actuallyShoot && p.fireCooldownMs <= 0) {
       p.fireCooldownMs = BALANCE.FIRE_INTERVAL_MS;
-      firePlayerBullet(computePlayerBulletDamage(skills));
+      const shot = computePlayerBulletDamage(skills);
+      firePlayerBullet(shot.damage, shot.isCrit);
     }
 
-    tickLevelEnemies(lr, dtMs, (enemy) => {
+    // ===== 敌人更新：应用时间扭曲（dt 缩放）+ EMP 眩晕（跳过） =====
+    const enemyTimeScale = getEnemyTimeScale(skills, now);
+    const fireEnemyBullet = (enemy: EnemyRuntime) => {
       const dx = p.x - enemy.x;
       const dy = p.y - enemy.y;
       const len = Math.max(1, Math.hypot(dx, dy));
@@ -501,10 +528,17 @@ export const Container: React.FC<ContainerProps> = (props) => {
         lifeMs: 4000, alive: true,
       };
       bulletsRef.current.push(fromEnemy);
-    });
+    };
+    // 内联敌人 tick：时间扭曲缩放 dt，眩晕敌人跳过移动与开火
+    for (const enemy of lr.enemies) {
+      if (!enemy.alive) continue;
+      if (isEnemyStunned(enemy.stunnedUntilMs, now)) continue;
+      const shouldFire = stepEnemy(enemy, dtMs * enemyTimeScale, lr.dynamicMul);
+      if (shouldFire) fireEnemyBullet(enemy);
+    }
     const boss = bossRef.current;
     if (boss && boss.alive) {
-      const bShots = tickBoss(boss, dtMs, p.x, p.y);
+      const bShots = tickBoss(boss, dtMs * enemyTimeScale, p.x, p.y);
       if (bShots.length) bulletsRef.current.push(...bShots);
     }
 
@@ -548,12 +582,23 @@ export const Container: React.FC<ContainerProps> = (props) => {
           if (!match) continue;
           if (!intersectsAABB(bulletBox, cb)) continue;
           bl.alive = false;
-          if (match.e) applyEnemyDamage(match.e, bl.dmg, bl.x, bl.y);
-          else if (match.boss) {
+          if (match.e) {
+            applyEnemyDamage(match.e, bl.dmg, bl.x, bl.y);
+            // 吸血：将伤害按比例转化为生命值
+            const heal = applyLifesteal(skills, p, bl.dmg);
+            if (heal > 0) {
+              spawnFloatText(floatsRef.current, p.x, p.y - 50, `+${Math.round(heal)}`, "#34d399", 14, 480);
+            }
+          } else if (match.boss) {
             const dealt = applyBossDamage(match.boss, bl.dmg, bl.x, bl.y);
             spawnFloatText(floatsRef.current, bl.x, bl.y - 20, `-${dealt}`, "#fde047", 20, 620);
             spawnBurst(particlesRef.current, bl.x, bl.y, 10, ["#fde047", "#f59e0b", "#ef4444"], 3, 3, 520);
             playSFX("hit");
+            // BOSS 也触发吸血
+            const heal = applyLifesteal(skills, p, bl.dmg);
+            if (heal > 0) {
+              spawnFloatText(floatsRef.current, p.x, p.y - 50, `+${Math.round(heal)}`, "#34d399", 14, 480);
+            }
           }
           break;
         }
@@ -566,10 +611,12 @@ export const Container: React.FC<ContainerProps> = (props) => {
             playSFX("shield");
             continue;
           }
-          p.hp = Math.max(0, p.hp - bl.dmg);
+          // 护甲减伤：p7_armor 按比例降低受到的伤害
+          const reducedDmg = applyArmorReduction(skills, bl.dmg);
+          p.hp = Math.max(0, p.hp - reducedDmg);
           p.invulnUntilMs = now + 260;
-          statsRef.current.totalDamageTaken += bl.dmg;
-          spawnFloatText(floatsRef.current, p.x, p.y - 60, `-${bl.dmg}`, "#fecaca", 22, 680);
+          statsRef.current.totalDamageTaken += reducedDmg;
+          spawnFloatText(floatsRef.current, p.x, p.y - 60, `-${reducedDmg}`, "#fecaca", 22, 680);
           spawnBurst(particlesRef.current, p.x, p.y - 18, 18, ["#ef4444", "#f97316", "#fbbf24"], 5, 3.5, 650);
           playSFX("boom");
         }
@@ -583,13 +630,33 @@ export const Container: React.FC<ContainerProps> = (props) => {
       if (en.y > WORLD.HEIGHT - 90) {
         en.alive = false;
         if (p.invulnUntilMs <= now && !tryBlock(p, now)) {
-          p.hp = Math.max(0, p.hp - 18);
-          statsRef.current.totalDamageTaken += 18;
-          spawnFloatText(floatsRef.current, p.x, p.y - 70, "-18 突破防线!", "#fecaca", 20, 800);
+          // 突破防线伤害也应用护甲减伤
+          const breakDmg = applyArmorReduction(skills, 18);
+          p.hp = Math.max(0, p.hp - breakDmg);
+          statsRef.current.totalDamageTaken += breakDmg;
+          spawnFloatText(floatsRef.current, p.x, p.y - 70, `-${breakDmg} 突破防线!`, "#fecaca", 20, 800);
           p.invulnUntilMs = now + 400;
         }
       }
     }
+
+    // ===== 巡航导弹更新：追踪、碰撞、爆炸 =====
+    const missileHits = tickMissiles(missilesRef.current, lr.enemies, dtMs);
+    for (const hit of missileHits) {
+      const enemy = lr.enemies.find((e) => e.id === hit.targetId);
+      if (enemy) {
+        applyEnemyDamage(enemy, hit.dmg, hit.x, hit.y);
+        // 导弹吸血
+        const heal = applyLifesteal(skills, p, hit.dmg);
+        if (heal > 0) {
+          spawnFloatText(floatsRef.current, p.x, p.y - 50, `+${Math.round(heal)}`, "#34d399", 14, 480);
+        }
+      }
+      // 爆炸视觉特效
+      spawnBurst(particlesRef.current, hit.x, hit.y, 20, ["#f97316", "#fb923c", "#fdba74", "#ffedd5"], 4, 3, 600);
+      if (profile.enableLighting) addLight(lightingRef.current, hit.x, hit.y, 120, "#f97316", 0.6);
+    }
+    missilesRef.current = missilesRef.current.filter((m) => m.alive);
 
     stepParticles(particlesRef.current, dtMs, profile.maxParticles);
     stepFloats(floatsRef.current, dtMs);
@@ -669,10 +736,18 @@ export const Container: React.FC<ContainerProps> = (props) => {
       const bl = bullets[i];
       if (!bl.alive) continue;
       if (bl.from === "player") {
-        ctx.fillStyle = "#f87171";
-        ctx.fillRect(bl.x - 3, bl.y - 10, 6, 20);
-        ctx.fillStyle = "#fecaca";
-        ctx.fillRect(bl.x - 1, bl.y - 14, 2, 22);
+        // 暴击子弹使用 bigger 黄色弹道
+        if (bl.kind === "big") {
+          ctx.fillStyle = "#fde047";
+          ctx.fillRect(bl.x - 5, bl.y - 14, 10, 28);
+          ctx.fillStyle = "#fef9c3";
+          ctx.fillRect(bl.x - 2, bl.y - 18, 4, 32);
+        } else {
+          ctx.fillStyle = "#f87171";
+          ctx.fillRect(bl.x - 3, bl.y - 10, 6, 20);
+          ctx.fillStyle = "#fecaca";
+          ctx.fillRect(bl.x - 1, bl.y - 14, 2, 22);
+        }
       } else if (bl.from === "boss") {
         if (bl.kind === "big") {
           ctx.fillStyle = "#f59e0b";
@@ -688,6 +763,46 @@ export const Container: React.FC<ContainerProps> = (props) => {
         ctx.fillStyle = bl.kind === "laser" ? "#fb7185" : "#a78bfa";
         ctx.fillRect(bl.x - 3, bl.y - 8, 6, 16);
       }
+    }
+
+    // ===== 巡航导弹渲染：尾迹 + 弹体 =====
+    const missiles = missilesRef.current;
+    for (let i = 0; i < missiles.length; i++) {
+      const m = missiles[i];
+      if (!m.alive) continue;
+      // 尾迹
+      for (let t = 0; t < m.trail.length; t++) {
+        const tr = m.trail[t];
+        ctx.fillStyle = `rgba(251, 146, 60, ${tr.alpha * 0.6})`;
+        ctx.beginPath(); ctx.arc(tr.x, tr.y, 4 * tr.alpha, 0, Math.PI * 2); ctx.fill();
+      }
+      // 弹体
+      const angle = Math.atan2(m.vy, m.vx);
+      ctx.save();
+      ctx.translate(m.x, m.y);
+      ctx.rotate(angle);
+      ctx.fillStyle = "#f97316";
+      ctx.fillRect(-8, -3, 16, 6);
+      ctx.fillStyle = "#fdba74";
+      ctx.fillRect(-4, -2, 10, 4);
+      ctx.fillStyle = "#fef3c7";
+      ctx.fillRect(4, -1, 4, 2);
+      ctx.restore();
+    }
+
+    // ===== 时间扭曲全屏滤镜：蓝色色调 + 边缘晕染 =====
+    if (skills.timeWarpUntilMs > performance.now()) {
+      ctx.fillStyle = "rgba(34, 211, 238, 0.12)";
+      ctx.fillRect(0, 0, WORLD.WIDTH, WORLD.HEIGHT);
+      // 边缘渐变
+      const grad = ctx.createRadialGradient(
+        WORLD.WIDTH / 2, WORLD.HEIGHT / 2, WORLD.WIDTH * 0.3,
+        WORLD.WIDTH / 2, WORLD.HEIGHT / 2, WORLD.WIDTH * 0.7,
+      );
+      grad.addColorStop(0, "rgba(34, 211, 238, 0)");
+      grad.addColorStop(1, "rgba(6, 182, 212, 0.35)");
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, WORLD.WIDTH, WORLD.HEIGHT);
     }
 
     drawParticles(ctx, particlesRef.current);
