@@ -196,6 +196,33 @@ export const LEVELS: LevelDef[] = (
       });
     };
 
+    /**
+     * 高难度多波次生成器（L51+ 使用）：
+     * - 强度递增：每波按从强(8)到弱(1)的顺序填充
+     * - 波数随关卡进度增加（3-5 波）
+     * - 每波行数随关卡进度增加（1-3 行）
+     * - 列数固定 8 列，pad/startY 由调用方传入
+     */
+    const tierWaves = (lv: number, pad: number, startY: number, waveCount?: number): WaveSpawn[][] => {
+      const tier = Math.floor((lv - 51) / 10);          // 0..4 (L51-60=0, L91-100=4)
+      const wc = waveCount ?? Math.min(5, 3 + Math.floor((lv - 51) / 20)); // 3..5 波
+      const rowsPerWave = Math.min(3, 1 + Math.floor((lv - 51) / 25));     // 1..3 行/波
+      const out: WaveSpawn[][] = [];
+      for (let w = 0; w < wc; w++) {
+        const wave: WaveSpawn[] = [];
+        const colsN = 8;
+        for (let r = 0; r < rowsPerWave; r++) {
+          for (let c = 0; c < colsN; c++) {
+            // 从强到弱填充：第 0 行=8, 第 1 行=7, 第 2 行=6（循环）
+            const kind = ((8 - (r % 8)) + tier) % 9 as EnemyKind;
+            wave.push({ kind, x: 160 + c * pad, y: startY + r * (pad - 12) });
+          }
+        }
+        out.push(wave);
+      }
+      return out;
+    };
+
     const L1_10: LevelDef[] = [
       mk(1, "前哨侦察", "nebula", () => rows(4, 8, 78, 156, 220, [0, 0, 1, 0])),
       mk(2, "前线交火", "nebula", () => rows(5, 8, 78, 156, 200, [0, 1, 0, 4]), [
@@ -474,14 +501,113 @@ export const LEVELS: LevelDef[] = (
       ], { recommendedTimeMs: 280_000, gravity: 0.12 }),
 
       // 50 终极BOSS：利维坦Ω
-      mk(50, "Ω·超维利维坦·万物终局", "omega", () => [], [], { isBoss: true, boss: "leviathan", recommendedTimeMs: 600_000 }),
+      mk(50, "Ω·超维利维坦·万物终端", "omega", () => [], [], { isBoss: true, boss: "leviathan", recommendedTimeMs: 600_000 }),
     ];
 
-    return [...L1_10, ...L11_30, ...L31_40, ...L41_50];
+    // ===== L51-L100：多元宇宙征程 —— 10 大星域 × 5 关，每 5 关 1 个 BOSS =====
+    // 辅助：生成高难度常规关的障碍配置（4 种模板）
+    const tierBlocks = (variant: number): LevelBlock[] => {
+      switch (variant) {
+        case 0: return [ // 双侧垂直墙
+          { x: 160, y: 660, w: 80, h: 320, hp: 320 },
+          { x: 840, y: 660, w: 80, h: 320, hp: 320 },
+        ];
+        case 1: return [ // 双侧墙+横梁
+          { x: 200, y: 720, w: 100, h: 240, hp: 320 },
+          { x: 780, y: 720, w: 100, h: 240, hp: 320 },
+          { x: 360, y: 880, w: 360, h: 28, hp: 360 },
+        ];
+        case 2: return [ // 五列迷宫
+          { x: 160, y: 640, w: 80, h: 340, hp: 300 },
+          { x: 360, y: 640, w: 80, h: 340, hp: 300 },
+          { x: 560, y: 820, w: 200, h: 36, hp: 400 },
+          { x: 840, y: 640, w: 80, h: 340, hp: 300 },
+        ];
+        case 3: return [ // 横纵交错
+          { x: 240, y: 620, w: 600, h: 28, hp: 380 },
+          { x: 360, y: 820, w: 360, h: 28, hp: 380 },
+        ];
+        default: return [];
+      }
+    };
+
+    const L51_100: LevelDef[] = [
+      // ===== L51-L55 半人马座α (boss: leviathan @ L55) =====
+      mk(51, "半人马前哨", "empyrean", () => tierWaves(51, 46, 220), tierBlocks(0), { recommendedTimeMs: 240_000 }),
+      mk(52, "比邻星风暴", "storm", () => tierWaves(52, 44, 210), tierBlocks(1), { recommendedTimeMs: 250_000, gravity: 0.08 }),
+      mk(53, "α星轨道战", "cosmos", () => tierWaves(53, 44, 210), tierBlocks(2), { recommendedTimeMs: 260_000 }),
+      mk(54, "南门二要塞", "oblivion", () => tierWaves(54, 42, 200), tierBlocks(3), { recommendedTimeMs: 270_000, gravity: 0.10 }),
+      mk(55, "半人马利维坦·星海怒涛", "omega", () => [], [], { isBoss: true, boss: "leviathan", recommendedTimeMs: 540_000 }),
+
+      // ===== L56-L60 神仙星座 (boss: warlord @ L60) =====
+      mk(56, "神仙座尘埃", "nebula", () => tierWaves(56, 42, 200), tierBlocks(0), { recommendedTimeMs: 280_000 }),
+      mk(57, "辉星回廊", "aurora", () => tierWaves(57, 42, 200), tierBlocks(1), { recommendedTimeMs: 290_000, gravity: 0.10 }),
+      mk(58, "蓝巨星烈焰", "forge", () => tierWaves(58, 40, 200), tierBlocks(2), { recommendedTimeMs: 300_000 }),
+      mk(59, "星座核心", "pulse", () => tierWaves(59, 40, 200), tierBlocks(3), { recommendedTimeMs: 310_000, gravity: 0.12 }),
+      mk(60, "星界军阀·神仙座征服", "oblivion", () => [], [], { isBoss: true, boss: "warlord", recommendedTimeMs: 560_000 }),
+
+      // ===== L61-L65 蛇夫座暗流 (boss: devourer @ L65) =====
+      mk(61, "蛇夫暗流", "abyss", () => tierWaves(61, 40, 200), tierBlocks(0), { recommendedTimeMs: 320_000, gravity: 0.08 }),
+      mk(62, "巴纳德环", "void", () => tierWaves(62, 40, 200), tierBlocks(1), { recommendedTimeMs: 330_000 }),
+      mk(63, "暗物质裂隙", "eclipse", () => tierWaves(63, 38, 200), tierBlocks(2), { recommendedTimeMs: 340_000, gravity: 0.10 }),
+      mk(64, "蛇夫之瞳", "solitude", () => tierWaves(64, 38, 200), tierBlocks(3), { recommendedTimeMs: 350_000 }),
+      mk(65, "虚无饕餮·蛇夫吞噬", "oblivion", () => [], [], { isBoss: true, boss: "devourer", recommendedTimeMs: 580_000 }),
+
+      // ===== L66-L70 武仙座超团 (boss: sentinel @ L70) =====
+      mk(66, "武仙座前沿", "galaxy", () => tierWaves(66, 38, 200), tierBlocks(0), { recommendedTimeMs: 360_000, gravity: 0.10 }),
+      mk(67, "超团核心", "cosmos", () => tierWaves(67, 38, 200), tierBlocks(1), { recommendedTimeMs: 370_000 }),
+      mk(68, "引力井", "chronos", () => tierWaves(68, 36, 200), tierBlocks(2), { recommendedTimeMs: 380_000, gravity: 0.12 }),
+      mk(69, "武仙要塞", "forge", () => tierWaves(69, 36, 200), tierBlocks(3), { recommendedTimeMs: 390_000 }),
+      mk(70, "壁垒守卫·武仙铁壁", "crimson", () => [], [], { isBoss: true, boss: "sentinel", recommendedTimeMs: 600_000 }),
+
+      // ===== L71-L75 后发座长城 (boss: dragon @ L75) =====
+      mk(71, "后发长城·东翼", "infinity", () => tierWaves(71, 36, 200), tierBlocks(0), { recommendedTimeMs: 400_000, gravity: 0.10 }),
+      mk(72, "长城中枢", "empyrean", () => tierWaves(72, 36, 200), tierBlocks(1), { recommendedTimeMs: 410_000 }),
+      mk(73, "星系纤维", "cosmos", () => tierWaves(73, 34, 200), tierBlocks(2), { recommendedTimeMs: 420_000, gravity: 0.12 }),
+      mk(74, "长城西翼", "galaxy", () => tierWaves(74, 34, 200), tierBlocks(3), { recommendedTimeMs: 430_000 }),
+      mk(75, "星环神龙·长城咆哮", "omega", () => [], [], { isBoss: true, boss: "dragon", recommendedTimeMs: 620_000 }),
+
+      // ===== L76-L80 双鱼-鲸鱼复合体 (boss: overlord @ L80) =====
+      mk(76, "双鱼旋臂", "frost", () => tierWaves(76, 34, 200), tierBlocks(0), { recommendedTimeMs: 440_000, gravity: 0.10 }),
+      mk(77, "鲸鱼深渊", "abyss", () => tierWaves(77, 34, 200), tierBlocks(1), { recommendedTimeMs: 450_000 }),
+      mk(78, "复合体核心", "storm", () => tierWaves(78, 32, 200), tierBlocks(2), { recommendedTimeMs: 460_000, gravity: 0.12 }),
+      mk(79, "双鱼要塞", "void", () => tierWaves(79, 32, 200), tierBlocks(3), { recommendedTimeMs: 470_000 }),
+      mk(80, "木星霸主·复合体统治", "forge", () => [], [], { isBoss: true, boss: "overlord", recommendedTimeMs: 640_000 }),
+
+      // ===== L81-L85 史隆长城 (boss: hunter @ L85) =====
+      mk(81, "史隆东段", "chronos", () => tierWaves(81, 32, 200), tierBlocks(0), { recommendedTimeMs: 480_000, gravity: 0.10 }),
+      mk(82, "史隆中段", "eclipse", () => tierWaves(82, 32, 200), tierBlocks(1), { recommendedTimeMs: 490_000 }),
+      mk(83, "史隆西段", "solitude", () => tierWaves(83, 30, 200), tierBlocks(2), { recommendedTimeMs: 500_000, gravity: 0.12 }),
+      mk(84, "长城交汇点", "infinity", () => tierWaves(84, 30, 200), tierBlocks(3), { recommendedTimeMs: 510_000 }),
+      mk(85, "幽影猎手·史隆暗影", "abyss", () => [], [], { isBoss: true, boss: "hunter", recommendedTimeMs: 660_000 }),
+
+      // ===== L86-L90 武仙-北冕座长城 (boss: desolator @ L90) =====
+      mk(86, "武仙-北冕前沿", "cosmos", () => tierWaves(86, 30, 200), tierBlocks(0), { recommendedTimeMs: 520_000, gravity: 0.10 }),
+      mk(87, "长城巨壁", "oblivion", () => tierWaves(87, 30, 200), tierBlocks(1), { recommendedTimeMs: 530_000 }),
+      mk(88, "宇宙最大结构", "omega", () => tierWaves(88, 28, 200), tierBlocks(2), { recommendedTimeMs: 540_000, gravity: 0.12 }),
+      mk(89, "长城尽头", "magma", () => tierWaves(89, 28, 200), tierBlocks(3), { recommendedTimeMs: 550_000 }),
+      mk(90, "肃清者·长城灭绝", "crimson", () => [], [], { isBoss: true, boss: "desolator", recommendedTimeMs: 680_000 }),
+
+      // ===== L91-L95 可观测宇宙边缘 (boss: fuhrer EX @ L95) =====
+      mk(91, "宇宙微波背景", "pulse", () => tierWaves(91, 28, 200), tierBlocks(0), { recommendedTimeMs: 560_000, gravity: 0.10 }),
+      mk(92, "哈勃边界", "solitude", () => tierWaves(92, 28, 200), tierBlocks(1), { recommendedTimeMs: 570_000 }),
+      mk(93, "红移极境", "eclipse", () => tierWaves(93, 26, 200), tierBlocks(2), { recommendedTimeMs: 580_000, gravity: 0.12 }),
+      mk(94, "可观测极限", "infinity", () => tierWaves(94, 26, 200), tierBlocks(3), { recommendedTimeMs: 590_000 }),
+      mk(95, "元首本体·宇宙边缘EX", "forge", () => [], [], { isBoss: true, boss: "fuhrer", recommendedTimeMs: 700_000 }),
+
+      // ===== L96-L100 Ω·多元宇宙核心 (boss: leviathan Ω @ L100) =====
+      mk(96, "多元宇宙之门", "omega", () => tierWaves(96, 26, 200), tierBlocks(0), { recommendedTimeMs: 600_000, gravity: 0.12 }),
+      mk(97, "平行时空回廊", "chronos", () => tierWaves(97, 26, 200), tierBlocks(1), { recommendedTimeMs: 620_000, gravity: 0.14 }),
+      mk(98, "维度折叠", "cosmos", () => tierWaves(98, 24, 200), tierBlocks(2), { recommendedTimeMs: 640_000, gravity: 0.15 }),
+      mk(99, "万物起源", "empyrean", () => tierWaves(99, 24, 200), tierBlocks(3), { recommendedTimeMs: 660_000, gravity: 0.15 }),
+      mk(100, "ΩΩ·超维利维坦·多元宇宙终焉", "omega", () => [], [], { isBoss: true, boss: "leviathan", recommendedTimeMs: 800_000 }),
+    ];
+
+    return [...L1_10, ...L11_30, ...L31_40, ...L41_50, ...L51_100];
   }
 )();
 
-/** 40 成就（id 作为解锁键），L11-L30 新增 15 项，L31-L50 新增 10 项。 */
+/** 60 成就（id 作为解锁键），L11-L30 新增 15 项，L31-L50 新增 10 项，L51-L100 新增 12 项。 */
 export const ACHIEVEMENTS: Achievement[] = [
   { id: "first_blood", name: "首杀", desc: "首次消灭任意一名外星单位。", icon: "🩸" },
   { id: "score_10k", name: "十连击人", desc: "单局累计得分达到 10,000 分。", icon: "🏅" },
@@ -490,6 +616,7 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: "score_250k", name: "银河之巅", desc: "单局累计得分达到 250,000 分。", icon: "👑" },
   { id: "score_500k", name: "星海传说", desc: "单局累计得分达到 500,000 分。", icon: "🌟" },
   { id: "score_1m", name: "百万星辰", desc: "单局累计得分达到 1,000,000 分。", icon: "💠" },
+  { id: "score_5m", name: "五百万星河", desc: "单局累计得分达到 5,000,000 分。", icon: "🔮" },
   { id: "clear_lv3", name: "首战告捷", desc: "击败第 3 关 BOSS：外星护卫者。", icon: "🛡️" },
   { id: "clear_lv6", name: "毒菌克星", desc: "击败第 6 关 BOSS：腐蚀者。", icon: "🧪" },
   { id: "clear_lv9", name: "击穿舰队", desc: "击败第 9 关 BOSS：元首母舰。", icon: "🚀" },
@@ -510,12 +637,24 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: "clear_lv46", name: "虚空狩猎", desc: "击败第 46 关 BOSS：幽影猎手·虚空回响。", icon: "🕸️" },
   { id: "clear_lv48", name: "光炮湮灭", desc: "击败第 48 关 BOSS：肃清者·灭绝光炮。", icon: "☢️" },
   { id: "clear_lv50", name: "Ω·万物终局", desc: "通关第 50 关超维利维坦Ω。", icon: "🧿" },
+  // ===== L51-L100 新增通关成就 =====
+  { id: "clear_lv55", name: "半人马怒涛", desc: "击败第 55 关 BOSS：半人马利维坦。", icon: "🐎" },
+  { id: "clear_lv60", name: "神仙座征服", desc: "击败第 60 关 BOSS：星界军阀·神仙座征服。", icon: "✨" },
+  { id: "clear_lv65", name: "蛇夫吞噬", desc: "击败第 65 关 BOSS：虚无饕餮·蛇夫吞噬。", icon: "🐍" },
+  { id: "clear_lv70", name: "武仙铁壁", desc: "击败第 70 关 BOSS：壁垒守卫·武仙铁壁。", icon: "⚔️" },
+  { id: "clear_lv75", name: "长城咆哮", desc: "击败第 75 关 BOSS：星环神龙·长城咆哮。", icon: "🐲" },
+  { id: "clear_lv80", name: "复合体统治", desc: "击败第 80 关 BOSS：木星霸主·复合体统治。", icon: "🔱" },
+  { id: "clear_lv85", name: "史隆暗影", desc: "击败第 85 关 BOSS：幽影猎手·史隆暗影。", icon: "🌑" },
+  { id: "clear_lv90", name: "长城灭绝", desc: "击败第 90 关 BOSS：肃清者·长城灭绝。", icon: "💀" },
+  { id: "clear_lv95", name: "宇宙边缘EX", desc: "击败第 95 关 BOSS：元首本体·宇宙边缘EX。", icon: "🎖️" },
+  { id: "clear_lv100", name: "ΩΩ·多元宇宙终焉", desc: "通关第 100 关超维利维坦·多元宇宙终焉。", icon: "🔮" },
   // ===== 通用操作/挑战 =====
   { id: "flawless", name: "无伤破关", desc: "任意普通关卡以 100% 剩余生命通关。", icon: "💯" },
   { id: "flawless_boss", name: "神乎其技", desc: "任意 BOSS 战以 100% 剩余生命通关。", icon: "🔥" },
   { id: "grade_s", name: "完美节奏", desc: "任意关卡获得 S 级评分。", icon: "✨" },
   { id: "grade_s_10", name: "双 S 收藏家", desc: "累计 10 个关卡获得 S 级评分。", icon: "💫" },
   { id: "grade_s_30", name: "S 级收藏家", desc: "累计 30 个关卡获得 S 级评分。", icon: "🌈" },
+  { id: "grade_s_50", name: "S 级宗师", desc: "累计 50 个关卡获得 S 级评分。", icon: "🌠" },
   { id: "skill_master", name: "技能大师", desc: "单局释放 10 次主动技能。", icon: "🎯" },
   { id: "skill_overload", name: "过载引擎", desc: "单局释放 30 次主动技能。", icon: "⚙️" },
   { id: "upgrade_any", name: "初次强化", desc: "使用技能点升级任意 1 个技能。", icon: "🛠️" },
@@ -526,6 +665,8 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: "no_powerups_boss", name: "剑道至尊", desc: "不使用主动技能通关任意 1 个 BOSS 关卡。", icon: "⚔️" },
   { id: "level_clear_30", name: "30 关达成", desc: "完成所有 30 个关卡。", icon: "🎊" },
   { id: "level_clear_50", name: "50 关达成·宇宙征服", desc: "完成所有 50 个关卡。", icon: "🏮" },
+  { id: "level_clear_75", name: "75 关达成·长城穿越", desc: "完成所有 75 个关卡。", icon: "🏯" },
+  { id: "level_clear_100", name: "100 关达成·多元宇宙征服", desc: "完成所有 100 个关卡。", icon: "🏆" },
 ];
 
 /** S/A/B/C 综合评分规则（BOSS 倍率随关卡进度提升，技能点奖励上限更高）。 */

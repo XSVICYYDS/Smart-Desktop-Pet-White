@@ -43,7 +43,7 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({
           <p className="mt-3 text-sm md:text-base text-white/85">
             {victory
               ? (clearedAll
-                ? `恭喜征服全部 ${totalLevels} 关！你击败了终极利维坦，成为星海皇者！`
+                ? `恭喜征服全部 ${totalLevels} 关！你击败了超维利维坦Ω，成为多元宇宙征服者！`
                 : `第 ${level} / ${totalLevels} 关扫荡完毕，进入奖励结算。`)
               : "战机被摧毁，但仍可从当前关卡重新挑战。"}
           </p>
