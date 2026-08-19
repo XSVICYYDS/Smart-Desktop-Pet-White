@@ -155,7 +155,8 @@ export interface LevelDef {
   id: number;
   name: string;
   theme: "nebula" | "crimson" | "asteroid" | "void" | "forge"
-  | "aurora" | "storm" | "magma" | "frost" | "abyss" | "galaxy" | "pulse" | "solitude";
+  | "aurora" | "storm" | "magma" | "frost" | "abyss" | "galaxy" | "pulse" | "solitude"
+  | "eclipse" | "empyrean" | "chronos" | "cosmos" | "infinity" | "oblivion" | "omega";
   isBoss: boolean;
   boss?: BossKind;
   waves: WaveSpawn[][];
@@ -263,36 +264,33 @@ export const LEVELS: LevelDef[] = (
       mk(19, "光环风暴", "aurora", () => multiWave([
         [5, 6, 1, 4, 7, 3, 2],
         [8, 3, 7, 1, 6, 0, 5, 2],
-        [6, 8, 4, 7, 2, 5, 1, 3, 8],
       ], 72, 150, 220)),
       mk(20, "泰坦前线", "abyss", () => multiWave([
         [2, 6, 3, 7, 5, 1, 8, 4],
         [7, 4, 8, 0, 3, 6, 2, 7, 1],
         [5, 8, 2, 1, 7, 6, 3, 4, 5],
       ], 68, 144, 210), [
-        { x: 260, y: 860, w: 96, h: 96, hp: 240 },
-        { x: 480, y: 780, w: 120, h: 96, hp: 280 },
-        { x: 720, y: 860, w: 96, h: 96, hp: 240 },
-      ], { recommendedTimeMs: 130_000 }),
-      mk(21, "星环神龙", "galaxy", () => [], [], { isBoss: true, boss: "dragon", recommendedTimeMs: 300_000 }),
+        { x: 260, y: 860, w: 96, h: 96, hp: 220 },
+        { x: 480, y: 780, w: 120, h: 96, hp: 240 },
+        { x: 720, y: 860, w: 96, h: 96, hp: 220 },
+      ], { recommendedTimeMs: 120_000 }),
+      mk(21, "星环神龙", "galaxy", () => [], [], { isBoss: true, boss: "dragon", recommendedTimeMs: 280_000 }),
 
       // 22-24 超新星遗迹（sentinel/warlord BOSS）
       mk(22, "超新星残响", "pulse", () => multiWave([
         [6, 7, 5, 3, 8, 2, 1],
         [8, 2, 7, 4, 6, 1, 5, 3],
         [5, 3, 8, 6, 7, 2, 1, 4],
-        [7, 5, 8, 3, 6, 2, 4, 1, 7, 5],
-      ], 68, 148, 220), [], { recommendedTimeMs: 130_000 }),
+      ], 68, 148, 220), [], { recommendedTimeMs: 110_000 }),
       mk(23, "湮灭要塞", "void", () => multiWave([
         [3, 6, 2, 8, 5, 7, 1, 4],
         [7, 5, 8, 3, 1, 6, 4, 2, 7],
         [6, 8, 4, 7, 2, 5, 1, 3, 8],
       ], 64, 144, 210), [
-        { x: 160, y: 600, w: 100, h: 380, hp: 280 },
-        { x: 820, y: 600, w: 100, h: 380, hp: 280 },
-        { x: 460, y: 820, w: 160, h: 28, hp: 220 },
-      ], { recommendedTimeMs: 150_000 }),
-      mk(24, "壁垒守卫·要塞之心", "crimson", () => [], [], { isBoss: true, boss: "sentinel", recommendedTimeMs: 340_000 }),
+        { x: 160, y: 600, w: 100, h: 380, hp: 220 },
+        { x: 820, y: 600, w: 100, h: 380, hp: 220 },
+      ], { recommendedTimeMs: 140_000 }),
+      mk(24, "壁垒守卫·要塞之心", "crimson", () => [], [], { isBoss: true, boss: "sentinel", recommendedTimeMs: 320_000 }),
 
       // 25-27 银河深渊（warlord/devourer BOSS）
       mk(25, "星界军阀·远征", "galaxy", () => multiWave([
@@ -300,46 +298,190 @@ export const LEVELS: LevelDef[] = (
         [8, 5, 7, 3, 6, 2, 4, 7, 1],
         [6, 8, 7, 5, 3, 1, 4, 2, 8, 5],
       ], 60, 140, 210), [
-        { x: 200, y: 880, w: 280, h: 24, hp: 280 },
-        { x: 600, y: 880, w: 280, h: 24, hp: 280 },
-      ], { recommendedTimeMs: 155_000 }),
+        { x: 260, y: 880, w: 560, h: 24, hp: 260 },
+      ], { recommendedTimeMs: 145_000 }),
       mk(26, "吞噬之环", "abyss", () => multiWave([
         [3, 7, 8, 6, 5, 2, 1, 4],
         [8, 6, 5, 7, 3, 4, 2, 1, 7],
         [7, 8, 6, 5, 4, 3, 2, 1, 8, 6],
       ], 60, 138, 210), [
-        { x: 340, y: 720, w: 120, h: 120, hp: 260 },
-        { x: 620, y: 720, w: 120, h: 120, hp: 260 },
-      ], { recommendedTimeMs: 140_000 }),
-      mk(27, "虚无饕餮·深渊吞噬", "crimson", () => [], [], { isBoss: true, boss: "devourer", recommendedTimeMs: 380_000 }),
+        { x: 340, y: 720, w: 120, h: 120, hp: 200 },
+        { x: 620, y: 720, w: 120, h: 120, hp: 200 },
+      ], { recommendedTimeMs: 125_000 }),
+      mk(27, "虚无饕餮·深渊吞噬", "crimson", () => [], [], { isBoss: true, boss: "devourer", recommendedTimeMs: 360_000 }),
 
       // 28-30 终焉（leviathan BOSS）
       mk(28, "寂静尽头", "solitude", () => multiWave([
         [8, 7, 6, 5, 4, 3, 2, 1],
         [7, 8, 6, 5, 4, 3, 2, 1, 8],
         [8, 7, 6, 5, 4, 3, 2, 1, 7, 8],
+        [8, 7, 6, 5, 4, 3, 2, 1, 7, 8, 6],
       ], 58, 136, 200), [
-        { x: 160, y: 620, w: 96, h: 360, hp: 260 },
-        { x: 468, y: 640, w: 144, h: 340, hp: 300 },
-        { x: 824, y: 620, w: 96, h: 360, hp: 260 },
-      ], { recommendedTimeMs: 175_000 }),
+        { x: 160, y: 620, w: 96, h: 360, hp: 220 },
+        { x: 468, y: 640, w: 144, h: 340, hp: 260 },
+        { x: 824, y: 620, w: 96, h: 360, hp: 220 },
+      ], { recommendedTimeMs: 165_000 }),
       mk(29, "寂灭之光", "pulse", () => multiWave([
         [6, 8, 7, 5, 4, 3, 2, 1, 7],
         [8, 7, 6, 5, 4, 3, 2, 1, 6, 8],
         [7, 8, 6, 5, 4, 3, 2, 1, 8, 7, 6],
-        [8, 7, 6, 5, 4, 3, 2, 1, 7, 6],
-      ], 56, 132, 200), [
-        { x: 240, y: 760, w: 120, h: 120, hp: 280 },
-        { x: 720, y: 760, w: 120, h: 120, hp: 280 },
-      ], { recommendedTimeMs: 190_000 }),
-      mk(30, "星海皇者·终极利维坦", "forge", () => [], [], { isBoss: true, boss: "leviathan", recommendedTimeMs: 500_000 }),
+      ], 56, 132, 200), [], { recommendedTimeMs: 175_000 }),
+      mk(30, "星海皇者·终极利维坦", "forge", () => [], [], { isBoss: true, boss: "leviathan", recommendedTimeMs: 480_000 }),
     ];
 
-    return [...L1_10, ...L11_30];
+    // ===== L31-L40：河外星系征程 —— warlord 首秀 + sentinel/devourer EX =====
+    const L31_40: LevelDef[] = [
+      // 31-33 仙女座前哨 (warlord BOSS 首秀)
+      mk(31, "仙女座旋臂", "empyrean", () => multiWave([
+        [8, 7, 6, 5, 4, 3, 2, 1],
+        [7, 8, 6, 5, 4, 3, 2, 1, 6, 8],
+        [8, 7, 6, 5, 4, 3, 2, 1, 7, 8, 5],
+      ], 54, 128, 200), [
+        { x: 260, y: 860, w: 560, h: 24, hp: 300 },
+      ], { recommendedTimeMs: 170_000 }),
+      mk(32, "仙女座要塞", "cosmos", () => multiWave([
+        [7, 8, 6, 5, 4, 3, 2, 1],
+        [8, 7, 6, 5, 4, 3, 2, 1, 7, 8],
+        [7, 8, 6, 5, 4, 3, 2, 1, 8, 7, 6],
+        [8, 7, 6, 5, 4, 3, 2, 1, 7, 8, 6, 5],
+      ], 52, 126, 200), [
+        { x: 160, y: 640, w: 80, h: 340, hp: 260 },
+        { x: 840, y: 640, w: 80, h: 340, hp: 260 },
+        { x: 440, y: 800, w: 200, h: 24, hp: 300 },
+      ], { recommendedTimeMs: 185_000 }),
+      mk(33, "星界军阀·血座之冠", "oblivion", () => [], [], { isBoss: true, boss: "warlord", recommendedTimeMs: 420_000 }),
+
+      // 34-36 大麦哲伦云 (sentinel EX)
+      mk(34, "麦哲伦风暴", "storm", () => multiWave([
+        [8, 7, 6, 5, 4, 3, 2, 1],
+        [7, 8, 6, 5, 4, 3, 2, 1, 7, 8],
+        [8, 7, 6, 5, 4, 3, 2, 1, 6, 8, 7],
+      ], 52, 124, 200), [
+        { x: 200, y: 760, w: 100, h: 220, hp: 280 },
+        { x: 780, y: 760, w: 100, h: 220, hp: 280 },
+      ], { recommendedTimeMs: 180_000 }),
+      mk(35, "星暴工厂", "forge", () => multiWave([
+        [8, 7, 6, 5, 4, 3, 2, 1],
+        [8, 7, 6, 5, 4, 3, 2, 1, 7, 8],
+        [8, 7, 6, 5, 4, 3, 2, 1, 7, 8, 6],
+        [8, 7, 6, 5, 4, 3, 2, 1, 7, 8, 6, 5, 4],
+      ], 50, 122, 200), [
+        { x: 340, y: 720, w: 140, h: 140, hp: 320 },
+        { x: 600, y: 720, w: 140, h: 140, hp: 320 },
+      ], { recommendedTimeMs: 200_000 }),
+      mk(36, "壁垒守卫·强化核心", "crimson", () => [], [], { isBoss: true, boss: "sentinel", recommendedTimeMs: 380_000 }),
+
+      // 37-39 小麦哲伦云 (devourer EX)
+      mk(37, "深空吞噬", "eclipse", () => multiWave([
+        [8, 7, 6, 5, 4, 3, 2, 1],
+        [8, 7, 6, 5, 4, 3, 2, 1, 7, 8],
+        [7, 8, 6, 5, 4, 3, 2, 1, 8, 7, 6],
+      ], 50, 120, 200), [
+        { x: 160, y: 640, w: 80, h: 340, hp: 260 },
+        { x: 380, y: 640, w: 80, h: 340, hp: 260 },
+        { x: 620, y: 640, w: 80, h: 340, hp: 260 },
+        { x: 840, y: 640, w: 80, h: 340, hp: 260 },
+      ], { recommendedTimeMs: 200_000, gravity: 0.08 }),
+      mk(38, "虚无之触", "abyss", () => multiWave([
+        [8, 7, 6, 5, 4, 3, 2, 1],
+        [8, 7, 6, 5, 4, 3, 2, 1, 7, 8],
+        [8, 7, 6, 5, 4, 3, 2, 1, 7, 8, 6],
+        [8, 7, 6, 5, 4, 3, 2, 1, 7, 8, 6, 5],
+      ], 48, 118, 200), [
+        { x: 260, y: 780, w: 560, h: 28, hp: 340 },
+        { x: 260, y: 900, w: 560, h: 28, hp: 340 },
+      ], { recommendedTimeMs: 220_000 }),
+      mk(39, "虚无饕餮·裂界吞噬", "crimson", () => [], [], { isBoss: true, boss: "devourer", recommendedTimeMs: 420_000 }),
+
+      // 40 (过渡普通关)
+      mk(40, "星系团边界", "infinity", () => multiWave([
+        [8, 7, 6, 5, 4, 3, 2, 1],
+        [8, 7, 6, 5, 4, 3, 2, 1, 7, 8],
+        [8, 7, 6, 5, 4, 3, 2, 1, 7, 8, 6],
+      ], 48, 116, 200), [
+        { x: 240, y: 700, w: 120, h: 240, hp: 300 },
+        { x: 480, y: 700, w: 120, h: 240, hp: 320 },
+        { x: 720, y: 700, w: 120, h: 240, hp: 300 },
+      ], { recommendedTimeMs: 215_000 }),
+    ];
+
+    // ===== L41-L50：超星系团 → 拉尼亚凯亚尽头 =====
+    const L41_50: LevelDef[] = [
+      // 41-42 室女座超星系团 (overlord EX)
+      mk(41, "室女座之潮", "empyrean", () => multiWave([
+        [8, 7, 6, 5, 4, 3, 2, 1],
+        [8, 7, 6, 5, 4, 3, 2, 1, 7, 8],
+        [8, 7, 6, 5, 4, 3, 2, 1, 7, 8, 6],
+        [8, 7, 6, 5, 4, 3, 2, 1, 7, 8, 6, 5],
+      ], 46, 114, 200), [
+        { x: 200, y: 740, w: 100, h: 260, hp: 320 },
+        { x: 780, y: 740, w: 100, h: 260, hp: 320 },
+      ], { recommendedTimeMs: 220_000, gravity: 0.10 }),
+      mk(42, "木星霸主·究极旗舰", "forge", () => [], [], { isBoss: true, boss: "overlord", recommendedTimeMs: 440_000 }),
+
+      // 43-44 天炉座星带 (dragon EX)
+      mk(43, "天炉座熔核", "magma", () => multiWave([
+        [8, 7, 6, 5, 4, 3, 2, 1],
+        [8, 7, 6, 5, 4, 3, 2, 1, 7, 8],
+        [8, 7, 6, 5, 4, 3, 2, 1, 7, 8, 6],
+        [8, 7, 6, 5, 4, 3, 2, 1, 7, 8, 6, 5],
+      ], 46, 112, 200), [
+        { x: 160, y: 620, w: 80, h: 360, hp: 280 },
+        { x: 468, y: 640, w: 144, h: 340, hp: 360 },
+        { x: 824, y: 620, w: 80, h: 360, hp: 280 },
+      ], { recommendedTimeMs: 240_000 }),
+      mk(44, "星环神龙·次元咆哮", "galaxy", () => [], [], { isBoss: true, boss: "dragon", recommendedTimeMs: 460_000 }),
+
+      // 45-46 拉尼亚凯亚外围 (hunter EX)
+      mk(45, "巨引源之瞳", "chronos", () => multiWave([
+        [8, 7, 6, 5, 4, 3, 2, 1],
+        [8, 7, 6, 5, 4, 3, 2, 1, 7, 8],
+        [8, 7, 6, 5, 4, 3, 2, 1, 7, 8, 6],
+        [8, 7, 6, 5, 4, 3, 2, 1, 7, 8, 6, 5],
+        [8, 7, 6, 5, 4, 3, 2, 1, 7, 8, 6, 5, 4],
+      ], 44, 110, 200), [
+        { x: 160, y: 660, w: 96, h: 320, hp: 300 },
+        { x: 460, y: 820, w: 160, h: 36, hp: 360 },
+        { x: 824, y: 660, w: 96, h: 320, hp: 300 },
+      ], { recommendedTimeMs: 260_000 }),
+      mk(46, "幽影猎手·虚空回响", "abyss", () => [], [], { isBoss: true, boss: "hunter", recommendedTimeMs: 480_000 }),
+
+      // 47-48 可观测宇宙尽头 (desolator EX + leviathan EX)
+      mk(47, "宇宙微波边界", "solitude", () => multiWave([
+        [8, 7, 6, 5, 4, 3, 2, 1],
+        [8, 7, 6, 5, 4, 3, 2, 1, 7, 8],
+        [8, 7, 6, 5, 4, 3, 2, 1, 7, 8, 6],
+        [8, 7, 6, 5, 4, 3, 2, 1, 7, 8, 6, 5],
+      ], 44, 108, 200), [
+        { x: 240, y: 620, w: 600, h: 28, hp: 400 },
+        { x: 360, y: 820, w: 360, h: 28, hp: 400 },
+      ], { recommendedTimeMs: 265_000 }),
+      mk(48, "肃清者·灭绝光炮", "magma", () => [], [], { isBoss: true, boss: "desolator", recommendedTimeMs: 500_000 }),
+
+      // 49 过渡关：银河系外虚空
+      mk(49, "不可观测之域", "infinity", () => multiWave([
+        [8, 7, 6, 5, 4, 3, 2, 1],
+        [8, 7, 6, 5, 4, 3, 2, 1, 7, 8],
+        [8, 7, 6, 5, 4, 3, 2, 1, 7, 8, 6],
+        [8, 7, 6, 5, 4, 3, 2, 1, 7, 8, 6, 5],
+        [8, 7, 6, 5, 4, 3, 2, 1, 7, 8, 6, 5, 4],
+      ], 42, 106, 200), [
+        { x: 160, y: 640, w: 80, h: 340, hp: 300 },
+        { x: 320, y: 640, w: 80, h: 340, hp: 300 },
+        { x: 480, y: 820, w: 120, h: 36, hp: 400 },
+        { x: 680, y: 640, w: 80, h: 340, hp: 300 },
+        { x: 840, y: 640, w: 80, h: 340, hp: 300 },
+      ], { recommendedTimeMs: 280_000, gravity: 0.12 }),
+
+      // 50 终极BOSS：利维坦Ω
+      mk(50, "Ω·超维利维坦·万物终局", "omega", () => [], [], { isBoss: true, boss: "leviathan", recommendedTimeMs: 600_000 }),
+    ];
+
+    return [...L1_10, ...L11_30, ...L31_40, ...L41_50];
   }
 )();
 
-/** 30 成就（id 作为解锁键），L11-L30 新增 15 项。 */
+/** 40 成就（id 作为解锁键），L11-L30 新增 15 项，L31-L50 新增 10 项。 */
 export const ACHIEVEMENTS: Achievement[] = [
   { id: "first_blood", name: "首杀", desc: "首次消灭任意一名外星单位。", icon: "🩸" },
   { id: "score_10k", name: "十连击人", desc: "单局累计得分达到 10,000 分。", icon: "🏅" },
@@ -347,6 +489,7 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: "score_100k", name: "星空传奇", desc: "单局累计得分达到 100,000 分。", icon: "🏆" },
   { id: "score_250k", name: "银河之巅", desc: "单局累计得分达到 250,000 分。", icon: "👑" },
   { id: "score_500k", name: "星海传说", desc: "单局累计得分达到 500,000 分。", icon: "🌟" },
+  { id: "score_1m", name: "百万星辰", desc: "单局累计得分达到 1,000,000 分。", icon: "💠" },
   { id: "clear_lv3", name: "首战告捷", desc: "击败第 3 关 BOSS：外星护卫者。", icon: "🛡️" },
   { id: "clear_lv6", name: "毒菌克星", desc: "击败第 6 关 BOSS：腐蚀者。", icon: "🧪" },
   { id: "clear_lv9", name: "击穿舰队", desc: "击败第 9 关 BOSS：元首母舰。", icon: "🚀" },
@@ -358,10 +501,21 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: "clear_lv24", name: "要塞攻陷", desc: "击败第 24 关 BOSS：壁垒守卫。", icon: "🏰" },
   { id: "clear_lv27", name: "深渊猎人", desc: "击败第 27 关 BOSS：虚无饕餮。", icon: "🕳️" },
   { id: "clear_lv30", name: "星海皇者", desc: "通关第 30 关终极利维坦。", icon: "🐋" },
+  // ===== L31-L50 新增通关成就 =====
+  { id: "clear_lv33", name: "血座倾覆", desc: "击败第 33 关 BOSS：星界军阀。", icon: "👑" },
+  { id: "clear_lv36", name: "壁垒粉碎", desc: "击败第 36 关 BOSS：壁垒守卫·强化核心。", icon: "🏚️" },
+  { id: "clear_lv39", name: "裂界截流", desc: "击败第 39 关 BOSS：虚无饕餮·裂界吞噬。", icon: "⚫" },
+  { id: "clear_lv42", name: "旗舰覆灭", desc: "击败第 42 关 BOSS：木星霸主·究极旗舰。", icon: "🚢" },
+  { id: "clear_lv44", name: "次元啸声", desc: "击败第 44 关 BOSS：星环神龙·次元咆哮。", icon: "🌀" },
+  { id: "clear_lv46", name: "虚空狩猎", desc: "击败第 46 关 BOSS：幽影猎手·虚空回响。", icon: "🕸️" },
+  { id: "clear_lv48", name: "光炮湮灭", desc: "击败第 48 关 BOSS：肃清者·灭绝光炮。", icon: "☢️" },
+  { id: "clear_lv50", name: "Ω·万物终局", desc: "通关第 50 关超维利维坦Ω。", icon: "🧿" },
+  // ===== 通用操作/挑战 =====
   { id: "flawless", name: "无伤破关", desc: "任意普通关卡以 100% 剩余生命通关。", icon: "💯" },
   { id: "flawless_boss", name: "神乎其技", desc: "任意 BOSS 战以 100% 剩余生命通关。", icon: "🔥" },
   { id: "grade_s", name: "完美节奏", desc: "任意关卡获得 S 级评分。", icon: "✨" },
   { id: "grade_s_10", name: "双 S 收藏家", desc: "累计 10 个关卡获得 S 级评分。", icon: "💫" },
+  { id: "grade_s_30", name: "S 级收藏家", desc: "累计 30 个关卡获得 S 级评分。", icon: "🌈" },
   { id: "skill_master", name: "技能大师", desc: "单局释放 10 次主动技能。", icon: "🎯" },
   { id: "skill_overload", name: "过载引擎", desc: "单局释放 30 次主动技能。", icon: "⚙️" },
   { id: "upgrade_any", name: "初次强化", desc: "使用技能点升级任意 1 个技能。", icon: "🛠️" },
@@ -371,6 +525,7 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: "no_powerups", name: "赤手空拳", desc: "不使用主动技能通关任意 1 个普通关卡。", icon: "🥋" },
   { id: "no_powerups_boss", name: "剑道至尊", desc: "不使用主动技能通关任意 1 个 BOSS 关卡。", icon: "⚔️" },
   { id: "level_clear_30", name: "30 关达成", desc: "完成所有 30 个关卡。", icon: "🎊" },
+  { id: "level_clear_50", name: "50 关达成·宇宙征服", desc: "完成所有 50 个关卡。", icon: "🏮" },
 ];
 
 /** S/A/B/C 综合评分规则（BOSS 倍率随关卡进度提升，技能点奖励上限更高）。 */

@@ -674,7 +674,8 @@ export const Container: React.FC<ContainerProps> = (props) => {
       save.skillPoints += clr.skillPointReward;
       save.unlockedAchievements = Array.from(achStateRef.current.unlocked);
       saveSlot(save);
-      tryClearLevelAchievements(achStateRef.current, clr.level, clr.hpLeftPct, clr.skillsUsed, statsRef.current.totalDamageTaken);
+      const clrIsBoss = !!LEVELS[clr.level - 1]?.isBoss;
+      tryClearLevelAchievements(achStateRef.current, clr.level, clr.hpLeftPct, clr.skillsUsed, statsRef.current.totalDamageTaken, clrIsBoss);
       save.unlockedAchievements = Array.from(achStateRef.current.unlocked);
       saveSlot(save);
       playSFX("levelup");

@@ -41,7 +41,8 @@ export function drawParallax(
   profile: QualityProfile,
   themeBg:
   | "nebula" | "crimson" | "asteroid" | "void" | "forge"
-  | "aurora" | "storm" | "magma" | "frost" | "abyss" | "galaxy" | "pulse" | "solitude",
+  | "aurora" | "storm" | "magma" | "frost" | "abyss" | "galaxy" | "pulse" | "solitude"
+  | "eclipse" | "empyrean" | "chronos" | "cosmos" | "infinity" | "oblivion" | "omega",
 ): void {
   const GRADS: Record<string, [string, string]> = {
     nebula:   ["#0b1026", "#221649"],
@@ -57,6 +58,14 @@ export function drawParallax(
     galaxy:   ["#0b0226", "#4c1d95"],
     pulse:    ["#170a2e", "#831843"],
     solitude: ["#020617", "#1e293b"],
+    // L31+ 新主题
+    eclipse:  ["#0a0018", "#312e81"],       // 日食：深紫→蓝紫
+    empyrean: ["#021a2e", "#1d4ed8"],       // 苍天：深蓝→亮蓝
+    chronos:  ["#042f2e", "#0d9488"],       // 时空：墨绿→青绿
+    cosmos:   ["#0b0320", "#6d28d9"],       // 宇宙：深紫→亮紫
+    infinity: ["#060018", "#7c3aed"],       // 无限：暗黑紫→紫粉
+    oblivion: ["#0a0000", "#450a0a"],       // 湮灭：纯黑→血红
+    omega:    ["#1c1917", "#a16207"],       // Ω 终章：深棕→金色（至尊色）
   };
   const [cA, cB] = GRADS[themeBg] || GRADS.void;
   const g = ctx.createLinearGradient(0, 0, 0, WORLD.HEIGHT);
