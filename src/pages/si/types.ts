@@ -31,6 +31,15 @@ export interface PlayerRuntime {
   critMul: number;        // p5_crit 暴击倍率 2.0..3.0
   lifestealPct: number;   // p6_lifesteal 吸血比例 0.05..0.15
   armorPct: number;       // p7_armor 减伤比例 0.10..0.30
+  homingTurnRate: number; // p8_homing 追踪转向速率（弧度/秒），0=无追踪
+  wingmanCount: number;   // p9_wingman 僚机数量 0..2
+  reviveCount: number;    // p10_revive 本关可复活次数
+  reviveUsedCount: number; // p10_revive 本关已用复活次数
+  // s4_shield 超级防御盾：> now 表示处于无视所有伤害状态
+  superShieldUntilMs: number;
+  // p11_shiplevel 战机等级：子弹额外伤害加成比例与每次开火子弹数
+  shipLevelDmgPct: number; // 额外伤害加成 0..0.30
+  shipLevelBullets: number; // 单次开火子弹数 1..3
 }
 
 export interface EnemyRuntime {
@@ -72,6 +81,18 @@ export interface BulletRuntime {
   kind: "normal" | "laser" | "big" | "spread";
   lifeMs: number;
   alive: boolean;
+  // p8_homing 追踪弹道：> 0 表示追踪转向速率，目标自动锁定最近敌人
+  homingTurnRate?: number;
+  targetId?: number; // 追踪目标 ID（-1/undefined = 未锁定）
+}
+
+/** 僚机运行时实体：跟随玩家移动并自动开火。 */
+export interface WingmanRuntime {
+  id: number;
+  x: number; y: number;
+  offsetX: number; // 相对玩家的 X 偏移（-60 或 +60）
+  fireCooldownMs: number;
+  alive: boolean;
 }
 
 export interface BossRuntime {
@@ -86,12 +107,13 @@ export interface BossRuntime {
 }
 
 export type SkillId =
-  // 主动技能（3）
-  | "s1_missile" | "s2_emp" | "s3_timewarp"
-  // 被动技能（7）
+  // 主动技能（4）
+  | "s1_missile" | "s2_emp" | "s3_timewarp" | "s4_shield"
+  // 被动技能（11）
   | "p1_power" | "p2_regen" | "p3_maxhp" | "p4_maxenergy"
-  | "p5_crit" | "p6_lifesteal" | "p7_armor";
-export type SkillSlot = 0 | 1 | 2; // 主动技能槽
+  | "p5_crit" | "p6_lifesteal" | "p7_armor"
+  | "p8_homing" | "p9_wingman" | "p10_revive" | "p11_shiplevel";
+export type SkillSlot = 0 | 1 | 2 | 3; // 主动技能槽
 export type SkillLevel = 0 | 1 | 2 | 3;
 
 export interface SkillDefinition {
@@ -119,6 +141,14 @@ export interface SkillDefinition {
     empStunMs?: number;      // s2_emp 眩晕时长
     empShieldBreakMs?: number; // s2_emp 护盾失效时长
     timeScale?: number;       // s3_timewarp 时间流速倍率
+    homingTurnRate?: number;  // p8_homing 追踪转向速率（弧度/秒）
+    wingmanCount?: number;    // p9_wingman 僚机数量
+    wingmanDmgPct?: number;   // p9_wingman 僚机伤害比例（相对主武器）
+    reviveCount?: number;     // p10_revive 可复活次数
+    reviveHpPct?: number;     // p10_revive 复活恢复 HP 比例
+    shieldDurationMs?: number; // s4_shield 超级防御盾持续时间
+    shipLevelDmgPct?: number; // p11_shiplevel 战机等级额外伤害加成
+    shipLevelBullets?: number; // p11_shiplevel 战机等级单次开火子弹数
   }>;
 }
 

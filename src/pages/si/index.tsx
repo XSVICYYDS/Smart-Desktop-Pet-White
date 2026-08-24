@@ -10,6 +10,7 @@ import {
   clampLv, computePlayerBulletDamage, createInitialSkillState, tickSkills, tryCastActive,
   applyPassiveSkills, spawnMissiles, tickMissiles, applyEmp, applyLifesteal, applyArmorReduction,
   getEnemyTimeScale, isEnemyStunned,
+  tickHomingBullets, createWingmen, tickWingmen, tryRevive, isSuperShieldActive,
 } from "./game/SkillSystem";
 import { resetEnemyIds, spawnEnemy, stepEnemy } from "./game/EnemyFactory";
 
@@ -37,7 +38,7 @@ import { GameOverScreen } from "./ui/GameOverScreen";
 import { LevelSelect } from "./ui/LevelSelect";
 
 import type { InputMode, LevelClearResult, PlayerRuntime, ScreenState, SkillId, SkillLevel, SkillRuntimeState } from "./types";
-import type { BossRuntime, BulletRuntime, EnemyRuntime, MissileRuntime } from "./types";
+import type { BossRuntime, BulletRuntime, EnemyRuntime, MissileRuntime, WingmanRuntime } from "./types";
 
 import {
   createAchievementState, onAchievementUnlock, unlockAchievement,
@@ -149,6 +150,8 @@ export const Container: React.FC<ContainerProps> = (props) => {
     shieldHits: 0, shieldUntilMs: 0, speedBoostUntilMs: 0,
     fireCooldownMs: 0, invulnUntilMs: 0,
     critRate: 0, critMul: 2.0, lifestealPct: 0, armorPct: 0,
+    homingTurnRate: 0, wingmanCount: 0, reviveCount: 0, reviveUsedCount: 0,
+    superShieldUntilMs: 0, shipLevelDmgPct: 0, shipLevelBullets: 1,
   });
 
   const makeSkills = (s: SaveSlot): SkillRuntimeState => ({
@@ -160,6 +163,7 @@ export const Container: React.FC<ContainerProps> = (props) => {
   const skillsRef = useRef<SkillRuntimeState>(makeSkills(save));
   const bulletsRef = useRef<BulletRuntime[]>([]);
   const missilesRef = useRef<MissileRuntime[]>([]);
+  const wingmenRef = useRef<WingmanRuntime[]>([]);
   const levelRuntimeRef = useRef<LevelRuntime | null>(null);
   const bossRef = useRef<BossRuntime | null>(null);
   const scoreRef = useRef<number>(0);
@@ -214,6 +218,7 @@ export const Container: React.FC<ContainerProps> = (props) => {
     }
     bulletsRef.current = [];
     missilesRef.current = [];
+    wingmenRef.current = createWingmen(skillsRef.current, playerRef.current);
     levelRuntimeRef.current = lv;
     clearResultRef.current = null;
     statsRef.current = { killed: 0, skillsUsed: 0, totalDamageTaken: 0 };
@@ -265,6 +270,7 @@ export const Container: React.FC<ContainerProps> = (props) => {
       if (k === "q") castSlot(0);
       if (k === "e") castSlot(1);
       if (k === "shift") castSlot(2);
+      if (k === "r") castSlot(3);
     };
     const onUp = (e: KeyboardEvent) => { keysRef.current[e.key.toLowerCase()] = false; };
     window.addEventListener("keydown", onDown);
@@ -313,7 +319,7 @@ export const Container: React.FC<ContainerProps> = (props) => {
   }, [screen, currentLevelIndex]);
 
   /** 主动技能释放。 */
-  function castSlot(slot: 0 | 1 | 2): void {
+  function castSlot(slot: 0 | 1 | 2 | 3): void {
     if (screen !== "playing") return;
     const now = performance.now();
     const r = tryCastActive(skillsRef.current, slot, playerRef.current, now);
@@ -342,6 +348,12 @@ export const Container: React.FC<ContainerProps> = (props) => {
       // 时间扭曲：减缓敌人时间流速
       playSFX("haste");
       fireTransition("skill-haste", "时间扭曲", `时间流速 ×${r.cfg.timeScale ?? 0.5}，持续 ${((r.cfg.durationMs || 0) / 1000).toFixed(1)} 秒`);
+    } else if (r.skill === "s4_shield") {
+      // 超级防御盾：30 秒无视所有伤害
+      playSFX("shield");
+      spawnBurst(particlesRef.current, p.x, p.y - 20, 60, ["#a5f3fc", "#67e8f9", "#22d3ee", "#0e7490", "#dbeafe"], 8, 5, 900);
+      if (profile.enableLighting) addLight(lightingRef.current, p.x, p.y - 20, 220, "#a5f3fc", 0.8);
+      fireTransition("skill-shield", "超级防御盾", `无敌 ${((r.cfg.durationMs || 30_000) / 1000).toFixed(0)} 秒 · 无视所有伤害`);
     }
     if (statsRef.current.skillsUsed >= 10) unlockAchs(["skill_master"]);
   }
@@ -396,14 +408,29 @@ export const Container: React.FC<ContainerProps> = (props) => {
     }
   }
 
-  /** 按玩家操作开火；isCrit 控制暴击弹道颜色与尺寸。 */
+  /** 按玩家操作开火；isCrit 控制暴击弹道颜色与尺寸，homingTurnRate 启用追踪。
+   *  p11_shiplevel 战机等级 ≥2 时按散射角度发射多发子弹。 */
   function firePlayerBullet(dmg: number, isCrit: boolean): void {
     const p = playerRef.current;
-    bulletsRef.current.push({
-      id: BULLET_ID++, x: p.x, y: p.y - 44,
-      vx: 0, vy: -BALANCE.PLAYER_BULLET_SPEED, dmg,
-      from: "player", kind: isCrit ? "big" : "normal", lifeMs: 3500, alive: true,
-    });
+    const skills = skillsRef.current;
+    const count = Math.max(1, p.shipLevelBullets || 1);
+    // 散射角度：1 发=0°，2 发=±8°，3 发=-12°/0°/+12°
+    const angles: number[] = [];
+    if (count === 1) angles.push(0);
+    else if (count === 2) { angles.push(-8, 8); }
+    else { angles.push(-12, 0, 12); }
+    for (const deg of angles) {
+      const rad = (deg * Math.PI) / 180;
+      const vx = Math.sin(rad) * BALANCE.PLAYER_BULLET_SPEED;
+      const vy = -Math.cos(rad) * BALANCE.PLAYER_BULLET_SPEED;
+      bulletsRef.current.push({
+        id: BULLET_ID++, x: p.x, y: p.y - 44,
+        vx, vy, dmg,
+        from: "player", kind: isCrit ? "big" : "normal", lifeMs: 3500, alive: true,
+        homingTurnRate: p.homingTurnRate > 0 ? p.homingTurnRate : undefined,
+        targetId: -1,
+      });
+    }
     playSFX("shoot");
     if (isCrit) {
       spawnBurst(particlesRef.current, p.x, p.y - 44, 6, ["#fde047", "#facc15"], 2.5, 2, 300);
@@ -415,13 +442,14 @@ export const Container: React.FC<ContainerProps> = (props) => {
     inputDirRef.current = dx;
     inputDirYRef.current = dy;
   }, []);
-  const onTouchBtn = useCallback((which: "shoot" | "s1" | "s2" | "s3", pressed: boolean) => {
+  const onTouchBtn = useCallback((which: "shoot" | "s1" | "s2" | "s3" | "s4", pressed: boolean) => {
     if (which === "shoot") { shootBtnRef.current = pressed; return; }
     if (pressed) {
       ensureAudio();
       if (which === "s1") castSlot(0);
       if (which === "s2") castSlot(1);
       if (which === "s3") castSlot(2);
+      if (which === "s4") castSlot(3);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -492,6 +520,25 @@ export const Container: React.FC<ContainerProps> = (props) => {
     p.y = Math.max(WORLD.HEIGHT * 0.50, Math.min(WORLD.HEIGHT - 90, p.y));
 
     tickSkills(skills, p, dtMs, now);
+
+    // ===== 追踪弹道更新：自动锁定最近敌人并转向 =====
+    tickHomingBullets(bulletsRef.current, lr.enemies, dtMs);
+
+    // ===== 僚机更新：跟随玩家 + 自动开火 =====
+    const wingmanShots = tickWingmen(wingmenRef.current, p, skills, dtMs, now);
+    for (const ws of wingmanShots) {
+      bulletsRef.current.push({
+        id: BULLET_ID++, x: ws.x, y: ws.y,
+        vx: 0, vy: -BALANCE.PLAYER_BULLET_SPEED, dmg: ws.dmg,
+        from: "player", kind: ws.isCrit ? "big" : "normal",
+        lifeMs: 3500, alive: true,
+        homingTurnRate: p.homingTurnRate > 0 ? p.homingTurnRate : undefined,
+        targetId: -1,
+      });
+      if (ws.isCrit) {
+        spawnBurst(particlesRef.current, ws.x, ws.y, 4, ["#fde047", "#facc15"], 2, 1.5, 250);
+      }
+    }
 
     p.fireCooldownMs -= dtMs;
     const k2 = keysRef.current;
@@ -605,6 +652,11 @@ export const Container: React.FC<ContainerProps> = (props) => {
       } else {
         if (intersectsAABB(bulletBox, pBox) && p.invulnUntilMs <= now) {
           bl.alive = false;
+          // s4_shield 超级防御盾：激活期间无视所有伤害
+          if (isSuperShieldActive(p, now)) {
+            spawnBurst(particlesRef.current, p.x, p.y - 20, 8, ["#a5f3fc", "#67e8f9", "#22d3ee"], 4, 3, 400);
+            continue;
+          }
           if (tryBlock(p, now)) {
             spawnFloatText(floatsRef.current, p.x, p.y - 60, "格挡!", "#93c5fd", 22, 700);
             spawnBurst(particlesRef.current, p.x, p.y - 18, 10, ["#93c5fd", "#dbeafe"], 3.4, 3, 500);
@@ -629,6 +681,11 @@ export const Container: React.FC<ContainerProps> = (props) => {
       if (!en.alive) continue;
       if (en.y > WORLD.HEIGHT - 90) {
         en.alive = false;
+        // s4_shield 超级防御盾：突破防线时也无视伤害
+        if (isSuperShieldActive(p, now)) {
+          spawnBurst(particlesRef.current, p.x, p.y - 20, 8, ["#a5f3fc", "#67e8f9", "#22d3ee"], 4, 3, 400);
+          continue;
+        }
         if (p.invulnUntilMs <= now && !tryBlock(p, now)) {
           // 突破防线伤害也应用护甲减伤
           const breakDmg = applyArmorReduction(skills, 18);
@@ -687,13 +744,23 @@ export const Container: React.FC<ContainerProps> = (props) => {
     }
 
     if (p.hp <= 0 && screen === "playing") {
-      spawnBurst(particlesRef.current, p.x, p.y - 10, 60, ["#ef4444", "#f97316", "#fbbf24", "#f87171"], 6, 5, 1000);
-      playSFX("boom");
-      if (scoreRef.current > save.bestScore) save.bestScore = scoreRef.current;
-      save.unlockedAchievements = Array.from(achStateRef.current.unlocked);
-      saveSlot(save);
-      props.onFinalize?.(save.bestScore, save.bestScore === scoreRef.current);
-      setScreen("gameover");
+      // ===== 凤凰复活判定：若仍有复活次数，自动复活 =====
+      const reviveResult = tryRevive(skills, p, now);
+      if (reviveResult.revived) {
+        spawnBurst(particlesRef.current, p.x, p.y - 20, 50, ["#fbbf24", "#f97316", "#ef4444", "#fde047"], 6, 5, 900);
+        spawnFloatText(floatsRef.current, p.x, p.y - 60, `凤凰复活 +${reviveResult.hpRestored}`, "#fbbf24", 22, 1000);
+        playSFX("nuke"); // 复活音效借用大招音
+        if (profile.enableLighting) addLight(lightingRef.current, p.x, p.y - 20, 200, "#fbbf24", 0.8);
+      } else {
+        // 复活次数用尽，真正阵亡
+        spawnBurst(particlesRef.current, p.x, p.y - 10, 60, ["#ef4444", "#f97316", "#fbbf24", "#f87171"], 6, 5, 1000);
+        playSFX("boom");
+        if (scoreRef.current > save.bestScore) save.bestScore = scoreRef.current;
+        save.unlockedAchievements = Array.from(achStateRef.current.unlocked);
+        saveSlot(save);
+        props.onFinalize?.(save.bestScore, save.bestScore === scoreRef.current);
+        setScreen("gameover");
+      }
     }
 
     hudThrottleRef.current += dtMs;
@@ -731,6 +798,63 @@ export const Container: React.FC<ContainerProps> = (props) => {
     const bs = bossRef.current;
     if (bs) drawBoss(ctx, bs, performance.now());
     drawPlayer(ctx, playerRef.current, performance.now(), 1);
+
+    // ===== s4_shield 超级防御盾渲染：激活时围绕玩家绘制脉冲护盾环 =====
+    const _p = playerRef.current;
+    const _now = performance.now();
+    if (_p.superShieldUntilMs > _now) {
+      const remainMs = _p.superShieldUntilMs - _now;
+      const pulse = 0.5 + 0.5 * Math.sin(_now / 120);
+      const alpha = Math.min(0.85, 0.35 + pulse * 0.3 + (remainMs < 3000 ? 0.3 : 0));
+      const r = 56 + pulse * 4;
+      ctx.save();
+      ctx.translate(_p.x, _p.y - 20);
+      // 外环
+      ctx.strokeStyle = `rgba(165, 243, 252, ${alpha})`;
+      ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
+      // 内环（六边形网格效果）
+      ctx.strokeStyle = `rgba(103, 232, 249, ${alpha * 0.7})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2 + _now / 600;
+        const x = Math.cos(a) * (r - 8);
+        const y = Math.sin(a) * (r - 8);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.closePath(); ctx.stroke();
+      // 光晕
+      const grad = ctx.createRadialGradient(0, 0, r - 14, 0, 0, r + 12);
+      grad.addColorStop(0, "rgba(165, 243, 252, 0)");
+      grad.addColorStop(0.6, `rgba(103, 232, 249, ${alpha * 0.18})`);
+      grad.addColorStop(1, "rgba(34, 211, 238, 0)");
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.arc(0, 0, r + 12, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      if (profile.enableLighting) addLight(lightingRef.current, _p.x, _p.y - 20, 140, "#a5f3fc", 0.5);
+    }
+
+    // ===== 僚机渲染：小型青色三角形 + 引擎光 =====
+    const wingmen = wingmenRef.current;
+    for (let wi = 0; wi < wingmen.length; wi++) {
+      const w = wingmen[wi];
+      if (!w.alive) continue;
+      ctx.save();
+      ctx.translate(w.x, w.y);
+      // 引擎尾焰
+      ctx.fillStyle = "rgba(34, 211, 238, 0.6)";
+      ctx.beginPath(); ctx.moveTo(-6, 10); ctx.lineTo(0, 22); ctx.lineTo(6, 10); ctx.fill();
+      // 机身（小型三角形）
+      ctx.fillStyle = "#22d3ee";
+      ctx.beginPath(); ctx.moveTo(0, -14); ctx.lineTo(-10, 10); ctx.lineTo(10, 10); ctx.fill();
+      ctx.fillStyle = "#0e7490";
+      ctx.beginPath(); ctx.moveTo(0, -8); ctx.lineTo(-6, 6); ctx.lineTo(6, 6); ctx.fill();
+      // 驾驶舱
+      ctx.fillStyle = "#a5f3fc";
+      ctx.beginPath(); ctx.arc(0, -2, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
 
     const bullets = bulletsRef.current;
     for (let i = 0; i < bullets.length; i++) {
@@ -895,6 +1019,10 @@ export const Container: React.FC<ContainerProps> = (props) => {
               bossHpPct={bossRef.current?.alive ? (bossRef.current.hp / bossRef.current.maxHp) : null}
               bossName={bossRef.current ? bossTitle(bossRef.current.kind) : null}
               skills={skills}
+              reviveCount={p.reviveCount - p.reviveUsedCount}
+              wingmanCount={wingmenRef.current.filter((w) => w.alive).length}
+              superShieldMs={p.superShieldUntilMs > performance.now() ? (p.superShieldUntilMs - performance.now()) : 0}
+              shipLevelBullets={p.shipLevelBullets}
               paused={paused}
               onTogglePause={() => {
                 if (screen === "playing") { setScreen("paused"); playBGM("menu"); fireTransition("pause"); }

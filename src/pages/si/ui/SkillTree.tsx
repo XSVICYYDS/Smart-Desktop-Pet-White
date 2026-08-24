@@ -10,7 +10,7 @@ export interface SkillTreeProps {
   onUpgrade: (id: SkillId) => void;
 }
 
-/** 技能升级树：主动 3 + 被动 2，每技能 4 级。 */
+/** 技能升级树：主动 4 + 被动 11，每技能 4 级。 */
 export const SkillTree: React.FC<SkillTreeProps> = ({ open, onClose, levels, skillPoints, onUpgrade }) => {
   if (!open) return null;
   return (
@@ -25,9 +25,9 @@ export const SkillTree: React.FC<SkillTreeProps> = ({ open, onClose, levels, ski
         </header>
 
         <div className="p-5 space-y-6">
-          <SkillGroup title="主动技能" subtitle="Q 巡航导弹 / E 电磁脉冲 / Shift 时间扭曲（含冷却）" order={ACTIVE_SKILL_ORDER as unknown as SkillId[]}
+          <SkillGroup title="主动技能" subtitle="Q 巡航导弹 / E 电磁脉冲 / ⇧ 时间扭曲 / R 超级防御盾（含冷却）" order={ACTIVE_SKILL_ORDER as unknown as SkillId[]}
             levels={levels} skillPoints={skillPoints} onUpgrade={onUpgrade} tagColor="from-cyan-500 to-blue-600" />
-          <SkillGroup title="被动技能" subtitle="永久生效，升级即获得加成" order={PASSIVE_SKILL_ORDER as unknown as SkillId[]}
+          <SkillGroup title="被动技能" subtitle="11 项被动永久生效：攻强/回血/生命/能量/暴击/吸血/护甲/追踪/僚机/复活/战机等级" order={PASSIVE_SKILL_ORDER as unknown as SkillId[]}
             levels={levels} skillPoints={skillPoints} onUpgrade={onUpgrade} tagColor="from-rose-500 to-orange-500" />
         </div>
       </div>
@@ -109,6 +109,9 @@ const EffectBlock: React.FC<{ id: SkillId; lv: SkillLevel }> = ({ id, lv }) => {
   if (id === "s3_timewarp") {
     if (cfg.timeScale) lines.push(`时间流速：×${cfg.timeScale.toFixed(2)}`);
   }
+  if (id === "s4_shield") {
+    if (cfg.durationMs) lines.push(`无敌持续：${(cfg.durationMs / 1000).toFixed(0)}s · 无视所有伤害`);
+  }
   // 被动技能效果
   if (id === "p1_power" && cfg.dmgBonusPct) lines.push(`基础伤害 +${Math.round(cfg.dmgBonusPct * 100)}%`);
   if (id === "p2_regen" && cfg.regenPctPer10s) lines.push(`每 10s 恢复生命：${Math.round(cfg.regenPctPer10s * 100)}%`);
@@ -120,6 +123,23 @@ const EffectBlock: React.FC<{ id: SkillId; lv: SkillLevel }> = ({ id, lv }) => {
   }
   if (id === "p6_lifesteal" && cfg.lifestealPct) lines.push(`吸血比例：${Math.round(cfg.lifestealPct * 100)}%`);
   if (id === "p7_armor" && cfg.armorPct) lines.push(`伤害减免：${Math.round(cfg.armorPct * 100)}%`);
+  if (id === "p8_homing") {
+    if (cfg.homingTurnRate) lines.push(`追踪转向：${cfg.homingTurnRate.toFixed(1)} rad/s`);
+    else lines.push(`未激活追踪`);
+  }
+  if (id === "p9_wingman") {
+    if (cfg.wingmanCount) lines.push(`僚机数量：${cfg.wingmanCount} 架`);
+    if (cfg.wingmanDmgPct) lines.push(`僚机伤害：${Math.round(cfg.wingmanDmgPct * 100)}%`);
+  }
+  if (id === "p10_revive") {
+    if (cfg.reviveCount) lines.push(`复活次数：${cfg.reviveCount} 次/关`);
+    if (cfg.reviveHpPct) lines.push(`复活恢复：${Math.round(cfg.reviveHpPct * 100)}% HP`);
+  }
+  if (id === "p11_shiplevel") {
+    if (cfg.shipLevelDmgPct) lines.push(`额外伤害：+${Math.round(cfg.shipLevelDmgPct * 100)}%`);
+    else lines.push(`未激活战机进阶`);
+    if (cfg.shipLevelBullets) lines.push(`开火子弹：${cfg.shipLevelBullets} 发/次`);
+  }
   return (
     <ul className="mt-3 space-y-1 text-xs text-slate-200/90">
       {lines.map((l, i) => <li key={i}>• {l}</li>)}

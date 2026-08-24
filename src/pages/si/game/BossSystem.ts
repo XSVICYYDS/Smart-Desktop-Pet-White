@@ -13,11 +13,11 @@ const HP_BY_KIND: Record<BossKind, number> = {
   hunter: 5600,
   desolator: 7200,
   overlord: 9000,
-  dragon: 12500,      // L21：+1500，匹配 3 主动技能解锁后的输出
-  sentinel: 15000,    // L24：+1500
-  warlord: 17500,     // L25 (备用)：+1500
-  devourer: 21500,    // L27：+2500
-  leviathan: 28000,   // L30：+3000，终关配合 500s 限时
+  dragon: 11000,
+  sentinel: 13500,
+  warlord: 16000,
+  devourer: 19000,
+  leviathan: 25000,
 };
 
 /** 每关 BOSS 的起始 Y、尺寸（影响绘制与弱点）。 */
@@ -226,21 +226,17 @@ export function tickBoss(b: BossRuntime, dtMs: number, playerX: number, playerY:
       break;
     }
     case "dragon": {
-      // 星环神龙：龙头吐息 + 双环逆向（L21 加快节奏）
-      b.cooldownMs = Math.max(180, 720 / phaseMul);
+      // 星环神龙：龙头吐息 + 双环逆向
+      b.cooldownMs = Math.max(200, 800 / phaseMul);
       out.push(...fanTowardsPlayer(b, playerX, playerY, 9, 0.12, 440, 12, "normal"));
       const N = 18 + b.phase * 4;
       out.push(...radialRing(b, N, 260, 10, b.patternT, "spread"));
       out.push(...radialRing(b, Math.round(N * 0.75), 360, 11, -b.patternT * 0.8, "big"));
-      if (b.phase >= 2) {
-        // 第三阶段：追加追踪激光
-        out.push(...fanTowardsPlayer(b, playerX, playerY, 3, 0.20, 600, 16, "laser"));
-      }
       break;
     }
     case "sentinel": {
-      // 壁垒守卫：慢速重炮 + 8 方向墙 + 追踪巨型弹（L24 加快重炮）
-      b.cooldownMs = Math.max(260, 980 / phaseMul);
+      // 壁垒守卫：慢速重炮 + 8 方向墙 + 追踪巨型弹
+      b.cooldownMs = Math.max(290, 1120 / phaseMul);
       for (let i = 0; i < 10; i++) {
         const a = (-Math.PI / 2) + (i - 4.5) * 0.18;
         out.push(bossBullet(b.x, b.y + 40, Math.cos(a) * 320, Math.sin(a) * 320 + 140, 13, "big"));
@@ -249,15 +245,11 @@ export function tickBoss(b: BossRuntime, dtMs: number, playerX: number, playerY:
       if (b.phase >= 1) {
         for (let i = -3; i <= 3; i++) out.push(bossBullet(b.x + i * 120, b.y + 60, 0, 280 + b.phase * 60, 11));
       }
-      if (b.phase >= 2) {
-        // 第三阶段：环形弹幕
-        out.push(...radialRing(b, 16, 280, 12, b.patternT * 0.6, "spread"));
-      }
       break;
     }
     case "warlord": {
       // 星界军阀：高射速三联扇形 + 环形 + 激光连射
-      b.cooldownMs = Math.max(160, 640 / phaseMul);
+      b.cooldownMs = Math.max(170, 680 / phaseMul);
       out.push(...fanTowardsPlayer(b, playerX, playerY, 7, 0.15, 460, 12, "normal"));
       out.push(...fanTowardsPlayer(b, playerX, playerY, 5, 0.10, 560, 15, "laser"));
       if (b.phase >= 2) {
@@ -267,8 +259,8 @@ export function tickBoss(b: BossRuntime, dtMs: number, playerX: number, playerY:
       break;
     }
     case "devourer": {
-      // 虚无饕餮：巨大吸力环 + 多向扩散 + 追踪重力弹（L27 加快）
-      b.cooldownMs = Math.max(220, 920 / phaseMul);
+      // 虚无饕餮：巨大吸力环 + 多向扩散 + 追踪重力弹
+      b.cooldownMs = Math.max(260, 1040 / phaseMul);
       const N1 = 22 + b.phase * 6;
       const N2 = 14 + b.phase * 4;
       out.push(...radialRing(b, N1, 200, 10, b.patternT * 0.25, "spread"));
@@ -277,15 +269,11 @@ export function tickBoss(b: BossRuntime, dtMs: number, playerX: number, playerY:
         const a = Math.atan2(playerY - b.y, playerX - b.x) + i * 0.18;
         out.push(bossBullet(b.x, b.y + 30, Math.cos(a) * 500, Math.sin(a) * 500, 16, "big"));
       }
-      if (b.phase >= 2) {
-        // 第三阶段：增加密集激光
-        out.push(...fanTowardsPlayer(b, playerX, playerY, 5, 0.14, 620, 18, "laser"));
-      }
       break;
     }
     case "leviathan": {
-      // 终极利维坦：超重型弹幕——四环混合 + 追踪激光 + 主炮（L30 终极强化）
-      b.cooldownMs = Math.max(170, 720 / phaseMul);
+      // 终极利维坦：超重型弹幕——四环混合 + 追踪激光 + 主炮
+      b.cooldownMs = Math.max(190, 780 / phaseMul);
       const R1 = 18 + b.phase * 6;
       const R2 = 24 + b.phase * 6;
       out.push(...radialRing(b, R1, 200, 10, b.patternT * 0.4, "spread"));
@@ -293,14 +281,9 @@ export function tickBoss(b: BossRuntime, dtMs: number, playerX: number, playerY:
       out.push(...radialRing(b, 12, 440, 13, b.patternT * 0.2 + 0.3, "big"));
       out.push(...fanTowardsPlayer(b, playerX, playerY, 7, 0.10, 560, 15, "laser"));
       out.push(...fanTowardsPlayer(b, playerX, playerY, 1, 0, 680, 24, "big"));
-      if (b.phase >= 1) {
-        // 第二阶段：追加两侧激光
-        out.push(...fanTowardsPlayer(b, playerX, playerY, 5, 0.18, 580, 16, "laser"));
-      }
       if (b.phase >= 2) {
-        // 最终阶段：再加一对扇形 + 全屏环形
+        // 最终阶段：再加一对扇形
         out.push(...fanTowardsPlayer(b, playerX, playerY, 11, 0.12, 500, 14, "normal"));
-        out.push(...radialRing(b, 28, 260, 12, b.patternT * 0.8, "spread"));
       }
       break;
     }

@@ -1,18 +1,20 @@
 import React from "react";
 
 export interface TouchControlsProps {
-  onMove: (dx: -1 | 0 | 1, dy: number) => void; // dx 由摇杆水平分量给出；dy 预留
-  onButton: (which: "shoot" | "s1" | "s2" | "s3", pressed: boolean) => void;
+  /** 虚拟摇杆：dx/dy ∈ {-1, 0, 1}，上下 dy=-1 表示向上（向画布顶部）。 */
+  onMove: (dx: -1 | 0 | 1, dy: -1 | 0 | 1) => void;
+  onButton: (which: "shoot" | "s1" | "s2" | "s3" | "s4", pressed: boolean) => void;
 }
 
-/** 触屏控件：左虚拟摇杆 + 右下 4 按钮（射击/大招/护盾/加速），全部 ≥44px。 */
+/** 触屏控件：左虚拟摇杆（8方向） + 右下 4 按钮，全部 ≥44px。 */
 export const TouchControls: React.FC<TouchControlsProps> = ({ onMove, onButton }) => {
   const joyRef = React.useRef<HTMLDivElement | null>(null);
   const knobRef = React.useRef<HTMLDivElement | null>(null);
   const touchIdRef = React.useRef<number | null>(null);
   const centerRef = React.useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-  const lastDirRef = React.useRef<-1 | 0 | 1>(0);
+  const lastDirRef = React.useRef<{ x: -1 | 0 | 1; y: -1 | 0 | 1 }>({ x: 0, y: 0 });
 
+  /** 将摇杆位移归一化到 8 方向。 */
   const updateJoy = (x: number, y: number): void => {
     const c = centerRef.current;
     const dx = x - c.x;
@@ -24,11 +26,14 @@ export const TouchControls: React.FC<TouchControlsProps> = ({ onMove, onButton }
     const k = knobRef.current;
     if (k) { k.style.transform = `translate3d(${kx}px, ${ky}px, 0)`; }
     const normX = R > 0 ? Math.max(-1, Math.min(1, dx / R)) : 0;
-    // 阈值 0.25 避免手抖
-    const nextDir: -1 | 0 | 1 = normX < -0.25 ? -1 : normX > 0.25 ? 1 : 0;
-    if (nextDir !== lastDirRef.current) {
-      lastDirRef.current = nextDir;
-      onMove(nextDir, 0);
+    const normY = R > 0 ? Math.max(-1, Math.min(1, dy / R)) : 0;
+    const threshold = 0.25;
+    const nextX: -1 | 0 | 1 = normX < -threshold ? -1 : normX > threshold ? 1 : 0;
+    const nextY: -1 | 0 | 1 = normY < -threshold ? -1 : normY > threshold ? 1 : 0;
+    const last = lastDirRef.current;
+    if (nextX !== last.x || nextY !== last.y) {
+      lastDirRef.current = { x: nextX, y: nextY };
+      onMove(nextX, nextY);
     }
   };
 
@@ -52,7 +57,8 @@ export const TouchControls: React.FC<TouchControlsProps> = ({ onMove, onButton }
     touchIdRef.current = null;
     const k = knobRef.current;
     if (k) k.style.transform = "translate3d(0,0,0)";
-    if (lastDirRef.current !== 0) { lastDirRef.current = 0; onMove(0, 0); }
+    const last = lastDirRef.current;
+    if (last.x !== 0 || last.y !== 0) { lastDirRef.current = { x: 0, y: 0 }; onMove(0, 0); }
   };
 
   return (
@@ -73,6 +79,8 @@ export const TouchControls: React.FC<TouchControlsProps> = ({ onMove, onButton }
           onDown={(p) => onButton("s2", p)} />
         <ActionBtn label="加速 S3" sub="⚡" color="from-emerald-500 to-cyan-500"
           onDown={(p) => onButton("s3", p)} />
+        <ActionBtn label="无敌 S4" sub="🛡️" color="from-cyan-500 to-teal-500"
+          onDown={(p) => onButton("s4", p)} />
       </div>
     </div>
   );

@@ -4,13 +4,15 @@ import type { SaveSlot, SkillId, SkillLevel } from "../types";
 
 const PREFIX = "si_save_v1_";
 const SKILLS_ALL: SkillId[] = [
-  "s1_missile", "s2_emp", "s3_timewarp",
+  "s1_missile", "s2_emp", "s3_timewarp", "s4_shield",
   "p1_power", "p2_regen", "p3_maxhp", "p4_maxenergy", "p5_crit", "p6_lifesteal", "p7_armor",
+  "p8_homing", "p9_wingman", "p10_revive", "p11_shiplevel",
 ];
 
 const zeroSkills = (): Record<SkillId, SkillLevel> => ({
-  s1_missile: 0, s2_emp: 0, s3_timewarp: 0,
+  s1_missile: 0, s2_emp: 0, s3_timewarp: 0, s4_shield: 0,
   p1_power: 0, p2_regen: 0, p3_maxhp: 0, p4_maxenergy: 0, p5_crit: 0, p6_lifesteal: 0, p7_armor: 0,
+  p8_homing: 0, p9_wingman: 0, p10_revive: 0, p11_shiplevel: 0,
 });
 
 export function emptySlot(slot: 0 | 1 | 2): SaveSlot {

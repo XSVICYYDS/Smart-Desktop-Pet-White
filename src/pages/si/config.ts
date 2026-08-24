@@ -75,6 +75,16 @@ export const SKILLS: Record<string, SkillDefinition> = {
       { energyCost: 80, cooldownMs: 45_000, durationMs: 8_000, timeScale: 0.50 },
     ],
   },
+  s4_shield: {
+    id: "s4_shield", name: "超级防御盾", icon: "🛡️", isActive: true,
+    desc: "激活无敌护盾，30 秒内无视所有伤害。",
+    levels: [
+      { energyCost: 90, cooldownMs: 90_000, durationMs: 30_000 },
+      { energyCost: 90, cooldownMs: 80_000, durationMs: 30_000 },
+      { energyCost: 90, cooldownMs: 70_000, durationMs: 30_000 },
+      { energyCost: 90, cooldownMs: 60_000, durationMs: 30_000 },
+    ],
+  },
   // ===== 被动技能（7）=====
   p1_power: {
     id: "p1_power", name: "攻击强化", icon: "🔫", isActive: false,
@@ -144,6 +154,46 @@ export const SKILLS: Record<string, SkillDefinition> = {
       { energyCost: 0, cooldownMs: 0, armorPct: 0.16 },
       { energyCost: 0, cooldownMs: 0, armorPct: 0.22 },
       { energyCost: 0, cooldownMs: 0, armorPct: 0.30 },
+    ],
+  },
+  p8_homing: {
+    id: "p8_homing", name: "追踪弹道", icon: "🎯", isActive: false,
+    desc: "主武器子弹自动追踪最近敌人，实现百分百命中。",
+    levels: [
+      { energyCost: 0, cooldownMs: 0, homingTurnRate: 0 },      // Lv0 无追踪
+      { energyCost: 0, cooldownMs: 0, homingTurnRate: 1.8 },    // Lv1 轻度追踪
+      { energyCost: 0, cooldownMs: 0, homingTurnRate: 3.0 },    // Lv2 中度追踪
+      { energyCost: 0, cooldownMs: 0, homingTurnRate: 4.5 },    // Lv3 强力追踪（百分百命中）
+    ],
+  },
+  p9_wingman: {
+    id: "p9_wingman", name: "僚机护航", icon: "✈️", isActive: false,
+    desc: "召唤僚机跟随玩家移动并自动开火，协同作战。",
+    levels: [
+      { energyCost: 0, cooldownMs: 0, wingmanCount: 0, wingmanDmgPct: 0 },    // Lv0 无僚机
+      { energyCost: 0, cooldownMs: 0, wingmanCount: 1, wingmanDmgPct: 0.40 }, // Lv1 1架僚机 40%伤害
+      { energyCost: 0, cooldownMs: 0, wingmanCount: 1, wingmanDmgPct: 0.70 }, // Lv2 1架僚机 70%伤害
+      { energyCost: 0, cooldownMs: 0, wingmanCount: 2, wingmanDmgPct: 1.00 }, // Lv3 2架僚机 100%伤害
+    ],
+  },
+  p10_revive: {
+    id: "p10_revive", name: "凤凰复活", icon: "🔥", isActive: false,
+    desc: "阵亡时自动复活，每关可用 1~2 次，恢复 30%~60% 生命。",
+    levels: [
+      { energyCost: 0, cooldownMs: 0, reviveCount: 0, reviveHpPct: 0 },    // Lv0 无复活
+      { energyCost: 0, cooldownMs: 0, reviveCount: 1, reviveHpPct: 0.30 }, // Lv1 1次复活 30%HP
+      { energyCost: 0, cooldownMs: 0, reviveCount: 1, reviveHpPct: 0.60 }, // Lv2 1次复活 60%HP
+      { energyCost: 0, cooldownMs: 0, reviveCount: 2, reviveHpPct: 0.60 }, // Lv3 2次复活 60%HP
+    ],
+  },
+  p11_shiplevel: {
+    id: "p11_shiplevel", name: "战机等级", icon: "⭐", isActive: false,
+    desc: "战机进阶：每级提升子弹杀伤力与单次开火子弹量，Lv3 三向散射。",
+    levels: [
+      { energyCost: 0, cooldownMs: 0, shipLevelDmgPct: 0,    shipLevelBullets: 1 }, // Lv0 基础 1 发
+      { energyCost: 0, cooldownMs: 0, shipLevelDmgPct: 0.10, shipLevelBullets: 1 }, // Lv1 +10% 伤害 1 发
+      { energyCost: 0, cooldownMs: 0, shipLevelDmgPct: 0.20, shipLevelBullets: 2 }, // Lv2 +20% 伤害 2 发散射
+      { energyCost: 0, cooldownMs: 0, shipLevelDmgPct: 0.30, shipLevelBullets: 3 }, // Lv3 +30% 伤害 3 发三向散射
     ],
   },
 };
@@ -658,7 +708,7 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: "skill_master", name: "技能大师", desc: "单局释放 10 次主动技能。", icon: "🎯" },
   { id: "skill_overload", name: "过载引擎", desc: "单局释放 30 次主动技能。", icon: "⚙️" },
   { id: "upgrade_any", name: "初次强化", desc: "使用技能点升级任意 1 个技能。", icon: "🛠️" },
-  { id: "all_upgrade_max", name: "全技能满级", desc: "10 个技能全部达到 Lv3。", icon: "💎" },
+  { id: "all_upgrade_max", name: "全技能满级", desc: "15 个技能全部达到 Lv3。", icon: "💎" },
   { id: "bullet_dodger", name: "弹道芭蕾", desc: "单局累计承受伤害 < 25 且通关任意 BOSS 战。", icon: "💃" },
   { id: "bullet_phantom", name: "幻影步法", desc: "单局累计承受伤害 < 10 且通关任意 L13+ BOSS。", icon: "👣" },
   { id: "no_powerups", name: "赤手空拳", desc: "不使用主动技能通关任意 1 个普通关卡。", icon: "🥋" },
@@ -689,5 +739,5 @@ export function calcGrade(params: { timeMs: number; recommendedMs: number; hpPct
   return { grade, skillPointReward: baseSp * bossMul, score: total };
 }
 
-export const ACTIVE_SKILL_ORDER = ["s1_missile", "s2_emp", "s3_timewarp"] as const;
-export const PASSIVE_SKILL_ORDER = ["p1_power", "p2_regen", "p3_maxhp", "p4_maxenergy", "p5_crit", "p6_lifesteal", "p7_armor"] as const;
+export const ACTIVE_SKILL_ORDER = ["s1_missile", "s2_emp", "s3_timewarp", "s4_shield"] as const;
+export const PASSIVE_SKILL_ORDER = ["p1_power", "p2_regen", "p3_maxhp", "p4_maxenergy", "p5_crit", "p6_lifesteal", "p7_armor", "p8_homing", "p9_wingman", "p10_revive", "p11_shiplevel"] as const;
