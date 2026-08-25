@@ -273,6 +273,33 @@ export const LEVELS: LevelDef[] = (
       return out;
     };
 
+    /**
+     * 超高难度多波次生成器（L101+ 专用）：
+     * - 强度递增：tier 从 5 起步，敌人类型轮换更凶
+     * - 波数随关卡进度增加（5-8 波）
+     * - 每波行数随关卡进度增加（3-4 行）
+     * - 列数固定 8 列，pad/startY 由调用方传入
+     */
+    const tierWavesEx = (lv: number, pad: number, startY: number, waveCount?: number): WaveSpawn[][] => {
+      const tier = Math.floor((lv - 101) / 10) + 5;         // 5..9 (L101-110=5, L141-150=9)
+      const wc = waveCount ?? Math.min(8, 5 + Math.floor((lv - 101) / 15)); // 5..8 波
+      const rowsPerWave = Math.min(4, 3 + Math.floor((lv - 101) / 20));     // 3..4 行/波
+      const out: WaveSpawn[][] = [];
+      for (let w = 0; w < wc; w++) {
+        const wave: WaveSpawn[] = [];
+        const colsN = 8;
+        for (let r = 0; r < rowsPerWave; r++) {
+          for (let c = 0; c < colsN; c++) {
+            // 从强到弱填充：第 0 行=8, 第 1 行=7, 第 2 行=6, 第 3 行=5（循环）
+            const kind = ((8 - (r % 8)) + tier) % 9 as EnemyKind;
+            wave.push({ kind, x: 160 + c * pad, y: startY + r * (pad - 12) });
+          }
+        }
+        out.push(wave);
+      }
+      return out;
+    };
+
     const L1_10: LevelDef[] = [
       mk(1, "前哨侦察", "nebula", () => rows(4, 8, 78, 156, 220, [0, 0, 1, 0])),
       mk(2, "前线交火", "nebula", () => rows(5, 8, 78, 156, 200, [0, 1, 0, 4]), [
@@ -653,11 +680,84 @@ export const LEVELS: LevelDef[] = (
       mk(100, "ΩΩ·超维利维坦·多元宇宙终焉", "omega", () => [], [], { isBoss: true, boss: "leviathan", recommendedTimeMs: 800_000 }),
     ];
 
-    return [...L1_10, ...L11_30, ...L31_40, ...L41_50, ...L51_100];
+    // ===== L101-L150：存在之终焉征程 —— 10 大终极星域 × 5 关，每 5 关 1 个 BOSS =====
+    const L101_150: LevelDef[] = [
+      // ===== L101-L105 量子泡沫 (boss: leviathan @ L105) =====
+      mk(101, "量子涨落", "empyrean", () => tierWavesEx(101, 44, 200), tierBlocks(0), { recommendedTimeMs: 620_000, gravity: 0.10 }),
+      mk(102, "虚粒子海", "storm", () => tierWavesEx(102, 42, 200), tierBlocks(1), { recommendedTimeMs: 640_000 }),
+      mk(103, "量子纠缠", "cosmos", () => tierWavesEx(103, 42, 200), tierBlocks(2), { recommendedTimeMs: 660_000, gravity: 0.12 }),
+      mk(104, "泡沫边界", "oblivion", () => tierWavesEx(104, 40, 200), tierBlocks(3), { recommendedTimeMs: 680_000 }),
+      mk(105, "量子利维坦·泡沫终焉", "omega", () => [], [], { isBoss: true, boss: "leviathan", recommendedTimeMs: 820_000 }),
+
+      // ===== L106-L110 弦理论振动 (boss: warlord @ L110) =====
+      mk(106, "弦振动", "nebula", () => tierWavesEx(106, 40, 200), tierBlocks(0), { recommendedTimeMs: 700_000, gravity: 0.10 }),
+      mk(107, "十一维空间", "aurora", () => tierWavesEx(107, 40, 200), tierBlocks(1), { recommendedTimeMs: 720_000 }),
+      mk(108, "紧致化流形", "forge", () => tierWavesEx(108, 38, 200), tierBlocks(2), { recommendedTimeMs: 740_000, gravity: 0.12 }),
+      mk(109, "弦共振", "pulse", () => tierWavesEx(109, 38, 200), tierBlocks(3), { recommendedTimeMs: 760_000 }),
+      mk(110, "星界军阀·弦理论征服", "oblivion", () => [], [], { isBoss: true, boss: "warlord", recommendedTimeMs: 840_000 }),
+
+      // ===== L111-L115 多维折叠 (boss: devourer @ L115) =====
+      mk(111, "维度折叠", "abyss", () => tierWavesEx(111, 38, 200), tierBlocks(0), { recommendedTimeMs: 760_000, gravity: 0.08 }),
+      mk(112, "卡拉比-丘流形", "void", () => tierWavesEx(112, 38, 200), tierBlocks(1), { recommendedTimeMs: 780_000 }),
+      mk(113, "超空间通道", "eclipse", () => tierWavesEx(113, 36, 200), tierBlocks(2), { recommendedTimeMs: 800_000, gravity: 0.10 }),
+      mk(114, "折叠尽头", "solitude", () => tierWavesEx(114, 36, 200), tierBlocks(3), { recommendedTimeMs: 820_000 }),
+      mk(115, "虚无饕餮·多维吞噬", "oblivion", () => [], [], { isBoss: true, boss: "devourer", recommendedTimeMs: 860_000 }),
+
+      // ===== L116-L120 时空奇点 (boss: sentinel @ L120) =====
+      mk(116, "奇点视界", "galaxy", () => tierWavesEx(116, 36, 200), tierBlocks(0), { recommendedTimeMs: 820_000, gravity: 0.10 }),
+      mk(117, "事件视界", "cosmos", () => tierWavesEx(117, 36, 200), tierBlocks(1), { recommendedTimeMs: 840_000 }),
+      mk(118, "因果律破碎", "chronos", () => tierWavesEx(118, 34, 200), tierBlocks(2), { recommendedTimeMs: 860_000, gravity: 0.12 }),
+      mk(119, "奇点核心", "forge", () => tierWavesEx(119, 34, 200), tierBlocks(3), { recommendedTimeMs: 880_000 }),
+      mk(120, "壁垒守卫·奇点铁壁", "crimson", () => [], [], { isBoss: true, boss: "sentinel", recommendedTimeMs: 880_000 }),
+
+      // ===== L121-L125 虚空混沌 (boss: dragon @ L125) =====
+      mk(121, "混沌之海", "infinity", () => tierWavesEx(121, 34, 200), tierBlocks(0), { recommendedTimeMs: 880_000, gravity: 0.10 }),
+      mk(122, "蝴蝶效应", "empyrean", () => tierWavesEx(122, 34, 200), tierBlocks(1), { recommendedTimeMs: 900_000 }),
+      mk(123, "熵增极限", "cosmos", () => tierWavesEx(123, 32, 200), tierBlocks(2), { recommendedTimeMs: 920_000, gravity: 0.12 }),
+      mk(124, "混沌终结", "galaxy", () => tierWavesEx(124, 32, 200), tierBlocks(3), { recommendedTimeMs: 940_000 }),
+      mk(125, "星环神龙·混沌咆哮", "omega", () => [], [], { isBoss: true, boss: "dragon", recommendedTimeMs: 900_000 }),
+
+      // ===== L126-L130 奇点坍缩 (boss: overlord @ L130) =====
+      mk(126, "引力坍缩", "frost", () => tierWavesEx(126, 32, 200), tierBlocks(0), { recommendedTimeMs: 920_000, gravity: 0.10 }),
+      mk(127, "黑洞边缘", "abyss", () => tierWavesEx(127, 32, 200), tierBlocks(1), { recommendedTimeMs: 940_000 }),
+      mk(128, "奇点爆发", "storm", () => tierWavesEx(128, 30, 200), tierBlocks(2), { recommendedTimeMs: 960_000, gravity: 0.12 }),
+      mk(129, "坍缩临界", "void", () => tierWavesEx(129, 30, 200), tierBlocks(3), { recommendedTimeMs: 980_000 }),
+      mk(130, "木星霸主·坍缩统治", "forge", () => [], [], { isBoss: true, boss: "overlord", recommendedTimeMs: 920_000 }),
+
+      // ===== L131-L135 量子纠缠 (boss: hunter @ L135) =====
+      mk(131, "纠缠态", "chronos", () => tierWavesEx(131, 30, 200), tierBlocks(0), { recommendedTimeMs: 960_000, gravity: 0.10 }),
+      mk(132, "量子退相干", "eclipse", () => tierWavesEx(132, 30, 200), tierBlocks(1), { recommendedTimeMs: 980_000 }),
+      mk(133, "叠加态", "solitude", () => tierWavesEx(133, 28, 200), tierBlocks(2), { recommendedTimeMs: 1_000_000, gravity: 0.12 }),
+      mk(134, "测量坍缩", "infinity", () => tierWavesEx(134, 28, 200), tierBlocks(3), { recommendedTimeMs: 1_020_000 }),
+      mk(135, "幽影猎手·量子暗影", "abyss", () => [], [], { isBoss: true, boss: "hunter", recommendedTimeMs: 940_000 }),
+
+      // ===== L136-L140 热寂终点 (boss: desolator @ L140) =====
+      mk(136, "热寂前夜", "cosmos", () => tierWavesEx(136, 28, 200), tierBlocks(0), { recommendedTimeMs: 1_000_000, gravity: 0.10 }),
+      mk(137, "熵最大化", "oblivion", () => tierWavesEx(137, 28, 200), tierBlocks(1), { recommendedTimeMs: 1_020_000 }),
+      mk(138, "最终状态", "omega", () => tierWavesEx(138, 26, 200), tierBlocks(2), { recommendedTimeMs: 1_040_000, gravity: 0.12 }),
+      mk(139, "热寂降临", "magma", () => tierWavesEx(139, 26, 200), tierBlocks(3), { recommendedTimeMs: 1_060_000 }),
+      mk(140, "肃清者·热寂灭绝", "crimson", () => [], [], { isBoss: true, boss: "desolator", recommendedTimeMs: 960_000 }),
+
+      // ===== L141-L145 大撕裂 (boss: fuhrer @ L145) =====
+      mk(141, "暗能量加速", "pulse", () => tierWavesEx(141, 26, 200), tierBlocks(0), { recommendedTimeMs: 1_040_000, gravity: 0.10 }),
+      mk(142, "星系分离", "solitude", () => tierWavesEx(142, 26, 200), tierBlocks(1), { recommendedTimeMs: 1_060_000 }),
+      mk(143, "原子撕裂", "eclipse", () => tierWavesEx(143, 24, 200), tierBlocks(2), { recommendedTimeMs: 1_080_000, gravity: 0.12 }),
+      mk(144, "撕裂极限", "infinity", () => tierWavesEx(144, 24, 200), tierBlocks(3), { recommendedTimeMs: 1_100_000 }),
+      mk(145, "元首本体·大撕裂EX", "forge", () => [], [], { isBoss: true, boss: "fuhrer", recommendedTimeMs: 980_000 }),
+
+      // ===== L146-L150 存在之终焉 (boss: leviathan ΩΩΩ @ L150) =====
+      mk(146, "存在之问", "omega", () => tierWavesEx(146, 24, 200), tierBlocks(0), { recommendedTimeMs: 1_080_000, gravity: 0.12 }),
+      mk(147, "虚无与存在", "chronos", () => tierWavesEx(147, 24, 200), tierBlocks(1), { recommendedTimeMs: 1_100_000, gravity: 0.14 }),
+      mk(148, "终极真理", "cosmos", () => tierWavesEx(148, 22, 200), tierBlocks(2), { recommendedTimeMs: 1_120_000, gravity: 0.15 }),
+      mk(149, "万物归一", "empyrean", () => tierWavesEx(149, 22, 200), tierBlocks(3), { recommendedTimeMs: 1_140_000, gravity: 0.15 }),
+      mk(150, "ΩΩΩ·超维利维坦·存在之终焉", "omega", () => [], [], { isBoss: true, boss: "leviathan", recommendedTimeMs: 1_200_000 }),
+    ];
+
+    return [...L1_10, ...L11_30, ...L31_40, ...L41_50, ...L51_100, ...L101_150];
   }
 )();
 
-/** 60 成就（id 作为解锁键），L11-L30 新增 15 项，L31-L50 新增 10 项，L51-L100 新增 12 项。 */
+/** 72 成就（id 作为解锁键），L11-L30 新增 15 项，L31-L50 新增 10 项，L51-L100 新增 12 项，L101-L150 新增 12 项。 */
 export const ACHIEVEMENTS: Achievement[] = [
   { id: "first_blood", name: "首杀", desc: "首次消灭任意一名外星单位。", icon: "🩸" },
   { id: "score_10k", name: "十连击人", desc: "单局累计得分达到 10,000 分。", icon: "🏅" },
@@ -698,6 +798,17 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: "clear_lv90", name: "长城灭绝", desc: "击败第 90 关 BOSS：肃清者·长城灭绝。", icon: "💀" },
   { id: "clear_lv95", name: "宇宙边缘EX", desc: "击败第 95 关 BOSS：元首本体·宇宙边缘EX。", icon: "🎖️" },
   { id: "clear_lv100", name: "ΩΩ·多元宇宙终焉", desc: "通关第 100 关超维利维坦·多元宇宙终焉。", icon: "🔮" },
+  // ===== L101-L150 新增通关成就 =====
+  { id: "clear_lv105", name: "泡沫终焉", desc: "击败第 105 关 BOSS：量子利维坦·泡沫终焉。", icon: "🌊" },
+  { id: "clear_lv110", name: "弦理论征服", desc: "击败第 110 关 BOSS：星界军阀·弦理论征服。", icon: "🎻" },
+  { id: "clear_lv115", name: "多维吞噬", desc: "击败第 115 关 BOSS：虚无饕餮·多维吞噬。", icon: "📐" },
+  { id: "clear_lv120", name: "奇点铁壁", desc: "击败第 120 关 BOSS：壁垒守卫·奇点铁壁。", icon: "⬛" },
+  { id: "clear_lv125", name: "混沌咆哮", desc: "击败第 125 关 BOSS：星环神龙·混沌咆哮。", icon: "🐲" },
+  { id: "clear_lv130", name: "坍缩统治", desc: "击败第 130 关 BOSS：木星霸主·坍缩统治。", icon: "🌌" },
+  { id: "clear_lv135", name: "量子暗影", desc: "击败第 135 关 BOSS：幽影猎手·量子暗影。", icon: "🔭" },
+  { id: "clear_lv140", name: "热寂灭绝", desc: "击败第 140 关 BOSS：肃清者·热寂灭绝。", icon: "🌡️" },
+  { id: "clear_lv145", name: "大撕裂EX", desc: "击败第 145 关 BOSS：元首本体·大撕裂EX。", icon: "💥" },
+  { id: "clear_lv150", name: "存在之终焉", desc: "通关第 150 关超维利维坦·存在之终焉。", icon: "🔮" },
   // ===== 通用操作/挑战 =====
   { id: "flawless", name: "无伤破关", desc: "任意普通关卡以 100% 剩余生命通关。", icon: "💯" },
   { id: "flawless_boss", name: "神乎其技", desc: "任意 BOSS 战以 100% 剩余生命通关。", icon: "🔥" },
@@ -717,6 +828,8 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: "level_clear_50", name: "50 关达成·宇宙征服", desc: "完成所有 50 个关卡。", icon: "🏮" },
   { id: "level_clear_75", name: "75 关达成·长城穿越", desc: "完成所有 75 个关卡。", icon: "🏯" },
   { id: "level_clear_100", name: "100 关达成·多元宇宙征服", desc: "完成所有 100 个关卡。", icon: "🏆" },
+  { id: "level_clear_125", name: "125 关达成·混沌穿越", desc: "完成所有 125 个关卡。", icon: "🌀" },
+  { id: "level_clear_150", name: "150 关达成·存在之终焉", desc: "完成所有 150 个关卡。", icon: "🔱" },
 ];
 
 /** S/A/B/C 综合评分规则（BOSS 倍率随关卡进度提升，技能点奖励上限更高）。 */

@@ -1,4 +1,4 @@
-/** 成就系统（15 项）：事件钩子 + 解锁记录。 */
+/** 成就系统（72 项）：事件钩子 + 解锁记录。 */
 import { ACHIEVEMENTS } from "../config";
 import type { Achievement } from "../types";
 
@@ -45,6 +45,7 @@ const BOSS_CLEAR_LEVELS = [
   3, 6, 9, 10, 13, 15, 18, 21, 24, 27, 30,
   33, 36, 39, 42, 44, 46, 48, 50,
   55, 60, 65, 70, 75, 80, 85, 90, 95, 100,
+  105, 110, 115, 120, 125, 130, 135, 140, 145, 150,
 ];
 
 export function tryClearLevelAchievements(
@@ -68,6 +69,8 @@ export function tryClearLevelAchievements(
   if (level >= 50) { const u = unlockAchievement(s, "level_clear_50"); if (u) out.push(u); }
   if (level >= 75) { const u = unlockAchievement(s, "level_clear_75"); if (u) out.push(u); }
   if (level >= 100) { const u = unlockAchievement(s, "level_clear_100"); if (u) out.push(u); }
+  if (level >= 125) { const u = unlockAchievement(s, "level_clear_125"); if (u) out.push(u); }
+  if (level >= 150) { const u = unlockAchievement(s, "level_clear_150"); if (u) out.push(u); }
   // ===== 挑战类 =====
   if (!isBoss && hpPct >= 0.999) { const u = unlockAchievement(s, "flawless"); if (u) out.push(u); }
   if (isBoss && hpPct >= 0.999) { const u = unlockAchievement(s, "flawless_boss"); if (u) out.push(u); }

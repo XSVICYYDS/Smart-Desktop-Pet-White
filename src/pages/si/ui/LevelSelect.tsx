@@ -27,6 +27,14 @@ const THEME_GRAD: Record<string, string> = {
   galaxy: "from-fuchsia-700/40 to-violet-900/40",
   pulse: "from-pink-600/40 to-rose-900/40",
   solitude: "from-slate-700/40 to-slate-900/40",
+  // ===== L31+ 新增主题 =====
+  eclipse: "from-zinc-800/40 to-rose-950/40",
+  empyrean: "from-amber-400/40 to-yellow-700/40",
+  cosmos: "from-violet-600/40 to-fuchsia-900/40",
+  chronos: "from-teal-500/40 to-emerald-900/40",
+  infinity: "from-cyan-400/40 to-blue-900/40",
+  oblivion: "from-slate-800/40 to-purple-950/40",
+  omega: "from-red-500/40 via-fuchsia-800/40 to-indigo-950/40",
 };
 
 export const LevelSelect: React.FC<LevelSelectProps> = ({ open, unlockedLevel, currentLevel, onPick, onClose }) => {
