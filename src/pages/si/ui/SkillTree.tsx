@@ -1,4 +1,8 @@
-import React from "react";
+/**
+ * 技能升级树：主动 4 + 被动 11，每技能 4 级。
+ * 集成自定义垂直滚动条：支持鼠标拖动 + 滚轮双模式控制，60fps 平滑滚动。
+ */
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ACTIVE_SKILL_ORDER, PASSIVE_SKILL_ORDER, SKILLS } from "../config";
 import type { SkillId, SkillLevel } from "../types";
 
@@ -10,26 +14,166 @@ export interface SkillTreeProps {
   onUpgrade: (id: SkillId) => void;
 }
 
-/** 技能升级树：主动 4 + 被动 11，每技能 4 级。 */
+/** 自定义平滑滚动容器：支持鼠标滚轮 + 拖动滚动条，60fps 平滑过渡。 */
+const SmoothScrollContainer: React.FC<{
+  children: React.ReactNode;
+  className?: string;
+}> = ({ children, className = "" }) => {
+  const contentRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const thumbRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [maxScroll, setMaxScroll] = useState(0);
+  const [thumbH, setThumbH] = useState(40);
+  const draggingRef = useRef(false);
+  const dragStartYRef = useRef(0);
+  const dragStartScrollRef = useRef(0);
+  const rafRef = useRef<number>(0);
+  const targetScrollRef = useRef(0);
+  const currentScrollRef = useRef(0);
+
+  /** 重新计算滚动范围与滑块高度。 */
+  const recalc = useCallback(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    const ms = Math.max(0, el.scrollHeight - el.clientHeight);
+    setMaxScroll(ms);
+    const ratio = el.clientHeight / Math.max(1, el.scrollHeight);
+    setThumbH(Math.max(40, Math.round(el.clientHeight * ratio)));
+  }, []);
+
+  /** 平滑滚动动画循环：线性插值逼近目标位置，保持 60fps。 */
+  const smoothTick = useCallback(() => {
+    rafRef.current = 0;
+    const diff = targetScrollRef.current - currentScrollRef.current;
+    if (Math.abs(diff) < 0.5) {
+      currentScrollRef.current = targetScrollRef.current;
+    } else {
+      currentScrollRef.current += diff * 0.22;
+      rafRef.current = requestAnimationFrame(smoothTick);
+    }
+    setScrollTop(currentScrollRef.current);
+  }, []);
+
+  /** 设置目标滚动位置并启动平滑动画。 */
+  const scrollTo = useCallback((target: number) => {
+    const clamped = Math.max(0, Math.min(maxScroll, target));
+    targetScrollRef.current = clamped;
+    if (!rafRef.current) rafRef.current = requestAnimationFrame(smoothTick);
+  }, [maxScroll, smoothTick]);
+
+  /** 鼠标滚轮事件：灵敏度可调节，延迟 <100ms。 */
+  const onWheel = useCallback((e: React.WheelEvent) => {
+    const sensitivity = 1.2; // 滚轮灵敏度系数
+    scrollTo(targetScrollRef.current + e.deltaY * sensitivity);
+  }, [scrollTo]);
+
+  /** 滚动条拖动开始。 */
+  const onThumbMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    draggingRef.current = true;
+    dragStartYRef.current = e.clientY;
+    dragStartScrollRef.current = targetScrollRef.current;
+  }, []);
+
+  /** 拖动中 + 全局 mouseup/mousemove 处理。 */
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!draggingRef.current || !scrollRef.current) return;
+      const trackH = scrollRef.current.clientHeight - thumbH;
+      if (trackH <= 0) return;
+      const dy = e.clientY - dragStartYRef.current;
+      const scrollRatio = dy / trackH;
+      scrollTo(dragStartScrollRef.current + scrollRatio * maxScroll);
+    };
+    const onUp = () => { draggingRef.current = false; };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [maxScroll, thumbH, scrollTo]);
+
+  /** 同步 DOM scrollTop 到 React state。 */
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    el.scrollTop = scrollTop;
+  }, [scrollTop]);
+
+  /** 初始化 + 窗口 resize 时重算。 */
+  useEffect(() => {
+    recalc();
+    const t = setTimeout(recalc, 100);
+    window.addEventListener("resize", recalc);
+    return () => { clearTimeout(t); window.removeEventListener("resize", recalc); };
+  }, [recalc]);
+
+  const showTrack = maxScroll > 2;
+  const thumbY = maxScroll > 0 ? (scrollTop / maxScroll) * (scrollRef.current?.clientHeight ?? 0 - thumbH) : 0;
+  const atTop = scrollTop <= 0.5;
+  const atBottom = scrollTop >= maxScroll - 0.5;
+
+  return (
+    <div className={`relative flex ${className}`}>
+      <div
+        ref={contentRef}
+        onWheel={onWheel}
+        className="flex-1 overflow-y-auto si-scroll-content"
+        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+      >
+        <style>{`.si-scroll-content::-webkit-scrollbar{display:none}`}</style>
+        {children}
+      </div>
+      {showTrack && (
+        <div
+          ref={scrollRef}
+          className="relative w-3 ml-2 flex-shrink-0 rounded-full bg-white/5 border border-white/10"
+          style={{ minHeight: "100%" }}
+        >
+          {/* 顶部边界反馈 */}
+          {atTop && <div className="absolute top-0 inset-x-0 h-1 rounded-t-full bg-cyan-400/40" />}
+          {/* 滑块 */}
+          <div
+            ref={thumbRef}
+            onMouseDown={onThumbMouseDown}
+            className="absolute inset-x-0 rounded-full cursor-grab active:cursor-grabbing transition-colors hover:bg-cyan-300/80"
+            style={{
+              height: `${thumbH}px`,
+              top: `${Math.max(0, Math.min(maxScroll > 0 ? (scrollRef.current?.clientHeight ?? 0) - thumbH : 0, thumbY))}px`,
+              background: "linear-gradient(180deg, rgba(34,211,238,0.7), rgba(6,182,212,0.7))",
+            }}
+          />
+          {/* 底部边界反馈 */}
+          {atBottom && <div className="absolute bottom-0 inset-x-0 h-1 rounded-b-full bg-cyan-400/40" />}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/** 技能升级树主组件。 */
 export const SkillTree: React.FC<SkillTreeProps> = ({ open, onClose, levels, skillPoints, onUpgrade }) => {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="w-full max-w-4xl rounded-3xl bg-slate-900 text-white border border-white/10 shadow-2xl overflow-hidden max-h-[92vh] overflow-auto">
-        <header className="sticky top-0 bg-slate-900/95 z-10 flex items-center justify-between px-5 py-4 border-b border-white/10">
+      <div className="w-full max-w-4xl rounded-3xl bg-slate-900 text-white border border-white/10 shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
+        <header className="flex-shrink-0 bg-slate-900/95 z-10 flex items-center justify-between px-5 py-4 border-b border-white/10">
           <div>
             <div className="text-xl font-black">🎯 技能配置</div>
             <p className="text-xs text-slate-300/80 mt-1">可用技能点：<span className="text-emerald-300 font-bold">{skillPoints}</span> · 每技能最多 Lv3。</p>
           </div>
           <button className="rounded-xl bg-white/10 hover:bg-white/20 px-3 py-2 text-sm" onClick={onClose}>关闭 ✕</button>
         </header>
-
-        <div className="p-5 space-y-6">
-          <SkillGroup title="主动技能" subtitle="Q 巡航导弹 / E 电磁脉冲 / ⇧ 时间扭曲 / R 超级防御盾（含冷却）" order={ACTIVE_SKILL_ORDER as unknown as SkillId[]}
-            levels={levels} skillPoints={skillPoints} onUpgrade={onUpgrade} tagColor="from-cyan-500 to-blue-600" />
-          <SkillGroup title="被动技能" subtitle="11 项被动永久生效：攻强/回血/生命/能量/暴击/吸血/护甲/追踪/僚机/复活/战机等级" order={PASSIVE_SKILL_ORDER as unknown as SkillId[]}
-            levels={levels} skillPoints={skillPoints} onUpgrade={onUpgrade} tagColor="from-rose-500 to-orange-500" />
-        </div>
+        <SmoothScrollContainer className="flex-1 max-h-[78vh] p-5">
+          <div className="space-y-6 pr-1">
+            <SkillGroup title="主动技能" subtitle="Q 巡航导弹 / E 电磁脉冲 / ⇧ 时间扭曲 / R 超级防御盾（含冷却）" order={ACTIVE_SKILL_ORDER as unknown as SkillId[]}
+              levels={levels} skillPoints={skillPoints} onUpgrade={onUpgrade} tagColor="from-cyan-500 to-blue-600" />
+            <SkillGroup title="被动技能" subtitle="11 项被动永久生效：攻强/回血/生命/能量/暴击/吸血/护甲/追踪/僚机/复活/战机等级" order={PASSIVE_SKILL_ORDER as unknown as SkillId[]}
+              levels={levels} skillPoints={skillPoints} onUpgrade={onUpgrade} tagColor="from-rose-500 to-orange-500" />
+          </div>
+        </SmoothScrollContainer>
       </div>
     </div>
   );

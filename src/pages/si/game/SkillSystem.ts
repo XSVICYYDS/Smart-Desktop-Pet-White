@@ -25,6 +25,8 @@ export function createInitialSkillState(): SkillRuntimeState {
     cooldowns: { 0: 0, 1: 0, 2: 0, 3: 0 },
     levels, lastCastAt,
     timeWarpUntilMs: 0, timeWarpScale: 1,
+    empFieldUntilMs: 0, empFieldX: 0, empFieldY: 0, empFieldRadius: 0,
+    twFieldUntilMs: 0, twFieldX: 0, twFieldY: 0, twFieldRadius: 0,
   };
 }
 
@@ -121,6 +123,14 @@ export function tickSkills(
     state.timeWarpUntilMs = 0;
     state.timeWarpScale = 1;
   }
+  // 时间扭曲场地到期清理
+  if (state.twFieldUntilMs && nowMs > state.twFieldUntilMs) {
+    state.twFieldUntilMs = 0;
+  }
+  // EMP 场地到期清理
+  if (state.empFieldUntilMs && nowMs > state.empFieldUntilMs) {
+    state.empFieldUntilMs = 0;
+  }
 }
 
 /** 尝试释放主动技能；成功返回 true 并扣能量+扣冷却。 */
@@ -140,10 +150,16 @@ export function tryCastActive(
   state.cooldowns[slot] = cfg.cooldownMs;
   state.lastCastAt[skill] = nowMs;
 
-  // 时间扭曲：立即激活
+  // 时间扭曲：立即激活（同时设置全局效果和区域场地）
   if (skill === "s3_timewarp") {
-    state.timeWarpUntilMs = nowMs + (cfg.durationMs || 5_000);
+    const dur = cfg.durationMs || 10_000;
+    state.timeWarpUntilMs = nowMs + dur;
     state.timeWarpScale = cfg.timeScale ?? 0.5;
+    // 设置时间扭曲场地（半径 = 屏幕宽度 25%）
+    state.twFieldUntilMs = nowMs + dur;
+    state.twFieldX = player.x;
+    state.twFieldY = player.y - 20;
+    state.twFieldRadius = 1080 * 0.25; // WORLD.WIDTH * 25% = 270
   }
   // 超级防御盾：立即激活无敌状态
   if (skill === "s4_shield") {
@@ -268,33 +284,54 @@ export function tickMissiles(
 }
 
 /**
- * EMP 释放：对范围内敌人施加眩晕 + 护盾失效。
- * 返回受影响的敌人 ID 列表（供视觉特效使用）。
+ * EMP 释放（增强版）：
+ * 1. 对范围内敌人立即造成 50% 当前生命值伤害（整数）
+ * 2. 设置 10 秒持续场地，期间范围内敌人移动禁止（保留攻击）
+ * 3. 护盾立即击碎 + 失效 10 秒
+ * 返回受影响的敌人 ID 列表 + 场地信息（供视觉特效使用）。
  */
 export function applyEmp(
   state: SkillRuntimeState,
   player: PlayerRuntime,
-  enemies: Array<{ id: number; x: number; y: number; alive: boolean; stunnedUntilMs?: number; shieldDisabledUntilMs?: number; shieldHp?: number }>,
+  enemies: Array<{ id: number; x: number; y: number; hp: number; alive: boolean; stunnedUntilMs?: number; shieldDisabledUntilMs?: number; shieldHp?: number; empFieldUntilMs?: number }>,
   nowMs: number,
-): { hitIds: number[]; radius: number; x: number; y: number } {
+): { hitIds: number[]; radius: number; x: number; y: number; damageDealt: Array<{ id: number; dmg: number }> } {
   const lv = state.levels.s2_emp;
   const cfg = skillLevelCfg("s2_emp", lv);
-  const radius = cfg.empRadius ?? 320;
-  const stunMs = cfg.empStunMs ?? 3_000;
-  const shieldBreakMs = cfg.empShieldBreakMs ?? 5_000;
+  const radius = cfg.empRadius ?? 324;
+  const stunMs = cfg.empStunMs ?? 10_000;
+  const shieldBreakMs = cfg.empShieldBreakMs ?? 10_000;
+  const durationMs = cfg.durationMs ?? 10_000;
+
+  // 设置 EMP 持续场地状态
+  state.empFieldUntilMs = nowMs + durationMs;
+  state.empFieldX = player.x;
+  state.empFieldY = player.y - 20;
+  state.empFieldRadius = radius;
 
   const hitIds: number[] = [];
+  const damageDealt: Array<{ id: number; dmg: number }> = [];
   for (const e of enemies) {
     if (!e.alive) continue;
-    const dist = Math.hypot(e.x - player.x, e.y - player.y);
+    const dist = Math.hypot(e.x - player.x, e.y - (player.y - 20));
     if (dist <= radius) {
+      // 1. 立即造成 50% 当前生命值伤害（整数）
+      const dmg = Math.floor(e.hp * 0.5);
+      if (dmg > 0) {
+        e.hp = Math.max(0, e.hp - dmg);
+        damageDealt.push({ id: e.id, dmg });
+      }
+      // 2. 设置移动禁止（empFieldUntilMs）
+      if (e.empFieldUntilMs !== undefined) e.empFieldUntilMs = nowMs + durationMs;
+      // 3. 眩晕 + 护盾失效（保留向后兼容）
       if (e.stunnedUntilMs !== undefined) e.stunnedUntilMs = nowMs + stunMs;
       if (e.shieldDisabledUntilMs !== undefined) e.shieldDisabledUntilMs = nowMs + shieldBreakMs;
-      if (e.shieldHp !== undefined && e.shieldHp > 0) e.shieldHp = 0; // 立即击碎护盾
+      // 4. 立即击碎护盾
+      if (e.shieldHp !== undefined && e.shieldHp > 0) e.shieldHp = 0;
       hitIds.push(e.id);
     }
   }
-  return { hitIds, radius, x: player.x, y: player.y };
+  return { hitIds, radius, x: player.x, y: player.y - 20, damageDealt };
 }
 
 /**
@@ -309,6 +346,34 @@ export function isEnemyStunned(stunnedUntilMs: number, nowMs: number): boolean {
  */
 export function isEnemyShieldDisabled(shieldDisabledUntilMs: number, nowMs: number): boolean {
   return shieldDisabledUntilMs > nowMs;
+}
+
+/**
+ * 判断敌人是否在 EMP 场地内（移动禁止，但可以攻击）。
+ * 每帧实时检测敌人与场地中心的距离。
+ */
+export function isEnemyInEmpField(
+  state: SkillRuntimeState,
+  enemyX: number, enemyY: number,
+  nowMs: number,
+): boolean {
+  if (state.empFieldUntilMs <= nowMs) return false;
+  const dist = Math.hypot(enemyX - state.empFieldX, enemyY - state.empFieldY);
+  return dist <= state.empFieldRadius;
+}
+
+/**
+ * 判断敌人是否在时间扭曲场地内（移动禁止 + 攻击禁止 + 时间流速 50%）。
+ * 每帧实时检测敌人与场地中心的距离。
+ */
+export function isEnemyInTimeWarpField(
+  state: SkillRuntimeState,
+  enemyX: number, enemyY: number,
+  nowMs: number,
+): boolean {
+  if (state.twFieldUntilMs <= nowMs) return false;
+  const dist = Math.hypot(enemyX - state.twFieldX, enemyY - state.twFieldY);
+  return dist <= state.twFieldRadius;
 }
 
 /**

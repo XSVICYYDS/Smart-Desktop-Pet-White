@@ -1,6 +1,9 @@
 /** 太空侵略者终极版顶层 Container：把 28 模块组合起来对外以单组件暴露。 */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ACHIEVEMENTS, BALANCE, ENEMY_STATS, LEVELS, WORLD } from "./config";
+import {
+  ACHIEVEMENTS, BALANCE, ENEMY_STATS, ENEMY_GOLD_REWARD, LEVELS, RADAR_LEVEL_CONFIG,
+  SHOP_MISSILE_CONFIG, SHOP_MISSILE_MAX, SHOP_UPGRADE_CONFIG, WORLD,
+} from "./config";
 import { useGameLoop } from "./game/useGameLoop";
 import {
   computeDynamicMul, finalizeClear, startLevel, bossKindOfLevel, type LevelRuntime,
@@ -9,7 +12,7 @@ import { applyBossDamage, createBoss, resetBossBulletIds, tickBoss } from "./gam
 import {
   clampLv, computePlayerBulletDamage, createInitialSkillState, tickSkills, tryCastActive,
   applyPassiveSkills, spawnMissiles, tickMissiles, applyEmp, applyLifesteal, applyArmorReduction,
-  getEnemyTimeScale, isEnemyStunned,
+  getEnemyTimeScale, isEnemyStunned, isEnemyInEmpField, isEnemyInTimeWarpField,
   tickHomingBullets, createWingmen, tickWingmen, tryRevive, isSuperShieldActive,
 } from "./game/SkillSystem";
 import { resetEnemyIds, spawnEnemy, stepEnemy } from "./game/EnemyFactory";
@@ -36,9 +39,12 @@ import { TransitionOverlay, type TransitionKind } from "./ui/TransitionOverlay";
 import { TouchControls } from "./ui/TouchControls";
 import { GameOverScreen } from "./ui/GameOverScreen";
 import { LevelSelect } from "./ui/LevelSelect";
+import { Shop } from "./ui/Shop";
+import { RadarMiniMap } from "./ui/RadarMiniMap";
 
 import type { InputMode, LevelClearResult, PlayerRuntime, ScreenState, SkillId, SkillLevel, SkillRuntimeState } from "./types";
 import type { BossRuntime, BulletRuntime, EnemyRuntime, MissileRuntime, WingmanRuntime } from "./types";
+import type { MissileType, ShopMissileRuntime, ShopMissiles, ShopUpgrades, UpgradeType } from "./types";
 
 import {
   createAchievementState, onAchievementUnlock, unlockAchievement,
@@ -51,6 +57,8 @@ import { emptySlot, loadSlot, saveSlot, type SaveSlot } from "./systems/SaveSyst
 import type { QualityTier } from "./engine/HardwareDetect";
 
 let BULLET_ID = 1;
+/** 商店导弹实体 ID 计数器（独立于 BULLET_ID 与 s1 主动技能导弹）。 */
+let SHOP_MISSILE_ID = 1;
 
 export interface ContainerProps {
   onFinalize?: (finalScore: number, isNewRecordHint: boolean) => void;
@@ -110,6 +118,8 @@ export const Container: React.FC<ContainerProps> = (props) => {
   const [savesOpen, setSavesOpen] = useState(false);
   const [achOpen, setAchOpen] = useState(false);
   const [levelSelectOpen, setLevelSelectOpen] = useState(false);
+  const [shopOpen, setShopOpen] = useState(false);   // 神龙殿商店开关（关卡完成后弹出）
+  const [goldTick, setGoldTick] = useState(0);        // 金币 UI 刷新触发器（数字平滑过渡用）
   const [screen, setScreen] = useState<ScreenState>("menu");
   const paused = screen === "paused";
 
@@ -159,11 +169,33 @@ export const Container: React.FC<ContainerProps> = (props) => {
     levels: { ...s.skills },
   });
 
+  /** 从存档构造商店升级等级副本（避免直接改存档引用）。 */
+  const makeShopUpgrades = (s: SaveSlot): ShopUpgrades => ({
+    mainGun: s.shopUpgrades?.mainGun ?? 0,
+    subGun: s.shopUpgrades?.subGun ?? 0,
+    defense: s.shopUpgrades?.defense ?? 0,
+    engine: s.shopUpgrades?.engine ?? 0,
+    radar: s.shopUpgrades?.radar ?? 0,
+  });
+  /** 从存档构造商店导弹持有数副本。 */
+  const makeShopMissiles = (s: SaveSlot): ShopMissiles => ({
+    normal: s.shopMissiles?.normal ?? 0,
+    cruise: s.shopMissiles?.cruise ?? 0,
+    explosion: s.shopMissiles?.explosion ?? 0,
+    pierce: s.shopMissiles?.pierce ?? 0,
+  });
+
   const playerRef = useRef<PlayerRuntime>(makePlayer());
   const skillsRef = useRef<SkillRuntimeState>(makeSkills(save));
   const bulletsRef = useRef<BulletRuntime[]>([]);
   const missilesRef = useRef<MissileRuntime[]>([]);
   const wingmenRef = useRef<WingmanRuntime[]>([]);
+  // ===== 商店系统运行时状态 =====
+  const shopMissileRuntimeRef = useRef<ShopMissileRuntime[]>([]);   // 商店导弹运行时实体
+  const lockedTargetsRef = useRef<Array<{ id: number; x: number; y: number; enemyType: number }>>([]); // 雷达锁定目标列表
+  const goldRef = useRef<number>(save.gold ?? 0);                   // 当前持有金币（运行时）
+  const shopUpgradesRef = useRef<ShopUpgrades>(makeShopUpgrades(save));   // 商店升级等级（运行时）
+  const shopMissilesRef = useRef<ShopMissiles>(makeShopMissiles(save));   // 商店导弹持有数（运行时）
   const levelRuntimeRef = useRef<LevelRuntime | null>(null);
   const bossRef = useRef<BossRuntime | null>(null);
   const scoreRef = useRef<number>(0);
@@ -198,6 +230,35 @@ export const Container: React.FC<ContainerProps> = (props) => {
     for (const id of ids) unlockSingle(st, id);
   };
 
+  /**
+   * 应用商店升级到玩家运行时属性。
+   * - 主炮：+20% 激光伤害 / +15% 充能速度 / +10% 射程（影响 PLAYER_BULLET_DMG 与 FIRE_INTERVAL）
+   * - 副炮：+15% 伤害 / +10% 射速 / +1 弹道（影响 shipLevelBullets 与伤害）
+   * - 防御：+20% 生命 / +5% 减伤（影响 maxHp 与 armorPct）
+   * - 引擎：+15% 移速 / +10% 机动性（影响 baseSpeed）
+   * 升级叠加：每级按比例线性累加，与被动技能叠加。
+   */
+  function applyShopUpgrades(p: PlayerRuntime, su: ShopUpgrades): void {
+    // 主炮：每级 +20% 伤害（叠加到 shipLevelDmgPct），同时缩短开火 CD
+    const mainGunDmgPct = su.mainGun * 0.20;
+    p.shipLevelDmgPct = Math.min(2.0, p.shipLevelDmgPct + mainGunDmgPct);
+    // 主炮充能速度：每级 +15%（缩短开火间隔）
+    const fireIntervalScale = Math.pow(0.85, su.mainGun);
+    p.fireCooldownMs *= fireIntervalScale; // 当前 CD 同步缩短
+    // 副炮：每级 +1 弹道（叠加到 shipLevelBullets，上限 5）
+    p.shipLevelBullets = Math.min(5, p.shipLevelBullets + su.subGun);
+    // 副炮伤害：每级 +15%（叠加到 shipLevelDmgPct）
+    p.shipLevelDmgPct = Math.min(2.0, p.shipLevelDmgPct + su.subGun * 0.15);
+    // 防御：每级 +20% 生命（叠加 maxHp），同步恢复满血
+    const defHpPct = su.defense * 0.20;
+    p.maxHp = Math.round(p.maxHp * (1 + defHpPct));
+    p.hp = p.maxHp;
+    // 防御：每级 +5% 减伤（叠加到 armorPct，上限 0.80）
+    p.armorPct = Math.min(0.80, p.armorPct + su.defense * 0.05);
+    // 引擎：每级 +15% 移速
+    p.baseSpeed = Math.round(p.baseSpeed * Math.pow(1.15, su.engine));
+  }
+
   /** 启动一关。 */
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const bootLevel = useCallback((idx: number) => {
@@ -208,6 +269,14 @@ export const Container: React.FC<ContainerProps> = (props) => {
     skillsRef.current = makeSkills(save);
     playerRef.current = makePlayer();
     applyPassiveSkills(skillsRef.current, playerRef.current);
+    // 应用商店升级：在被动技能之上叠加主炮/副炮/防御/引擎效果
+    shopUpgradesRef.current = makeShopUpgrades(save);
+    applyShopUpgrades(playerRef.current, shopUpgradesRef.current);
+    // 同步金币/导弹持有数到存档运行时副本
+    goldRef.current = save.gold ?? 0;
+    shopMissilesRef.current = makeShopMissiles(save);
+    shopMissileRuntimeRef.current = [];
+    lockedTargetsRef.current = [];
     const bossKind = bossKindOfLevel(safe);
     if (bossKind) {
       resetBossBulletIds();
@@ -271,6 +340,11 @@ export const Container: React.FC<ContainerProps> = (props) => {
       if (k === "e") castSlot(1);
       if (k === "shift") castSlot(2);
       if (k === "r") castSlot(3);
+      // 商店导弹发射：1/5=普通, 2/6=巡航, 3/7=爆炸, 4/8=穿刺
+      if (k === "1" || k === "5") launchShopMissile("normal");
+      if (k === "2" || k === "6") launchShopMissile("cruise");
+      if (k === "3" || k === "7") launchShopMissile("explosion");
+      if (k === "4" || k === "8") launchShopMissile("pierce");
     };
     const onUp = (e: KeyboardEvent) => { keysRef.current[e.key.toLowerCase()] = false; };
     window.addEventListener("keydown", onDown);
@@ -337,13 +411,20 @@ export const Container: React.FC<ContainerProps> = (props) => {
       missilesRef.current.push(...newMissiles);
       fireTransition("skill-nuke", "巡航导弹发射", `锁定 ${r.cfg.missileCount ?? 3} 个目标`);
     } else if (r.skill === "s2_emp") {
-      // 电磁脉冲：范围眩晕 + 护盾失效
+      // 电磁脉冲（增强版）：10 秒持续场地 + 50% 当前 HP 伤害 + 移动禁止
       playSFX("shield");
       const empResult = applyEmp(skillsRef.current, p, lr?.enemies || [], now);
-      // EMP 视觉特效
+      // EMP 脉冲波纹视觉特效
       spawnBurst(particlesRef.current, empResult.x, empResult.y, 40, ["#22d3ee", "#67e8f9", "#a5f3fc", "#06b6d4"], 8, 5, 800);
       if (profile.enableLighting) addLight(lightingRef.current, empResult.x, empResult.y, empResult.radius * 2, "#22d3ee", 0.7);
-      fireTransition("skill-shield", "电磁脉冲", `眩晕 ${empResult.hitIds.length} 个敌人 · 半径 ${empResult.radius}px`);
+      // 为每个受击敌人显示伤害飘字
+      for (const dd of empResult.damageDealt) {
+        const enemy = lr?.enemies.find((e) => e.id === dd.id);
+        if (enemy) {
+          spawnFloatText(floatsRef.current, enemy.x, enemy.y - 20, `-${dd.dmg}`, "#a5f3fc", 20, 800);
+        }
+      }
+      fireTransition("skill-shield", "电磁脉冲", `50% HP 伤害 · 禁止移动 10s · 命中 ${empResult.hitIds.length} 敌人`);
     } else if (r.skill === "s3_timewarp") {
       // 时间扭曲：减缓敌人时间流速
       playSFX("haste");
@@ -356,6 +437,201 @@ export const Container: React.FC<ContainerProps> = (props) => {
       fireTransition("skill-shield", "超级防御盾", `无敌 ${((r.cfg.durationMs || 30_000) / 1000).toFixed(0)} 秒 · 无视所有伤害`);
     }
     if (statsRef.current.skillsUsed >= 10) unlockAchs(["skill_master"]);
+  }
+
+  /**
+   * 商店导弹发射：键盘 1-8 触发，按 MissileType 生成对应行为实体。
+   *  按键映射：1/5=普通, 2/6=巡航, 3/7=爆炸, 4/8=穿刺（5-8 为备用快捷键）
+   *  行为：
+   *   - normal：直线向上飞行，命中即爆（单目标 100 伤害）
+   *   - cruise：追踪锁定目标（turnRate 4 rad/s，150 伤害）
+   *   - explosion：命中后范围 AOE（半径 100px，200 伤害）
+   *   - pierce：穿透 3 目标，每穿透一次伤害衰减 20%（180 伤害）
+   *  响应延迟 < 50ms（直接同步生成实体，无异步队列）。
+   */
+  function launchShopMissile(type: MissileType): void {
+    if (screen !== "playing") return;
+    // 持有数检查：不足则不发射
+    if (shopMissilesRef.current[type] <= 0) return;
+    const p = playerRef.current;
+    const lr = levelRuntimeRef.current;
+    const cfg = SHOP_MISSILE_CONFIG[type];
+    // 锁定最近目标（巡航导弹追踪用）
+    let targetId = -1;
+    if (lr && lr.enemies.length > 0) {
+      let bestDist = Infinity;
+      for (const e of lr.enemies) {
+        if (!e.alive) continue;
+        const d = Math.hypot(e.x - p.x, e.y - p.y);
+        if (d < bestDist) { bestDist = d; targetId = e.id; }
+      }
+    }
+    // 生成导弹实体（不同类型参数差异）
+    const speed = 700;
+    const missile: ShopMissileRuntime = {
+      id: SHOP_MISSILE_ID++,
+      type,
+      x: p.x, y: p.y - 30,
+      vx: 0, vy: -speed,
+      targetId,
+      dmg: cfg.dmg,
+      speed,
+      turnRate: type === "cruise" ? 4.0 : 0,   // 仅巡航导弹追踪
+      pierceLeft: type === "pierce" ? 3 : 0,   // 穿刺导弹可穿透 3 个目标
+      hitIds: new Set<number>(),
+      lifeMs: 5000,
+      alive: true,
+      trail: [],
+    };
+    shopMissileRuntimeRef.current.push(missile);
+    // 扣减持有数 + 同步存档
+    shopMissilesRef.current = { ...shopMissilesRef.current, [type]: shopMissilesRef.current[type] - 1 };
+    save.shopMissiles = { ...shopMissilesRef.current };
+    saveSlot(save);
+    playSFX("nuke");
+    // 发射特效
+    spawnBurst(particlesRef.current, p.x, p.y - 30, 8, ["#f97316", "#fdba74", "#fef3c7"], 3, 2, 400);
+  }
+
+  /**
+   * 商店导弹 tick：4 种类型独立行为。
+   *  - 巡航导弹：转向追踪目标（转向速率 4 rad/s，限制角度变化）
+   *  - 爆炸导弹：命中后 AOE 半径 100px，范围内所有敌人受 200 伤害
+   *  - 穿刺导弹：穿透 3 目标，每穿透一次伤害衰减 20%
+   *  - 普通导弹：命中即爆，单目标 100 伤害
+   *  尾迹用 trail 数组记录最近 8 个位置，alpha 衰减。
+   */
+  function tickShopMissiles(missiles: ShopMissileRuntime[], enemies: EnemyRuntime[], dtMs: number, _nowMs: number): void {
+    const dt = dtMs / 1000;
+    for (const m of missiles) {
+      if (!m.alive) continue;
+
+      // 巡航导弹追踪：转向目标
+      if (m.type === "cruise" && m.targetId >= 0) {
+        const target = enemies.find((e) => e.id === m.targetId && e.alive);
+        if (target) {
+          const dx = target.x - m.x;
+          const dy = target.y - m.y;
+          const targetAngle = Math.atan2(dy, dx);
+          const currentAngle = Math.atan2(m.vy, m.vx);
+          // 角度差归一化到 [-π, π]
+          let diff = targetAngle - currentAngle;
+          while (diff > Math.PI) diff -= Math.PI * 2;
+          while (diff < -Math.PI) diff += Math.PI * 2;
+          // 限制转向速率（不超过 turnRate × dt）
+          const maxTurn = m.turnRate * dt;
+          const turn = Math.max(-maxTurn, Math.min(maxTurn, diff));
+          const newAngle = currentAngle + turn;
+          m.vx = Math.cos(newAngle) * m.speed;
+          m.vy = Math.sin(newAngle) * m.speed;
+        } else {
+          // 目标已死，重新选最近敌人
+          let bestDist = Infinity;
+          let bestId = -1;
+          for (const e of enemies) {
+            if (!e.alive) continue;
+            const d = Math.hypot(e.x - m.x, e.y - m.y);
+            if (d < bestDist) { bestDist = d; bestId = e.id; }
+          }
+          m.targetId = bestId;
+        }
+      }
+
+      // 移动 + 尾迹
+      m.x += m.vx * dt;
+      m.y += m.vy * dt;
+      m.lifeMs -= dtMs;
+      m.trail.push({ x: m.x, y: m.y, alpha: 1 });
+      if (m.trail.length > 8) m.trail.shift();
+      for (const t of m.trail) t.alpha *= 0.85;
+
+      // 超出屏幕或寿命到期
+      if (m.lifeMs <= 0 || m.y < -40 || m.y > WORLD.HEIGHT + 40 || m.x < -40 || m.x > WORLD.WIDTH + 40) {
+        m.alive = false;
+        continue;
+      }
+
+      // 碰撞检测：命中半径 32px
+      for (const e of enemies) {
+        if (!e.alive) continue;
+        if (m.hitIds.has(e.id)) continue;
+        const dist = Math.hypot(e.x - m.x, e.y - m.y);
+        if (dist > 32) continue;
+
+        if (m.type === "explosion") {
+          // 爆炸导弹：AOE 半径 100px，范围内所有敌人受 200 伤害
+          const aoeRadius = 100;
+          for (const aoe of enemies) {
+            if (!aoe.alive) continue;
+            const aoeDist = Math.hypot(aoe.x - m.x, aoe.y - m.y);
+            if (aoeDist <= aoeRadius) {
+              applyEnemyDamage(aoe, m.dmg, m.x, m.y);
+            }
+          }
+          // 爆炸视觉特效（橙红色范围爆破）
+          spawnBurst(particlesRef.current, m.x, m.y, 30, ["#ef4444", "#f97316", "#fbbf24", "#fde047"], 5, 4, 700);
+          if (profile.enableLighting) addLight(lightingRef.current, m.x, m.y, 200, "#f97316", 0.7);
+          m.alive = false;
+          break;
+        } else if (m.type === "pierce") {
+          // 穿刺导弹：穿透 3 目标，每穿透一次伤害衰减 20%
+          applyEnemyDamage(e, m.dmg, m.x, m.y);
+          m.hitIds.add(e.id);
+          m.pierceLeft -= 1;
+          m.dmg = Math.round(m.dmg * 0.8); // 衰减 20%
+          // 命中视觉（紫色穿刺线）
+          spawnBurst(particlesRef.current, m.x, m.y, 8, ["#a78bfa", "#c4b5fd", "#f0abfc"], 3, 2, 400);
+          if (m.pierceLeft <= 0) {
+            m.alive = false;
+            break;
+          }
+        } else {
+          // 普通导弹 + 巡航导弹：命中即爆，单目标伤害
+          applyEnemyDamage(e, m.dmg, m.x, m.y);
+          spawnBurst(particlesRef.current, m.x, m.y, 14, ["#f97316", "#fb923c", "#fdba74"], 4, 3, 500);
+          if (profile.enableLighting) addLight(lightingRef.current, m.x, m.y, 100, "#f97316", 0.5);
+          m.alive = false;
+          break;
+        }
+      }
+    }
+  }
+
+  /**
+   * 雷达锁定逻辑：根据雷达等级（LV0..LV4）自动锁定最近目标。
+   *  - LV0：1 个最近目标，范围 150%
+   *  - LV1：3 个，范围 175%
+   *  - LV2：5 个，范围 200%
+   *  - LV3：10 个，范围 225%
+   *  - LV4：所有可见目标，范围 250%
+   * 优先级排序：威胁度（按敌机类型 8>7>6>2>4>3>5>1>0）+ 距离（近优先）+ 攻击状态。
+   * 锁定结果写入 lockedTargetsRef，供小地图与锁定框渲染使用。
+   */
+  function updateRadarLock(p: PlayerRuntime, enemies: EnemyRuntime[], _now: number): void {
+    const radarLevel = shopUpgradesRef.current.radar;
+    if (radarLevel < 0 || radarLevel > 4) return; // 雷达未升级时不锁定
+    const cfg = RADAR_LEVEL_CONFIG[radarLevel];
+    if (!cfg) return;
+    const lockRange = WORLD.WIDTH * cfg.rangeRatio; // 锁定范围（像素）
+    // 候选目标：在锁定范围内的活着的敌人
+    const candidates = enemies
+      .filter((e) => e.alive)
+      .map((e) => ({
+        id: e.id, x: e.x, y: e.y, enemyType: e.kind,
+        dist: Math.hypot(e.x - p.x, e.y - p.y),
+        threat: [0, 1, 5, 3, 4, 2, 6, 7, 8][e.kind] ?? 0, // 类型威胁度：治疗兵 8 > 冲锋 7 > 激光 6 > 重装 5 > 护盾 4 > 分裂 3 > 狙击 2 > 快速 1 > 普通 0
+      }))
+      .filter((c) => c.dist <= lockRange);
+    // 排序：威胁度高优先 → 距离近优先
+    candidates.sort((a, b) => {
+      if (b.threat !== a.threat) return b.threat - a.threat;
+      return a.dist - b.dist;
+    });
+    // 选取前 N 个（LV4 全选）
+    const lockCount = cfg.lockCount < 0 ? candidates.length : Math.min(cfg.lockCount, candidates.length);
+    lockedTargetsRef.current = candidates.slice(0, lockCount).map((c) => ({
+      id: c.id, x: c.x, y: c.y, enemyType: c.enemyType,
+    }));
   }
 
   /** 对敌人施加伤害（先扣护盾，EMP 期间护盾失效），处理死亡/分裂/治疗。 */
@@ -374,6 +650,11 @@ export const Container: React.FC<ContainerProps> = (props) => {
       e.alive = false;
       scoreRef.current += e.scoreValue;
       statsRef.current.killed += 1;
+      // 商店系统：击落敌机按 ENEMY_GOLD_REWARD 发放金币（0.8s 飘字动画）
+      const goldReward = ENEMY_GOLD_REWARD[e.kind] ?? 10;
+      goldRef.current += goldReward;
+      spawnFloatText(floatsRef.current, e.x, e.y - 36, `+${goldReward}🪙`, "#fde047", 18, 800);
+      setGoldTick((x) => x + 1);
       const colors = ["#f87171", "#fde047", "#60a5fa", "#34d399", "#c4b5fd", "#f0abfc"];
       spawnBurst(particlesRef.current, e.x, e.y, 14, colors, 4.5, 3, 600);
       playSFX("boom");
@@ -576,11 +857,18 @@ export const Container: React.FC<ContainerProps> = (props) => {
       };
       bulletsRef.current.push(fromEnemy);
     };
-    // 内联敌人 tick：时间扭曲缩放 dt，眩晕敌人跳过移动与开火
+    // 内联敌人 tick：时间扭曲缩放 dt，眩晕敌人跳过，EMP/时间扭曲场地内敌人移动禁止
     for (const enemy of lr.enemies) {
       if (!enemy.alive) continue;
+      // 全局眩晕（向后兼容旧 EMP stun）→ 完全跳过
       if (isEnemyStunned(enemy.stunnedUntilMs, now)) continue;
-      const shouldFire = stepEnemy(enemy, dtMs * enemyTimeScale, lr.dynamicMul);
+      // 时间扭曲场地内：移动禁止 + 攻击禁止
+      const inTWField = isEnemyInTimeWarpField(skills, enemy.x, enemy.y, now);
+      if (inTWField) continue; // 完全跳过移动和攻击
+      // EMP 场地内：移动禁止，但可以攻击
+      const inEmpField = isEnemyInEmpField(skills, enemy.x, enemy.y, now);
+      // stepEnemy 内部处理移动+开火冷却；EMP 场地内敌人跳过移动但保留开火
+      const shouldFire = stepEnemy(enemy, inEmpField ? 0 : dtMs * enemyTimeScale, lr.dynamicMul);
       if (shouldFire) fireEnemyBullet(enemy);
     }
     const boss = bossRef.current;
@@ -715,6 +1003,13 @@ export const Container: React.FC<ContainerProps> = (props) => {
     }
     missilesRef.current = missilesRef.current.filter((m) => m.alive);
 
+    // ===== 商店导弹更新：4 种类型独立行为（追踪/穿透/AOE/单点） =====
+    tickShopMissiles(shopMissileRuntimeRef.current, lr.enemies, dtMs, now);
+    shopMissileRuntimeRef.current = shopMissileRuntimeRef.current.filter((m) => m.alive);
+
+    // ===== 雷达系统：按雷达等级自动锁定最近目标（优先级：距离 > 类型 > 攻击状态） =====
+    updateRadarLock(p, lr.enemies, now);
+
     stepParticles(particlesRef.current, dtMs, profile.maxParticles);
     stepFloats(floatsRef.current, dtMs);
     tickParallax(parallaxRef.current, dtMs, 1.0);
@@ -729,6 +1024,10 @@ export const Container: React.FC<ContainerProps> = (props) => {
       save.clearedLevels = Math.max(save.clearedLevels, clr.level);
       save.level = Math.min(LEVELS.length, Math.max(save.level, clr.level + (clr.level < LEVELS.length ? 1 : 0)));
       save.skillPoints += clr.skillPointReward;
+      // 商店系统：结算时把运行时金币写回存档
+      save.gold = goldRef.current;
+      save.shopUpgrades = { ...shopUpgradesRef.current };
+      save.shopMissiles = { ...shopMissilesRef.current };
       save.unlockedAchievements = Array.from(achStateRef.current.unlocked);
       saveSlot(save);
       const clrIsBoss = !!LEVELS[clr.level - 1]?.isBoss;
@@ -739,8 +1038,14 @@ export const Container: React.FC<ContainerProps> = (props) => {
       playBGM("menu");
       fireTransition("level-clear", `第 ${clr.level} 关通过 · 评级 ${clr.grade}`, `技能点 +${clr.skillPointReward}`);
       props.onFinalize?.(save.bestScore, save.bestScore === scoreRef.current);
-      if (clr.level >= LEVELS.length) setScreen("victory");
-      else setScreen("cleared");
+      if (clr.level >= LEVELS.length) {
+        // 通关终局：直接进入胜利界面，不再弹商店
+        setScreen("victory");
+      } else {
+        // 普通关卡：弹出商店（0.5s 动画由 Shop 组件 CSS 提供）
+        setScreen("cleared");
+        setShopOpen(true);
+      }
     }
 
     if (p.hp <= 0 && screen === "playing") {
@@ -799,9 +1104,60 @@ export const Container: React.FC<ContainerProps> = (props) => {
     if (bs) drawBoss(ctx, bs, performance.now());
     drawPlayer(ctx, playerRef.current, performance.now(), 1);
 
-    // ===== s4_shield 超级防御盾渲染：激活时围绕玩家绘制脉冲护盾环 =====
+    // ===== 渲染辅助：玩家引用 + 当前时间戳（供后续多个特效共用） =====
     const _p = playerRef.current;
     const _now = performance.now();
+
+    // ===== 雷达锁定框渲染：红色方框 + 2Hz 脉冲（0.5s 一周期，每秒 2 次） =====
+    const _lockedTargets = lockedTargetsRef.current;
+    if (_lockedTargets.length > 0) {
+      const lockPulse = 0.5 + 0.5 * Math.sin(_now / 250); // 2Hz 脉冲（250ms 半周期）
+      const lockAlpha = 0.6 + lockPulse * 0.4;
+      const lockSize = 56 + lockPulse * 4; // 锁定框尺寸随脉冲微变
+      ctx.save();
+      ctx.strokeStyle = `rgba(248, 113, 113, ${lockAlpha})`;
+      ctx.lineWidth = 2;
+      for (const t of _lockedTargets) {
+        // 锁定框：四角括号样式（不是完整矩形，更像瞄准镜）
+        const hx = t.x, hy = t.y;
+        const half = lockSize / 2;
+        const cornerLen = 12; // 角括号长度
+        // 左上角
+        ctx.beginPath();
+        ctx.moveTo(hx - half, hy - half + cornerLen);
+        ctx.lineTo(hx - half, hy - half);
+        ctx.lineTo(hx - half + cornerLen, hy - half);
+        ctx.stroke();
+        // 右上角
+        ctx.beginPath();
+        ctx.moveTo(hx + half - cornerLen, hy - half);
+        ctx.lineTo(hx + half, hy - half);
+        ctx.lineTo(hx + half, hy - half + cornerLen);
+        ctx.stroke();
+        // 左下角
+        ctx.beginPath();
+        ctx.moveTo(hx - half, hy + half - cornerLen);
+        ctx.lineTo(hx - half, hy + half);
+        ctx.lineTo(hx - half + cornerLen, hy + half);
+        ctx.stroke();
+        // 右下角
+        ctx.beginPath();
+        ctx.moveTo(hx + half - cornerLen, hy + half);
+        ctx.lineTo(hx + half, hy + half);
+        ctx.lineTo(hx + half, hy + half - cornerLen);
+        ctx.stroke();
+        // 中心十字
+        ctx.strokeStyle = `rgba(248, 113, 113, ${lockAlpha * 0.6})`;
+        ctx.beginPath();
+        ctx.moveTo(hx - 8, hy); ctx.lineTo(hx + 8, hy);
+        ctx.moveTo(hx, hy - 8); ctx.lineTo(hx, hy + 8);
+        ctx.stroke();
+        ctx.strokeStyle = `rgba(248, 113, 113, ${lockAlpha})`;
+      }
+      ctx.restore();
+    }
+
+    // ===== s4_shield 超级防御盾渲染：激活时围绕玩家绘制脉冲护盾环 =====
     if (_p.superShieldUntilMs > _now) {
       const remainMs = _p.superShieldUntilMs - _now;
       const pulse = 0.5 + 0.5 * Math.sin(_now / 120);
@@ -833,6 +1189,97 @@ export const Container: React.FC<ContainerProps> = (props) => {
       ctx.beginPath(); ctx.arc(0, 0, r + 12, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
       if (profile.enableLighting) addLight(lightingRef.current, _p.x, _p.y - 20, 140, "#a5f3fc", 0.5);
+    }
+
+    // ===== s2_emp 电磁脉冲场地渲染：蓝色脉冲波纹 + 半透明范围指示器 =====
+    if (skills.empFieldUntilMs > _now) {
+      const remainMs = skills.empFieldUntilMs - _now;
+      const pulse = 0.5 + 0.5 * Math.sin(_now / 200);
+      const alpha = 0.4; // 40% 透明度
+      const r = skills.empFieldRadius;
+      const fx = skills.empFieldX;
+      const fy = skills.empFieldY;
+      ctx.save();
+      // 半透明圆形范围指示器（40% 透明度）
+      ctx.fillStyle = `rgba(34, 211, 238, ${alpha * 0.3})`;
+      ctx.beginPath(); ctx.arc(fx, fy, r, 0, Math.PI * 2); ctx.fill();
+      // 蓝色脉冲波纹（从中心向外扩散，100px/s）
+      const waveProgress = ((_now / 1000) % (r / 100)) / (r / 100);
+      const waveR = waveProgress * r;
+      ctx.strokeStyle = `rgba(34, 211, 238, ${(1 - waveProgress) * 0.6})`;
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(fx, fy, waveR, 0, Math.PI * 2); ctx.stroke();
+      // 外环
+      ctx.strokeStyle = `rgba(103, 232, 249, ${0.4 + pulse * 0.2})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(fx, fy, r, 0, Math.PI * 2); ctx.stroke();
+      // 电流粒子（6 个围绕场地旋转）
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2 + _now / 300;
+        const px = fx + Math.cos(a) * r * 0.8;
+        const py = fy + Math.sin(a) * r * 0.8;
+        ctx.fillStyle = `rgba(165, 243, 252, ${0.6 + pulse * 0.3})`;
+        ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+      // 电磁干扰特效：场地内敌人添加电流环绕
+      if (lr) {
+        for (const e of lr.enemies) {
+          if (!e.alive) continue;
+          const dist = Math.hypot(e.x - fx, e.y - fy);
+          if (dist <= r) {
+            ctx.save();
+            ctx.strokeStyle = `rgba(34, 211, 238, ${0.5 + pulse * 0.3})`;
+            ctx.lineWidth = 2;
+            // 电流环绕（4 段弧线）
+            for (let i = 0; i < 4; i++) {
+              const a0 = (i / 4) * Math.PI * 2 + _now / 100;
+              ctx.beginPath();
+              ctx.arc(e.x, e.y, 24, a0, a0 + 0.6);
+              ctx.stroke();
+            }
+            ctx.restore();
+          }
+        }
+      }
+      if (profile.enableLighting) addLight(lightingRef.current, fx, fy, r * 1.5, "#22d3ee", 0.4);
+    }
+
+    // ===== s3_timewarp 时间扭曲场地渲染：模糊波纹 + 顺时针旋转指示器 =====
+    if (skills.twFieldUntilMs > _now) {
+      const remainMs = skills.twFieldUntilMs - _now;
+      const pulse = 0.5 + 0.5 * Math.sin(_now / 250);
+      const r = skills.twFieldRadius;
+      const tx = skills.twFieldX;
+      const ty = skills.twFieldY;
+      ctx.save();
+      // 场地内模糊波纹（多层同心圆）
+      for (let i = 0; i < 3; i++) {
+        const waveR = r * (0.4 + i * 0.3 + pulse * 0.1);
+        const alpha = 0.15 - i * 0.04;
+        ctx.strokeStyle = `rgba(59, 130, 246, ${alpha + pulse * 0.05})`;
+        ctx.lineWidth = 4 - i;
+        ctx.beginPath(); ctx.arc(tx, ty, waveR, 0, Math.PI * 2); ctx.stroke();
+      }
+      // 半透明范围指示器
+      ctx.fillStyle = `rgba(59, 130, 246, 0.08)`;
+      ctx.beginPath(); ctx.arc(tx, ty, r, 0, Math.PI * 2); ctx.fill();
+      // 蓝色时间流动指示器（顺时针旋转弧线）
+      const rotAngle = (_now / 1000) * Math.PI * 1.5; // 顺时针旋转
+      ctx.strokeStyle = `rgba(96, 165, 250, ${0.6 + pulse * 0.2})`;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(tx, ty, r * 0.85, rotAngle, rotAngle + Math.PI * 0.4);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(tx, ty, r * 0.85, rotAngle + Math.PI, rotAngle + Math.PI + Math.PI * 0.4);
+      ctx.stroke();
+      // 外环
+      ctx.strokeStyle = `rgba(59, 130, 246, ${0.35 + pulse * 0.15})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(tx, ty, r, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+      if (profile.enableLighting) addLight(lightingRef.current, tx, ty, r * 1.5, "#3b82f6", 0.4);
     }
 
     // ===== 僚机渲染：小型青色三角形 + 引擎光 =====
@@ -915,6 +1362,55 @@ export const Container: React.FC<ContainerProps> = (props) => {
       ctx.restore();
     }
 
+    // ===== 商店导弹渲染：4 种类型不同颜色尾迹 + 弹体 =====
+    const shopMissiles = shopMissileRuntimeRef.current;
+    for (let i = 0; i < shopMissiles.length; i++) {
+      const m = shopMissiles[i];
+      if (!m.alive) continue;
+      // 按类型选择尾迹颜色
+      const trailColor = m.type === "normal" ? "251, 146, 60" :
+                         m.type === "cruise" ? "167, 139, 250" :
+                         m.type === "explosion" ? "239, 68, 68" :
+                         "196, 181, 253"; // pierce
+      // 尾迹
+      for (let t = 0; t < m.trail.length; t++) {
+        const tr = m.trail[t];
+        ctx.fillStyle = `rgba(${trailColor}, ${tr.alpha * 0.6})`;
+        ctx.beginPath(); ctx.arc(tr.x, tr.y, 4 * tr.alpha, 0, Math.PI * 2); ctx.fill();
+      }
+      // 弹体（按类型差异化形状/颜色）
+      const angle = Math.atan2(m.vy, m.vx);
+      ctx.save();
+      ctx.translate(m.x, m.y);
+      ctx.rotate(angle);
+      if (m.type === "normal") {
+        // 普通导弹：橙色细长
+        ctx.fillStyle = "#f97316";
+        ctx.fillRect(-8, -3, 16, 6);
+        ctx.fillStyle = "#fdba74";
+        ctx.fillRect(-4, -2, 10, 4);
+      } else if (m.type === "cruise") {
+        // 巡航导弹：紫色尖头
+        ctx.fillStyle = "#a78bfa";
+        ctx.beginPath(); ctx.moveTo(8, 0); ctx.lineTo(-8, -4); ctx.lineTo(-6, 0); ctx.lineTo(-8, 4); ctx.fill();
+        ctx.fillStyle = "#c4b5fd";
+        ctx.fillRect(-6, -2, 8, 4);
+      } else if (m.type === "explosion") {
+        // 爆炸导弹：红色圆头
+        ctx.fillStyle = "#ef4444";
+        ctx.beginPath(); ctx.arc(0, 0, 7, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "#fbbf24";
+        ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI * 2); ctx.fill();
+      } else {
+        // 穿刺导弹：紫色锐利三角
+        ctx.fillStyle = "#c4b5fd";
+        ctx.beginPath(); ctx.moveTo(10, 0); ctx.lineTo(-8, -3); ctx.lineTo(-8, 3); ctx.fill();
+        ctx.fillStyle = "#a78bfa";
+        ctx.fillRect(-6, -2, 4, 4);
+      }
+      ctx.restore();
+    }
+
     // ===== 时间扭曲全屏滤镜：蓝色色调 + 边缘晕染 =====
     if (skills.timeWarpUntilMs > performance.now()) {
       ctx.fillStyle = "rgba(34, 211, 238, 0.12)";
@@ -963,6 +1459,55 @@ export const Container: React.FC<ContainerProps> = (props) => {
     unlockSingle(achStateRef.current, "upgrade_any");
     const allMax = (Object.keys(save.skills) as SkillId[]).every((k) => save.skills[k] >= 3);
     if (allMax) unlockSingle(achStateRef.current, "all_upgrade_max");
+  };
+
+  /**
+   * 商店购买升级：扣金币、提升等级、同步存档与运行时副本。
+   * 价格按 basePrice × 1.5^currentLevel 递增 50%。
+   */
+  const handleBuyUpgrade = (type: UpgradeType): void => {
+    const cfg = SHOP_UPGRADE_CONFIG[type];
+    const curLevel = shopUpgradesRef.current[type];
+    if (curLevel >= cfg.maxLevel) return;
+    const price = Math.round(cfg.basePrice * Math.pow(1.5, curLevel));
+    if (goldRef.current < price) return;
+    // 扣金币 + 升级
+    goldRef.current -= price;
+    shopUpgradesRef.current = { ...shopUpgradesRef.current, [type]: curLevel + 1 };
+    // 同步到存档
+    save.gold = goldRef.current;
+    save.shopUpgrades = { ...shopUpgradesRef.current };
+    saveSlot(save);
+    setGoldTick((x) => x + 1);
+    setSaveTick((x) => x + 1);
+    playSFX("levelup");
+  };
+
+  /**
+   * 商店购买导弹：扣金币、增加持有数（受总容量上限 8 枚约束）。
+   */
+  const handleBuyMissile = (type: MissileType): void => {
+    const cfg = SHOP_MISSILE_CONFIG[type];
+    const total = shopMissilesRef.current.normal + shopMissilesRef.current.cruise +
+                  shopMissilesRef.current.explosion + shopMissilesRef.current.pierce;
+    if (total >= SHOP_MISSILE_MAX) return;
+    if (goldRef.current < cfg.price) return;
+    // 扣金币 + 增加导弹
+    goldRef.current -= cfg.price;
+    shopMissilesRef.current = { ...shopMissilesRef.current, [type]: shopMissilesRef.current[type] + 1 };
+    // 同步到存档
+    save.gold = goldRef.current;
+    save.shopMissiles = { ...shopMissilesRef.current };
+    saveSlot(save);
+    setGoldTick((x) => x + 1);
+    setSaveTick((x) => x + 1);
+    playSFX("click");
+  };
+
+  /** 商店跳过/关闭：0.3s 过渡后关闭商店，进入下一关流程由 GameOverScreen 接管。 */
+  const handleShopClose = (): void => {
+    setShopOpen(false);
+    playSFX("click");
   };
 
   const onMenuBack = () => {
@@ -1043,6 +1588,17 @@ export const Container: React.FC<ContainerProps> = (props) => {
             {inputMode === "touch" && (
               <TouchControls onMove={onTouchMove} onButton={onTouchBtn} />
             )}
+            {/* 雷达小地图：仅游戏中显示，120×120 固定右下角，显示锁定目标位置 */}
+            {screen === "playing" && shopUpgradesRef.current.radar >= 0 && (
+              <RadarMiniMap
+                radarLevel={shopUpgradesRef.current.radar}
+                lockedTargets={lockedTargetsRef.current}
+                playerX={p.x}
+                playerY={p.y}
+                worldWidth={WORLD.WIDTH}
+                worldHeight={WORLD.HEIGHT}
+              />
+            )}
           </div>
         )}
       </div>
@@ -1063,8 +1619,20 @@ export const Container: React.FC<ContainerProps> = (props) => {
         onNew={(i) => { applySave(emptySlot(i)); }} />
       <AchievementBoard open={achOpen} onClose={() => setAchOpen(false)} unlocked={achStateRef.current.unlocked} />
 
+      {/* 神龙殿商店：关卡完成时弹出，关闭后才显示 GameOverScreen */}
+      <Shop
+        open={shopOpen}
+        gold={goldRef.current}
+        upgrades={shopUpgradesRef.current}
+        missiles={shopMissilesRef.current}
+        onBuyUpgrade={handleBuyUpgrade}
+        onBuyMissile={handleBuyMissile}
+        onSkip={handleShopClose}
+        onClose={handleShopClose}
+      />
+
       <GameOverScreen
-        open={screen === "cleared" || screen === "gameover" || screen === "victory"}
+        open={(screen === "cleared" || screen === "gameover" || screen === "victory") && !shopOpen}
         victory={screen === "cleared" || screen === "victory"}
         score={scoreRef.current}
         level={currentLevelIndex + 1}

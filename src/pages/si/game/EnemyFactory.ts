@@ -32,6 +32,9 @@ export function spawnEnemy(
     // EMP 状态初始化（>0 表示生效中，0 表示无效果）
     stunnedUntilMs: 0,
     shieldDisabledUntilMs: 0,
+    // s2_emp / s3_timewarp 场地状态初始化
+    empFieldUntilMs: 0,
+    timeWarpFieldUntilMs: 0,
   };
 }
 

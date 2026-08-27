@@ -1,5 +1,5 @@
 /** 游戏常量配置中心：敌人/技能/关卡/成就集中管理（平衡性调参只改这里）。 */
-import type { Achievement, BossKind, EnemyKind, LevelClearResult, SkillDefinition } from "./types";
+import type { Achievement, BossKind, EnemyKind, LevelClearResult, MissileType, SkillDefinition, UpgradeType } from "./types";
 
 export const WORLD = {
   WIDTH: 1080,
@@ -57,22 +57,22 @@ export const SKILLS: Record<string, SkillDefinition> = {
   },
   s2_emp: {
     id: "s2_emp", name: "电磁脉冲", icon: "⚡", isActive: true,
-    desc: "释放 EMP 冲击波，范围内敌人眩晕 3~5s，护盾失效 5~8s。",
+    desc: "释放 EMP 脉冲场，持续 10 秒，范围内敌人立即受到 50% 当前生命值伤害并被禁止移动（保留攻击）。",
     levels: [
-      { energyCost: 75, cooldownMs: 40_000, empRadius: 320, empStunMs: 3_000, empShieldBreakMs: 5_000 },
-      { energyCost: 75, cooldownMs: 36_000, empRadius: 360, empStunMs: 3_500, empShieldBreakMs: 6_000 },
-      { energyCost: 75, cooldownMs: 33_000, empRadius: 400, empStunMs: 4_500, empShieldBreakMs: 7_000 },
-      { energyCost: 75, cooldownMs: 30_000, empRadius: 440, empStunMs: 5_000, empShieldBreakMs: 8_000 },
+      { energyCost: 75, cooldownMs: 60_000, empRadius: 324, empStunMs: 10_000, empShieldBreakMs: 10_000, durationMs: 10_000 },
+      { energyCost: 75, cooldownMs: 60_000, empRadius: 324, empStunMs: 10_000, empShieldBreakMs: 10_000, durationMs: 10_000 },
+      { energyCost: 75, cooldownMs: 60_000, empRadius: 324, empStunMs: 10_000, empShieldBreakMs: 10_000, durationMs: 10_000 },
+      { energyCost: 75, cooldownMs: 60_000, empRadius: 324, empStunMs: 10_000, empShieldBreakMs: 10_000, durationMs: 10_000 },
     ],
   },
   s3_timewarp: {
     id: "s3_timewarp", name: "时间扭曲", icon: "⏳", isActive: true,
-    desc: "减缓时间流速 50%，仅影响敌人和弹幕，持续 5~8s。",
+    desc: "生成时间扭曲场，持续 10 秒，范围内敌人移动禁止、攻击禁止、时间流速降低 50%。",
     levels: [
-      { energyCost: 80, cooldownMs: 50_000, durationMs: 5_000, timeScale: 0.50 },
-      { energyCost: 80, cooldownMs: 48_000, durationMs: 5_500, timeScale: 0.50 },
-      { energyCost: 80, cooldownMs: 46_000, durationMs: 6_500, timeScale: 0.50 },
-      { energyCost: 80, cooldownMs: 45_000, durationMs: 8_000, timeScale: 0.50 },
+      { energyCost: 80, cooldownMs: 90_000, durationMs: 10_000, timeScale: 0.50 },
+      { energyCost: 80, cooldownMs: 90_000, durationMs: 10_000, timeScale: 0.50 },
+      { energyCost: 80, cooldownMs: 90_000, durationMs: 10_000, timeScale: 0.50 },
+      { energyCost: 80, cooldownMs: 90_000, durationMs: 10_000, timeScale: 0.50 },
     ],
   },
   s4_shield: {
@@ -854,3 +854,47 @@ export function calcGrade(params: { timeMs: number; recommendedMs: number; hpPct
 
 export const ACTIVE_SKILL_ORDER = ["s1_missile", "s2_emp", "s3_timewarp", "s4_shield"] as const;
 export const PASSIVE_SKILL_ORDER = ["p1_power", "p2_regen", "p3_maxhp", "p4_maxenergy", "p5_crit", "p6_lifesteal", "p7_armor", "p8_homing", "p9_wingman", "p10_revive", "p11_shiplevel"] as const;
+
+// ===== 神龙殿商店系统配置 =====
+/** 升级路径配置：名称 / 图标 / 基础价格 / 最大等级 / 每级效果列表。
+ *  飞船四件套 maxLevel=5（Lv0..Lv5），雷达 maxLevel=4（LV0..LV4）。 */
+export const SHOP_UPGRADE_CONFIG: Record<UpgradeType, { name: string; icon: string; basePrice: number; maxLevel: number; effects: string[] }> = {
+  mainGun: { name: "主炮", icon: "🔥", basePrice: 200, maxLevel: 5, effects: ["+20% 激光伤害", "+15% 充能速度", "+10% 射程"] },
+  subGun: { name: "副炮", icon: "💥", basePrice: 180, maxLevel: 5, effects: ["+15% 伤害", "+10% 射速", "+1 弹道"] },
+  defense: { name: "防御", icon: "🛡️", basePrice: 220, maxLevel: 5, effects: ["+20% 生命", "+5% 减伤"] },
+  engine: { name: "引擎", icon: "🚀", basePrice: 160, maxLevel: 5, effects: ["+15% 移速", "+10% 机动性"] },
+  radar: { name: "雷达", icon: "📡", basePrice: 250, maxLevel: 4, effects: ["+1 锁定目标", "+25% 锁定范围", "LV4 锁定全屏"] },
+};
+/** 导弹类型配置：名称 / 图标 / 伤害 / 单枚价格 / 描述。 */
+export const SHOP_MISSILE_CONFIG: Record<MissileType, { name: string; icon: string; dmg: number; price: number; desc: string }> = {
+  normal: { name: "普通导弹", icon: "📌", dmg: 100, price: 100, desc: "直线飞行，基础伤害" },
+  cruise: { name: "巡航导弹", icon: "🎯", dmg: 150, price: 150, desc: "自动追踪目标" },
+  explosion: { name: "爆炸导弹", icon: "💥", dmg: 200, price: 200, desc: "范围伤害，爆炸半径100px" },
+  pierce: { name: "穿刺导弹", icon: "⚔️", dmg: 180, price: 180, desc: "穿透3个目标，伤害衰减20%" },
+};
+/** 导弹总容量上限（所有类型合计不得超过此值）。 */
+export const SHOP_MISSILE_MAX = 8;
+
+/** 雷达等级配置：每级锁定目标数 / 锁定范围（占屏幕宽度比例）/ 描述。
+ *  LV0 自动锁定 1 个最近目标，范围 150%；LV4 锁定所有可见目标，范围 250%。 */
+export const RADAR_LEVEL_CONFIG: Array<{ lockCount: number; rangeRatio: number; desc: string }> = [
+  { lockCount: 1,  rangeRatio: 1.50, desc: "自动锁定 1 个最近目标，范围 150%" }, // LV0
+  { lockCount: 3,  rangeRatio: 1.75, desc: "自动锁定 3 个最近目标，范围 175%" }, // LV1
+  { lockCount: 5,  rangeRatio: 2.00, desc: "自动锁定 5 个最近目标，范围 200%" }, // LV2
+  { lockCount: 10, rangeRatio: 2.25, desc: "自动锁定 10 个最近目标，范围 225%" }, // LV3
+  { lockCount: -1, rangeRatio: 2.50, desc: "锁定所有可见目标，范围 250%" },       // LV4 (-1 表示无上限)
+];
+
+/** 敌机击落金币奖励（按 EnemyKind 索引）。
+ *  价值区间 10-100 金币，按敌机强度递增：基础兵最弱 10 金，治疗兵最强 100 金。 */
+export const ENEMY_GOLD_REWARD: Record<number, number> = {
+  0: 10,  // 普通兵
+  1: 15,  // 快速兵
+  2: 40,  // 重装兵
+  3: 25,  // 分裂兵
+  4: 30,  // 护盾兵
+  5: 35,  // 狙击手
+  6: 45,  // 激光兵
+  7: 60,  // 冲锋兵
+  8: 100, // 治疗兵（最难击落，奖励最高）
+};

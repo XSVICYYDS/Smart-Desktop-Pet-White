@@ -56,6 +56,10 @@ export interface EnemyRuntime {
   // EMP 眩晕状态
   stunnedUntilMs: number;     // > now 表示被眩晕
   shieldDisabledUntilMs: number; // > now 表示护盾失效
+  // s2_emp 增强字段：EMP 场地内移动禁止（但可攻击）
+  empFieldUntilMs: number;    // > now 表示在 EMP 场地内，不能移动
+  // s3_timewarp 增强字段：时间扭曲场地内移动+攻击禁止
+  timeWarpFieldUntilMs: number; // > now 表示在时间扭曲场地内，不能移动也不能攻击
 }
 
 /** 巡航导弹运行时实体：追踪目标并爆炸。 */
@@ -156,9 +160,19 @@ export interface SkillRuntimeState {
   cooldowns: Record<SkillSlot, number>;
   levels: Record<SkillId, SkillLevel>;
   lastCastAt: Record<SkillId, number>;
-  // 时间扭曲运行时
+  // 时间扭曲运行时（全局效果，向后兼容）
   timeWarpUntilMs: number;
   timeWarpScale: number;
+  // s2_emp 增强运行时：EMP 持续场地状态
+  empFieldUntilMs: number;   // > now 表示 EMP 场地仍存在
+  empFieldX: number;         // EMP 场地中心 X
+  empFieldY: number;         // EMP 场地中心 Y
+  empFieldRadius: number;    // EMP 场地半径
+  // s3_timewarp 增强运行时：时间扭曲场地状态（区域效果）
+  twFieldUntilMs: number;    // > now 表示时间扭曲场地仍存在
+  twFieldX: number;          // 时间扭曲场地中心 X
+  twFieldY: number;          // 时间扭曲场地中心 Y
+  twFieldRadius: number;     // 时间扭曲场地半径
 }
 
 export interface SaveSlot {
@@ -176,6 +190,10 @@ export interface SaveSlot {
   settings: {
     sfx: number; bgm: number; quality: QualityTier | "auto"; input: InputMode;
   };
+  // ===== 神龙殿商店系统存档字段（向后兼容：旧存档加载时填默认值） =====
+  gold: number;                                       // 当前持有金币
+  shopUpgrades: ShopUpgrades;                         // 商店升级等级
+  shopMissiles: ShopMissiles;                         // 商店导弹持有数
 }
 
 export interface Achievement {
@@ -193,4 +211,39 @@ export interface LevelClearResult {
   hpLeftPct: number;
   skillsUsed: number;
   skillPointReward: number;
+}
+
+// ===== 神龙殿商店系统类型 =====
+/** 升级路径：主炮 / 副炮 / 防御 / 引擎 / 雷达。前四条 0..5 级，雷达 0..4 级（对应 LV0..LV4）。 */
+export type UpgradeType = "mainGun" | "subGun" | "defense" | "engine" | "radar";
+/** 导弹类型：普通 / 巡航 / 爆炸 / 穿刺。 */
+export type MissileType = "normal" | "cruise" | "explosion" | "pierce";
+/** 各升级路径当前等级：飞船四件套 0..5，雷达 0..4。 */
+export interface ShopUpgrades {
+  mainGun: number; subGun: number; defense: number; engine: number;
+  radar: number; // 雷达等级 0..4，对应 LV0..LV4
+}
+/** 各导弹类型当前持有数量。 */
+export interface ShopMissiles { normal: number; cruise: number; explosion: number; pierce: number; }
+
+/** 商店购买导弹运行时实体：4 种类型（普通/巡航/爆炸/穿刺）独立行为。
+ *  - normal：直线飞行，命中即爆
+ *  - cruise：追踪目标（turnRate 控制转向）
+ *  - explosion：命中后范围 AOE（半径 100px）
+ *  - pierce：穿透多目标，伤害衰减 20%（pierceLeft 控制剩余穿透次数）
+ */
+export interface ShopMissileRuntime {
+  id: number;
+  type: MissileType;
+  x: number; y: number;
+  vx: number; vy: number;
+  targetId: number;   // 巡航导弹追踪目标 ID（-1 = 无目标）
+  dmg: number;
+  speed: number;
+  turnRate: number;   // 巡航导弹转向速率（弧度/秒），其他类型为 0
+  pierceLeft: number; // 穿刺导弹剩余穿透次数（其他类型为 0）
+  hitIds: Set<number>; // 已命中目标 ID 集合（穿刺导弹避免重复命中）
+  lifeMs: number;
+  alive: boolean;
+  trail: Array<{ x: number; y: number; alpha: number }>;
 }
