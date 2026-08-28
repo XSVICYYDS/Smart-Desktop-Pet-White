@@ -9,7 +9,7 @@ import type { MissileType, ShopMissiles, ShopUpgrades, UpgradeType } from "../ty
 /** 升级路径渲染顺序：飞船四件套 + 雷达。 */
 const UPGRADE_ORDER: UpgradeType[] = ["mainGun", "subGun", "defense", "engine", "radar"];
 /** 导弹类型渲染顺序。 */
-const MISSILE_ORDER: MissileType[] = ["normal", "cruise", "explosion", "pierce"];
+const MISSILE_ORDER: MissileType[] = ["normal", "cruise", "explosion", "pierce", "cluster"];
 
 export interface ShopProps {
   open: boolean;
@@ -31,7 +31,7 @@ const calcUpgradePrice = (basePrice: number, currentLevel: number): number =>
 
 /** 统计当前已持有导弹总数（所有类型合计）。 */
 const totalMissiles = (m: ShopMissiles): number =>
-  m.normal + m.cruise + m.explosion + m.pierce;
+  m.normal + m.cruise + m.explosion + m.pierce + m.cluster;
 
 /** 商店主组件：神龙殿。 */
 export const Shop: React.FC<ShopProps> = ({ open, gold, upgrades, missiles, onBuyUpgrade, onBuyMissile, onSkip, onClose }) => {
@@ -95,7 +95,7 @@ export const Shop: React.FC<ShopProps> = ({ open, gold, upgrades, missiles, onBu
               </div>
             </section>
 
-            {/* 导弹采购系统：4 种导弹，总容量上限 8 枚 */}
+            {/* 导弹采购系统：5 种导弹（普通/巡航/爆炸/穿刺/子母弹），总容量上限 8 枚 */}
             <section>
               <div className="flex items-baseline gap-3 mb-3">
                 <h3 className="text-base md:text-lg font-black bg-gradient-to-r from-emerald-500 to-cyan-500 bg-clip-text text-transparent">弹药采购</h3>

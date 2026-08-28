@@ -183,6 +183,7 @@ export const Container: React.FC<ContainerProps> = (props) => {
     cruise: s.shopMissiles?.cruise ?? 0,
     explosion: s.shopMissiles?.explosion ?? 0,
     pierce: s.shopMissiles?.pierce ?? 0,
+    cluster: s.shopMissiles?.cluster ?? 0,
   });
 
   const playerRef = useRef<PlayerRuntime>(makePlayer());
@@ -340,11 +341,12 @@ export const Container: React.FC<ContainerProps> = (props) => {
       if (k === "e") castSlot(1);
       if (k === "shift") castSlot(2);
       if (k === "r") castSlot(3);
-      // 商店导弹发射：1/5=普通, 2/6=巡航, 3/7=爆炸, 4/8=穿刺
+      // 商店导弹发射：1/5=普通, 2/6=巡航, 3/7=爆炸, 4/8=穿刺, 9=子母弹
       if (k === "1" || k === "5") launchShopMissile("normal");
       if (k === "2" || k === "6") launchShopMissile("cruise");
       if (k === "3" || k === "7") launchShopMissile("explosion");
       if (k === "4" || k === "8") launchShopMissile("pierce");
+      if (k === "9") launchShopMissile("cluster");
     };
     const onUp = (e: KeyboardEvent) => { keysRef.current[e.key.toLowerCase()] = false; };
     window.addEventListener("keydown", onDown);
@@ -440,13 +442,14 @@ export const Container: React.FC<ContainerProps> = (props) => {
   }
 
   /**
-   * 商店导弹发射：键盘 1-8 触发，按 MissileType 生成对应行为实体。
-   *  按键映射：1/5=普通, 2/6=巡航, 3/7=爆炸, 4/8=穿刺（5-8 为备用快捷键）
+   * 商店导弹发射：键盘 1-9 触发，按 MissileType 生成对应行为实体。
+   *  按键映射：1/5=普通, 2/6=巡航, 3/7=爆炸, 4/8=穿刺, 9=子母弹（5-8 为备用快捷键）
    *  行为：
    *   - normal：直线向上飞行，命中即爆（单目标 100 伤害）
    *   - cruise：追踪锁定目标（turnRate 4 rad/s，150 伤害）
    *   - explosion：命中后范围 AOE（半径 100px，200 伤害）
    *   - pierce：穿透 3 目标，每穿透一次伤害衰减 20%（180 伤害）
+   *   - cluster：母弹碰到第一个障碍物不造成伤害，原地分裂 5~10 枚子子弹，子子弹命中造成 120 伤害
    *  响应延迟 < 50ms（直接同步生成实体，无异步队列）。
    */
   function launchShopMissile(type: MissileType): void {
@@ -482,6 +485,7 @@ export const Container: React.FC<ContainerProps> = (props) => {
       lifeMs: 5000,
       alive: true,
       trail: [],
+      isChild: false,                          // 母弹：非子子弹
     };
     shopMissileRuntimeRef.current.push(missile);
     // 扣减持有数 + 同步存档
@@ -494,11 +498,13 @@ export const Container: React.FC<ContainerProps> = (props) => {
   }
 
   /**
-   * 商店导弹 tick：4 种类型独立行为。
+   * 商店导弹 tick：5 种类型独立行为。
    *  - 巡航导弹：转向追踪目标（转向速率 4 rad/s，限制角度变化）
    *  - 爆炸导弹：命中后 AOE 半径 100px，范围内所有敌人受 200 伤害
    *  - 穿刺导弹：穿透 3 目标，每穿透一次伤害衰减 20%
    *  - 普通导弹：命中即爆，单目标 100 伤害
+   *  - 子母弹母弹：碰到第一个障碍物不造成伤害，原地分裂 5~10 枚子子弹
+   *  - 子母弹子子弹：向四周发散飞行，命中任意目标造成 120 伤害
    *  尾迹用 trail 数组记录最近 8 个位置，alpha 衰减。
    */
   function tickShopMissiles(missiles: ShopMissileRuntime[], enemies: EnemyRuntime[], dtMs: number, _nowMs: number): void {
@@ -558,7 +564,40 @@ export const Container: React.FC<ContainerProps> = (props) => {
         const dist = Math.hypot(e.x - m.x, e.y - m.y);
         if (dist > 32) continue;
 
-        if (m.type === "explosion") {
+        if (m.type === "cluster" && !m.isChild) {
+          // 子母弹母弹：碰到第一个障碍物不造成伤害，原地分裂 5~10 枚子子弹
+          const childCount = 5 + Math.floor(Math.random() * 6); // 5~10 枚
+          const childSpeed = 500;
+          for (let i = 0; i < childCount; i++) {
+            // 均匀分布 + 随机扰动，确保子子弹向四周发散
+            const baseAngle = (Math.PI * 2 * i) / childCount;
+            const jitter = (Math.random() - 0.5) * 0.4;
+            const angle = baseAngle + jitter;
+            const child: ShopMissileRuntime = {
+              id: SHOP_MISSILE_ID++,
+              type: "cluster",
+              x: m.x, y: m.y,
+              vx: Math.cos(angle) * childSpeed,
+              vy: Math.sin(angle) * childSpeed,
+              targetId: -1,
+              dmg: m.dmg,                 // 子子弹继承母弹伤害（120）
+              speed: childSpeed,
+              turnRate: 0,
+              pierceLeft: 0,
+              hitIds: new Set<number>(),
+              lifeMs: 2500,               // 子子弹寿命较短
+              alive: true,
+              trail: [],
+              isChild: true,              // 标记为子子弹
+            };
+            shopMissileRuntimeRef.current.push(child);
+          }
+          // 分裂视觉特效（金色爆裂）
+          spawnBurst(particlesRef.current, m.x, m.y, 20, ["#fbbf24", "#fde047", "#fef3c7", "#f97316"], 4, 3, 600);
+          if (profile.enableLighting) addLight(lightingRef.current, m.x, m.y, 120, "#fbbf24", 0.6);
+          m.alive = false;                // 母弹消失
+          break;
+        } else if (m.type === "explosion") {
           // 爆炸导弹：AOE 半径 100px，范围内所有敌人受 200 伤害
           const aoeRadius = 100;
           for (const aoe of enemies) {
@@ -585,6 +624,12 @@ export const Container: React.FC<ContainerProps> = (props) => {
             m.alive = false;
             break;
           }
+        } else if (m.type === "cluster" && m.isChild) {
+          // 子母弹子子弹：命中任意目标造成伤害（单目标）
+          applyEnemyDamage(e, m.dmg, m.x, m.y);
+          spawnBurst(particlesRef.current, m.x, m.y, 10, ["#fbbf24", "#fde047", "#fef3c7"], 3, 2, 400);
+          m.alive = false;
+          break;
         } else {
           // 普通导弹 + 巡航导弹：命中即爆，单目标伤害
           applyEnemyDamage(e, m.dmg, m.x, m.y);
@@ -1362,7 +1407,7 @@ export const Container: React.FC<ContainerProps> = (props) => {
       ctx.restore();
     }
 
-    // ===== 商店导弹渲染：4 种类型不同颜色尾迹 + 弹体 =====
+    // ===== 商店导弹渲染：5 种类型不同颜色尾迹 + 弹体 =====
     const shopMissiles = shopMissileRuntimeRef.current;
     for (let i = 0; i < shopMissiles.length; i++) {
       const m = shopMissiles[i];
@@ -1371,7 +1416,8 @@ export const Container: React.FC<ContainerProps> = (props) => {
       const trailColor = m.type === "normal" ? "251, 146, 60" :
                          m.type === "cruise" ? "167, 139, 250" :
                          m.type === "explosion" ? "239, 68, 68" :
-                         "196, 181, 253"; // pierce
+                         m.type === "pierce" ? "196, 181, 253" :
+                         "251, 191, 36"; // cluster 金色
       // 尾迹
       for (let t = 0; t < m.trail.length; t++) {
         const tr = m.trail[t];
@@ -1401,12 +1447,29 @@ export const Container: React.FC<ContainerProps> = (props) => {
         ctx.beginPath(); ctx.arc(0, 0, 7, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = "#fbbf24";
         ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI * 2); ctx.fill();
-      } else {
+      } else if (m.type === "pierce") {
         // 穿刺导弹：紫色锐利三角
         ctx.fillStyle = "#c4b5fd";
         ctx.beginPath(); ctx.moveTo(10, 0); ctx.lineTo(-8, -3); ctx.lineTo(-8, 3); ctx.fill();
         ctx.fillStyle = "#a78bfa";
         ctx.fillRect(-6, -2, 4, 4);
+      } else if (m.type === "cluster") {
+        // 子母弹：母弹金色胶囊+子子弹金色小球
+        if (m.isChild) {
+          // 子子弹：小金色圆
+          ctx.fillStyle = "#fde047";
+          ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = "#fbbf24";
+          ctx.beginPath(); ctx.arc(0, 0, 2, 0, Math.PI * 2); ctx.fill();
+        } else {
+          // 母弹：金色胶囊带核心
+          ctx.fillStyle = "#fbbf24";
+          ctx.fillRect(-9, -4, 18, 8);
+          ctx.fillStyle = "#fde047";
+          ctx.fillRect(-5, -3, 12, 6);
+          ctx.fillStyle = "#fef3c7";
+          ctx.fillRect(5, -2, 4, 4);
+        }
       }
       ctx.restore();
     }
@@ -1489,7 +1552,8 @@ export const Container: React.FC<ContainerProps> = (props) => {
   const handleBuyMissile = (type: MissileType): void => {
     const cfg = SHOP_MISSILE_CONFIG[type];
     const total = shopMissilesRef.current.normal + shopMissilesRef.current.cruise +
-                  shopMissilesRef.current.explosion + shopMissilesRef.current.pierce;
+                  shopMissilesRef.current.explosion + shopMissilesRef.current.pierce +
+                  shopMissilesRef.current.cluster;
     if (total >= SHOP_MISSILE_MAX) return;
     if (goldRef.current < cfg.price) return;
     // 扣金币 + 增加导弹

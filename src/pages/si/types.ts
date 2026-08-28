@@ -216,21 +216,23 @@ export interface LevelClearResult {
 // ===== 神龙殿商店系统类型 =====
 /** 升级路径：主炮 / 副炮 / 防御 / 引擎 / 雷达。前四条 0..5 级，雷达 0..4 级（对应 LV0..LV4）。 */
 export type UpgradeType = "mainGun" | "subGun" | "defense" | "engine" | "radar";
-/** 导弹类型：普通 / 巡航 / 爆炸 / 穿刺。 */
-export type MissileType = "normal" | "cruise" | "explosion" | "pierce";
+/** 导弹类型：普通 / 巡航 / 爆炸 / 穿刺 / 子母弹。 */
+export type MissileType = "normal" | "cruise" | "explosion" | "pierce" | "cluster";
 /** 各升级路径当前等级：飞船四件套 0..5，雷达 0..4。 */
 export interface ShopUpgrades {
   mainGun: number; subGun: number; defense: number; engine: number;
   radar: number; // 雷达等级 0..4，对应 LV0..LV4
 }
 /** 各导弹类型当前持有数量。 */
-export interface ShopMissiles { normal: number; cruise: number; explosion: number; pierce: number; }
+export interface ShopMissiles { normal: number; cruise: number; explosion: number; pierce: number; cluster: number; }
 
-/** 商店购买导弹运行时实体：4 种类型（普通/巡航/爆炸/穿刺）独立行为。
+/** 商店购买导弹运行时实体：5 种类型（普通/巡航/爆炸/穿刺/子母弹）独立行为。
  *  - normal：直线飞行，命中即爆
  *  - cruise：追踪目标（turnRate 控制转向）
  *  - explosion：命中后范围 AOE（半径 100px）
  *  - pierce：穿透多目标，伤害衰减 20%（pierceLeft 控制剩余穿透次数）
+ *  - cluster：母弹碰到第一个障碍物时不造成伤害，原地分裂为 5~10 枚子子弹，
+ *             子子弹向四周发散飞行，命中任意目标即造成伤害
  */
 export interface ShopMissileRuntime {
   id: number;
@@ -246,4 +248,5 @@ export interface ShopMissileRuntime {
   lifeMs: number;
   alive: boolean;
   trail: Array<{ x: number; y: number; alpha: number }>;
+  isChild: boolean;   // 是否为子母弹分裂出的子子弹（true=子子弹，false=母弹或其他类型）
 }

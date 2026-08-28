@@ -871,6 +871,7 @@ export const SHOP_MISSILE_CONFIG: Record<MissileType, { name: string; icon: stri
   cruise: { name: "巡航导弹", icon: "🎯", dmg: 150, price: 150, desc: "自动追踪目标" },
   explosion: { name: "爆炸导弹", icon: "💥", dmg: 200, price: 200, desc: "范围伤害，爆炸半径100px" },
   pierce: { name: "穿刺导弹", icon: "⚔️", dmg: 180, price: 180, desc: "穿透3个目标，伤害衰减20%" },
+  cluster: { name: "子母弹", icon: "🪺", dmg: 120, price: 300, desc: "母弹碰撞不伤敌，原地分裂5~10枚子子弹，子子弹命中造成伤害" },
 };
 /** 导弹总容量上限（所有类型合计不得超过此值）。 */
 export const SHOP_MISSILE_MAX = 8;

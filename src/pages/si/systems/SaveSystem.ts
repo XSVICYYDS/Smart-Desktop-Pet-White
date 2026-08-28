@@ -18,7 +18,7 @@ const zeroSkills = (): Record<SkillId, SkillLevel> => ({
 /** 默认商店升级等级（全部 Lv0）。 */
 const zeroShopUpgrades = (): ShopUpgrades => ({ mainGun: 0, subGun: 0, defense: 0, engine: 0, radar: 0 });
 /** 默认商店导弹持有数（全部 0 枚）。 */
-const zeroShopMissiles = (): ShopMissiles => ({ normal: 0, cruise: 0, explosion: 0, pierce: 0 });
+const zeroShopMissiles = (): ShopMissiles => ({ normal: 0, cruise: 0, explosion: 0, pierce: 0, cluster: 0 });
 
 export function emptySlot(slot: 0 | 1 | 2): SaveSlot {
   return {
@@ -43,7 +43,7 @@ function checksum(s: SaveSlot): number {
     `${s.skillPoints}:${s.clearedLevels}:${SKILLS_ALL.map((k) => s.skills[k]).join(",")}:` +
     s.unlockedAchievements.length + ":" +
     `${s.gold || 0}:${su.mainGun},${su.subGun},${su.defense},${su.engine},${su.radar}:` +
-    `${sm.normal},${sm.cruise},${sm.explosion},${sm.pierce}`;
+    `${sm.normal},${sm.cruise},${sm.explosion},${sm.pierce},${sm.cluster}`;
   let h = 2166136261 >>> 0;
   for (let i = 0; i < core.length; i++) {
     h ^= core.charCodeAt(i);
